@@ -1,0 +1,40 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  {# main.css loads tokens, fonts, reset - choose light/dark from localStorage #}
+  <script>
+    (function(){
+      var theme = 'light';
+      try{ theme = localStorage.getItem('ts_theme') || 'light'; }catch(e){}
+      var href = "{% static 'css/light/main.css' %}".replace('/light/', '/' + theme + '/');
+      var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-ts-theme','');
+      document.head.appendChild(l);
+    })();
+  </script>
+  <title>{% block title %}Transport Statistics{% endblock %}</title>
+
+  {% load static %}
+
+  {# ── global reset ─────────────────────────────────────────────────── #}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { background: #f5f7f2; }
+    /* page-level override when sidebar+map fills viewport */
+    body.ts-app-page { overflow: hidden; }
+  </style>
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+
+  {% block content %}{% endblock %}
+
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,524 @@
+{% comment %}
+  Transit Stop Map — Django Include
+  Usage:
+    {% include "includes/ts-map.html" with theme="light" %}
+    {% include "includes/ts-map.html" with theme="dark" %}
+  Props:
+    theme — "light" (default) or "dark"
+{% endcomment %}
+
+{% load static %}
+{% with map_theme=theme|default:"light" %}
+
+<link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+<link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
+
+<div class="ts-map-wrapper">
+
+  <!-- ── map canvas ────────────────────────────────────────────────── -->
+  <div id="ts-map"></div>
+
+  <!-- ── zoom hint ────────────────────────────────────────────────────── -->
+  <div class="ts-zoom-hint" id="ts-zoom-hint" aria-hidden="true">
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0;margin-top:1px"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M8.5 8.5L11.5 11.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 3.5v4M3.5 5.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    Zoom in to see stops
+  </div>
+
+  <!-- ── bottom sheet / side panel ────────────────────────────────── -->
+  <div class="ts-sheet" id="ts-sheet" aria-hidden="true">
+    <div class="ts-sheet-handle"></div>
+    <div class="ts-sheet-inner" id="ts-sheet-inner"></div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── constants ──────────────────────────────────────────────────────────────
+  const STYLE_BASE    = 'https://maps.fluffynet.dev/styles/tf-';
+  function styleFor(t){ return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
+  // Determine initial theme from client storage so map matches UI theme
+  let _currentTheme = (function(){ try{ return localStorage.getItem('ts_theme') || '{{ map_theme }}'; }catch(e){ return '{{ map_theme }}'; } })();
+  let STYLE_URL = styleFor(_currentTheme);
+  const STORAGE_KEY   = 'ts_map_view';
+  const STOPS_API      = '/api/stops/';
+  const TRAIN_DEPS_API = '/api/train-departures/';
+  const BUS_DEPS_API   = '/api/bus-departures/';
+
+  // stop_type_codes that should hit the bus API
+  const BUS_TYPE_CODES = new Set([
+    'BCT','BCS','BCQ','BCE','BST','HAR','FLX','MKD','CUS',  // bus / coach
+    'MET','PLT','TMU',                                        // metro / tram
+    'FER','FBT','FTD',                                        // ferry
+    'TXR','STR',                                              // taxi
+  ]);
+
+  function depsApi(stop_type_code) {
+    return BUS_TYPE_CODES.has(stop_type_code) ? BUS_DEPS_API : TRAIN_DEPS_API;
+  }
+
+  // ── headcode replacements ──────────────────────────────────────────────────
+  // Add entries here to rewrite a headcode and optionally force a destination.
+  // { headcode: 'MATCH', label: 'DISPLAY', destination: 'OVERRIDE' (optional) }
+  const HEADCODE_REPLACEMENTS = [
+    { headcode: '0B00', label: 'BUS',  destination: 'Rail Replacement' },
+    { headcode: '0B01', label: 'BUS',  destination: 'Rail Replacement' },
+    // add more as needed
+  ];
+
+  function applyHeadcodeReplacement(head, dest) {
+    const rule = HEADCODE_REPLACEMENTS.find(r => r.headcode.toUpperCase() === head.toUpperCase());
+    if (!rule) return { head, dest };
+    return {
+      head: rule.label,
+      dest: rule.destination || dest,
+      isReplacement: true,
+    };
+  }
+  const STOP_TYPES    = [1,13,9,6,3,2,17,7,15,11];
+  const BUFFER_FACTOR = 0.5;
+  const DEBOUNCE_MS   = 350;
+  const PAGE_LIMIT    = 5000;
+  const STOP_LIMIT    = 2500;   // hide stops and show hint above this count
+
+  // ── zoom hint ──────────────────────────────────────────────────────────────
+  const zoomHint = document.getElementById('ts-zoom-hint');
+
+  function setZoomHint(tooMany) {
+    if (!zoomHint) return;
+    if (tooMany) {
+      zoomHint.classList.add('visible');
+      zoomHint.removeAttribute('aria-hidden');
+    } else {
+      zoomHint.classList.remove('visible');
+      zoomHint.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  // ── date/time helpers ──────────────────────────────────────────────────────
+  const pad        = n => String(n).padStart(2, '0');
+  const toDate     = dt => `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+  const toTime     = dt => `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  const toLocalISO = dt => `${toDate(dt)}T${toTime(dt)}`;
+
+  // ── storage ────────────────────────────────────────────────────────────────
+  function saveView(center, zoom) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ lon:center[0], lat:center[1], zoom })); } catch(_) {}
+  }
+  function loadView() {
+    try {
+      const v = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (v && typeof v.lat==='number') return v;
+    } catch(_) {}
+    return null;
+  }
+
+  // ── bbox ───────────────────────────────────────────────────────────────────
+  const mapBbox    = map => { const b=map.getBounds(); return [b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]; };
+  const expandBbox = (b,f) => { const dLon=(b[2]-b[0])*f, dLat=(b[3]-b[1])*f; return [b[0]-dLon,b[1]-dLat,b[2]+dLon,b[3]+dLat]; };
+  const inside     = (b,l) => l && b[0]>=l[0] && b[1]>=l[1] && b[2]<=l[2] && b[3]<=l[3];
+
+  // ── sheet state ────────────────────────────────────────────────────────────
+  const sheet      = document.getElementById('ts-sheet');
+  const sheetInner = document.getElementById('ts-sheet-inner');
+  let _activeProps    = null;
+  let _sheetQueryTime = null;   // null = now
+
+  function openSheet(html) {
+    sheetInner.innerHTML = html;
+    sheet.classList.add('open');
+    sheet.removeAttribute('aria-hidden');
+    bindControls();
+  }
+
+  function closeSheet() {
+    sheet.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    _activeProps    = null;
+    _sheetQueryTime = null;
+  }
+
+  // swipe down to close on mobile
+  let _ty = 0;
+  sheet.addEventListener('touchstart', e => { _ty = e.touches[0].clientY; }, { passive:true });
+  sheet.addEventListener('touchend',   e => { if (e.changedTouches[0].clientY - _ty > 60) closeSheet(); }, { passive:true });
+
+  // ── HTML builders ──────────────────────────────────────────────────────────
+
+  function headerHTML(p) {
+    return `
+      <div class="ts-popup-header">
+        <div class="ts-popup-title-row">
+          <div>
+            <div class="ts-popup-name">${p.name || 'Stop'}</div>
+            ${p.stop_type_name ? `<div class="ts-popup-type">${p.stop_type_name}</div>` : ''}
+          </div>
+          <button class="ts-sheet-close" aria-label="Close">✕</button>
+        </div>
+        <div class="ts-popup-codes">
+          ${p.crs      ? `<span class="ts-popup-code">CRS&nbsp;${p.crs}</span>`      : ''}
+          ${p.tiploc   ? `<span class="ts-popup-code">TPL&nbsp;${p.tiploc}</span>`   : ''}
+          ${p.platform ? `<span class="ts-popup-code">Plat&nbsp;${p.platform}</span>`: ''}
+        </div>
+      </div>`;
+  }
+
+  function timeControlsHTML(qt) {
+    const now   = new Date();
+    const diff  = qt ? Math.round((qt - now) / 60000) : 0;
+    const isNow = !qt;
+    const dtVal = toLocalISO(qt || now);
+
+    const btn = (offset, label) => {
+      const active = !isNow && diff === offset;
+      const cls    = `ts-time-btn${offset<0?' past':''}${active?' active':''}`;
+      return `<button class="${cls}" data-offset="${offset}">${label}</button>`;
+    };
+
+    return `
+      <div class="ts-popup-time-controls">
+        <div class="ts-time-row">
+          ${btn(-60,'−1h')}${btn(-30,'−30m')}${btn(-15,'−15m')}
+          <div class="ts-time-separator"></div>
+          <button class="ts-now-btn${isNow?' active':''}" data-now="1">Now</button>
+          <div class="ts-time-separator"></div>
+          ${btn(15,'+15m')}${btn(30,'+30m')}${btn(60,'+1h')}
+        </div>
+        <div class="ts-datetime-row">
+          <input type="datetime-local" class="ts-datetime-picker" value="${dtVal}" />
+        </div>
+      </div>`;
+  }
+
+  function departureRowsHTML(results, qt, hasExpected) {
+    return results.slice(0, 15).map(r => {
+      const sched   = (r.time && (r.time.departure || r.time.arrival || '')) || '';
+      const exp     = (r.time && r.time.expected_departure) || '';
+      const late    = sched && exp && exp !== sched;
+      const dt      = qt || new Date();
+      const rawHead = r.headcode || '—';
+      const rawDest = (r.destination && r.destination.name) || '—';
+      const vehicle = r.vehicle || '';
+      const repl    = applyHeadcodeReplacement(rawHead, rawDest);
+      const head    = repl.head;
+      const dest    = repl.dest;
+      const rtt     = repl.isReplacement ? null : (r.rtt_link || `https://www.realtimetrains.co.uk/search/detailed/gb-nr:${rawHead}/${toDate(dt)}/${toTime(dt)}`);
+
+      return `<tr${repl.isReplacement ? ' class="ts-row-replacement"' : ''}>
+        <td class="td-headcode">${rtt ? `<a href="${rtt}" target="_blank" rel="noopener" class="ts-headcode-link">${head}</a>` : `<span class="ts-headcode-replacement">${head}</span>`}</td>
+        <td class="td-dest" title="${dest}">${dest}${vehicle ? `<div class="td-vehicle">${vehicle}</div>` : ''}</td>
+        <td class="td-time">${String(sched).slice(0,5) || '—'}</td>
+        ${hasExpected ? `<td class="td-expected${late?' late':''}">${late ? String(exp).slice(0,5) : '—'}</td>` : ''}
+        <td><button class="ts-log-btn" data-headcode="${head}" data-date="${toDate(dt)}" title="Log this service">Log</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function sheetHTML_loading(p, qt) {
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}
+      <div class="ts-popup-body">
+        <div class="ts-popup-spinner"><span class="ts-spinner"></span>Fetching departures…</div>
+      </div></div>`;
+  }
+
+  function sheetHTML_loaded(p, results, qt) {
+    const hasExpected = results && results.some(r => r.time && r.time.expected_departure);
+    const body = results && results.length
+      ? `<div class="ts-departures-label">Departures</div>
+         <div class="ts-table-wrap">
+           <table class="ts-departure-table">
+             <thead><tr><th>Service</th><th>To</th><th>Sched</th>${hasExpected ? '<th>Exp</th>' : ''}<th></th></tr></thead>
+             <tbody>${departureRowsHTML(results, qt, hasExpected)}</tbody>
+           </table>
+         </div>`
+      : `<div class="ts-no-departures">No departures found for this time.</div>`;
+
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}
+      <div class="ts-popup-body">${body}</div></div>`;
+  }
+
+  function sheetHTML_error(p, qt) {
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}
+      <div class="ts-popup-body"><div class="ts-popup-error">⚠ Could not load departures.</div></div></div>`;
+  }
+
+  // ── bind controls after each render ───────────────────────────────────────
+  function bindControls() {
+    sheetInner.querySelector('.ts-sheet-close')
+      ?.addEventListener('click', closeSheet);
+
+    sheetInner.querySelectorAll('.ts-time-btn[data-offset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mins = parseInt(btn.dataset.offset, 10);
+        const t = new Date();
+        t.setMinutes(t.getMinutes() + mins);
+        _sheetQueryTime = t;
+        if (_activeProps) loadDepartures(_activeProps);
+      });
+    });
+
+    sheetInner.querySelectorAll('[data-now]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _sheetQueryTime = null;
+        if (_activeProps) loadDepartures(_activeProps);
+      });
+    });
+
+    sheetInner.querySelector('.ts-datetime-picker')
+      ?.addEventListener('change', function() {
+        _sheetQueryTime = this.value ? new Date(this.value) : null;
+        if (_activeProps) loadDepartures(_activeProps);
+      });
+
+    sheetInner.querySelectorAll('.ts-log-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.dispatchEvent(new CustomEvent('ts:log', {
+          bubbles: true,
+          detail: { headcode: btn.dataset.headcode, date: btn.dataset.date }
+        }));
+      });
+    });
+  }
+
+  // ── fetch departures ───────────────────────────────────────────────────────
+  function loadDepartures(props) {
+    _activeProps = props;
+    const qt   = _sheetQueryTime;
+    const dt   = qt || new Date();
+
+    openSheet(sheetHTML_loading(props, qt));
+
+    // rail uses crs, bus/tram/ferry use atco_code — show empty if neither present
+    const isBus  = BUS_TYPE_CODES.has(props.stop_type_code);
+    const refKey = isBus ? props.atco_code : props.crs;
+
+    if (!refKey) {
+      openSheet(sheetHTML_loaded(props, [], qt));
+      return;
+    }
+
+    const idParam = isBus ? `atco_code=${refKey}` : `crs=${refKey}`;
+    // only send date/time for past or future — omit entirely for "now" so the
+    // API (and bustimes upstream) uses its own live clock and serves live data
+    const timeParams = qt ? `&date=${toDate(dt)}&time=${toTime(dt)}` : '';
+    fetch(`${depsApi(props.stop_type_code)}?${idParam}${timeParams}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        openSheet(sheetHTML_loaded(props, (data.results || []), qt));
+      })
+      .catch(() => {
+        openSheet(sheetHTML_error(props, qt));
+      });
+  }
+
+  // ── map init ───────────────────────────────────────────────────────────────
+  window.initMap = function (opts) {
+    opts = opts || {};
+    const containerId = opts.containerId || 'ts-map';
+    const wantStops   = opts.loadStops !== false;
+    const onStopClick = typeof opts.onStopClick === 'function' ? opts.onStopClick : null;
+    const initBbox    = Array.isArray(opts.bbox) && opts.bbox.length === 4 ? opts.bbox : null;
+
+    let initCenter = [-1.5, 53.0];
+    let initZoom   = 6;
+    if (initBbox) {
+      initCenter = [(initBbox[0]+initBbox[2])/2, (initBbox[1]+initBbox[3])/2];
+      initZoom   = 12;
+    } else {
+      const saved = loadView();
+      if (saved) { initCenter = [saved.lon, saved.lat]; initZoom = saved.zoom; }
+    }
+
+    const map = new maplibregl.Map({
+      container: containerId, style: STYLE_URL, center: initCenter, zoom: initZoom,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(new maplibregl.ScaleControl(),      'bottom-left');
+
+    // Update map style when site theme changes
+    document.addEventListener('ts:themechange', function(e){
+      try{
+        const theme = e && e.detail && e.detail.theme ? e.detail.theme : (localStorage.getItem('ts_theme') || 'light');
+        const next = styleFor(theme);
+        if (next === STYLE_URL) return;
+        STYLE_URL = next;
+        // After style loads, re-create the stops source and essential layers
+        map.once('styledata', function(){
+          try{
+            if (!map.getSource('stops')){
+              map.addSource('stops', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
+            }
+            if (!map.getLayer('unclustered-point')){
+              map.addLayer({ id:'unclustered-point', type:'circle', source:'stops',
+                filter:['!',['has','point_count']],
+                paint:{
+                  'circle-color':['match',['get','stop_type_code'],
+                    'RLS','#1d4ed8','RSE','#2563eb','RLY','#3b82f6','RPL','#60a5fa',
+                    'BCT','#15803d','BCS','#16a34a','BCQ','#22c55e','BCE','#4ade80',
+                    'BST','#86efac','HAR','#166534','FLX','#14532d','MKD','#365314','CUS','#4d7c0f',
+                    'MET','#7e22ce','PLT','#9333ea','TMU','#a855f7',
+                    'FER','#0f766e','FBT','#0d9488','FTD','#2dd4bf',
+                    'GAT','#c2410c','AIR','#ea580c',
+                    'TXR','#ca8a04','STR','#eab308',
+                    '#6b7280'],
+                  'circle-radius':6, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+                }
+              });
+            }
+            // restore previously fetched features (if any)
+            if (_lastFeatures && _lastFeatures.length) {
+              try{ map.getSource('stops').setData({ type:'FeatureCollection', features: _lastFeatures }); }catch(e){}
+            }
+          }catch(err){ console.warn('Failed to re-add map layers', err); }
+        });
+        map.setStyle(STYLE_URL);
+      }catch(err){ console.warn('ts:themechange handler error', err); }
+    });
+
+    const persistView = () => saveView(map.getCenter().toArray(), map.getZoom());
+
+    // ── stops fetch ───────────────────────────────────────────────────────────
+    let _controller = null, _loadedBbox = null, _debounce = null;
+
+    let _lastFeatures = [];
+
+    const setSource = features => {
+      _lastFeatures = features;
+      try {
+        const tooMany = features.length > STOP_LIMIT;
+        setZoomHint(tooMany);
+        map.getSource('stops').setData({
+          type: 'FeatureCollection',
+          features: tooMany ? [] : features,
+        });
+      } catch(_) {}
+    };
+
+    // called on zoom/move — re-evaluates the same cached features without re-fetching
+    function recheckDensity() {
+      if (_lastFeatures.length) setSource(_lastFeatures);
+    }
+
+    async function fetchStops(bbox) {
+      if (_controller) { try { _controller.abort(); } catch(_) {} }
+      _controller = new AbortController();
+      _lastFeatures = [];
+      setZoomHint(false);
+      const features = [];
+      let url = `${STOPS_API}?limit=${PAGE_LIMIT}&stop_type=${STOP_TYPES.join(',')}`
+              + `&min_lat=${bbox[1]}&max_lat=${bbox[3]}&min_lon=${bbox[0]}&max_lon=${bbox[2]}`;
+      try {
+        while (url) {
+          const resp = await fetch(url, { signal: _controller.signal });
+          if (!resp.ok) break;
+          const data  = await resp.json();
+          for (const s of (data.results || data)) {
+            if (s.lat == null) continue;
+            features.push({
+              type:'Feature',
+              geometry:{ type:'Point', coordinates:[parseFloat(s.lon), parseFloat(s.lat)] },
+              properties:{
+                id: s.id, name: s.name||'', crs: s.crs||'',
+                atco_code: s.atco_code||'',
+                tiploc: s.tiploc||'', platform: s.platform||'',
+                stop_type_code: (s.stop_type&&s.stop_type.code)||'',
+                stop_type_name: (s.stop_type&&s.stop_type.name)||'',
+              }
+            });
+          }
+          setSource(features.slice());
+          url = data.next || null;
+        }
+        _loadedBbox = bbox;
+      } catch(err) { if (err.name!=='AbortError') console.error('[ts-map]', err); }
+      finally { _controller = null; }
+    }
+
+    function checkAndLoad() {
+      clearTimeout(_debounce);
+      _debounce = setTimeout(() => {
+        persistView();
+        if (!wantStops) return;
+        const vp = mapBbox(map);
+        if (!inside(vp, _loadedBbox)) fetchStops(expandBbox(vp, BUFFER_FACTOR));
+      }, DEBOUNCE_MS);
+    }
+
+    // ── map load ───────────────────────────────────────────────────────────────
+    map.on('load', () => {
+
+      map.addSource('stops', {
+        type:'geojson', data:{ type:'FeatureCollection', features:[] },
+      });
+
+      map.addLayer({ id:'unclustered-point', type:'circle', source:'stops',
+        filter:['!',['has','point_count']],
+        paint:{
+          'circle-color':['match',['get','stop_type_code'],
+            'RLS','#1d4ed8','RSE','#2563eb','RLY','#3b82f6','RPL','#60a5fa',
+            'BCT','#15803d','BCS','#16a34a','BCQ','#22c55e','BCE','#4ade80',
+            'BST','#86efac','HAR','#166534','FLX','#14532d','MKD','#365314','CUS','#4d7c0f',
+            'MET','#7e22ce','PLT','#9333ea','TMU','#a855f7',
+            'FER','#0f766e','FBT','#0d9488','FTD','#2dd4bf',
+            'GAT','#c2410c','AIR','#ea580c',
+            'TXR','#ca8a04','STR','#eab308',
+            '#6b7280'],
+          'circle-radius':6, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+        }
+      });
+
+      map.on('click','unclustered-point', e => {
+        const props = e.features[0].properties || {};
+        if (onStopClick) { onStopClick(props); return; }
+        _sheetQueryTime = null;
+        loadDepartures(props);
+      });
+
+      // tap empty map — close sheet
+      map.on('click', e => {
+        const hits = map.queryRenderedFeatures(e.point,{layers:['unclustered-point']});
+        if (!hits.length) closeSheet();
+      });
+
+      map.on('mouseenter','unclustered-point', ()=> map.getCanvas().style.cursor='pointer');
+      map.on('mouseleave','unclustered-point', ()=> map.getCanvas().style.cursor='');
+
+      map.on('moveend', () => { checkAndLoad(); recheckDensity(); });
+      map.on('zoomend', () => { checkAndLoad(); recheckDensity(); });
+
+      if (initBbox) {
+        map.fitBounds([[initBbox[0],initBbox[1]],[initBbox[2],initBbox[3]]],{padding:20});
+        if (wantStops) fetchStops(expandBbox(initBbox, BUFFER_FACTOR));
+        return;
+      }
+      if (loadView()) {
+        if (wantStops) fetchStops(expandBbox(mapBbox(map), BUFFER_FACTOR));
+        return;
+      }
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            map.setCenter([pos.coords.longitude, pos.coords.latitude]);
+            map.setZoom(13);
+            saveView([pos.coords.longitude, pos.coords.latitude], 13);
+            if (wantStops) fetchStops(expandBbox(mapBbox(map), BUFFER_FACTOR));
+          },
+          () => { if (wantStops) fetchStops(expandBbox(mapBbox(map), BUFFER_FACTOR)); },
+          { timeout:5000 }
+        );
+      } else {
+        if (wantStops) fetchStops(expandBbox(mapBbox(map), BUFFER_FACTOR));
+      }
+    });
+
+    return map;
+  };
+
+})();
+</script>
+
+{% endwith %}

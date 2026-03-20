@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Legal - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+
+  {% include "includes/sidebar.html" %}
+
+  <main class="ts-main">
+    <div class="ts-content">
+
+      <h1 class="ts-page-title">Legal</h1>
+      <p class="ts-page-subtitle">Licensing and attribution for data used by this service.</p>
+
+      <div class="ts-section">
+        <div class="ts-section-title">Data Sources</div>
+
+        <div class="ts-table-container">
+          <table class="ts-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Description</th>
+                <th>Endpoint</th>
+                <th>Licence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Bus Departures</td>
+                <td>Real-time bus departure information is sourced from <a href="https://bustimes.org"
+                    target="_blank">bustimes.org</a></td>
+                <td><a href="https://bustimes.org/stops/{atco code}/departures"
+                    target="_blank">https://bustimes.org/stops/{atco code}/departures</a></td>
+                <td><a href="https://bustimes.org/data" target="_blank">bustimes.org Data</a></td>
+              </tr>
+              <tr>
+                <td>Train Departures</td>
+                <td>Train departure data is sourced from Network Rail SCHEDULE JsonScheduleV1</td>
+                <td><a href="https://publicdatafeeds.networkrail.co.uk"
+                    target="_blank">https://publicdatafeeds.networkrail.co.uk/</a></td>
+                <td><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a></td>
+              </tr>
+              <tr>
+                <td>Bus Vehicle Information</td>
+                <td>Bus vehicle information is sourced from <a href="https://bustimes.org"
+                    target="_blank">bustimes.org</a>
+                </td>
+                <td><a href="https://bustimes.org/api/vehicles/" target="_blank">https://bustimes.org/api/vehicles/</a></td>
+                <td><a href="https://github.com/jclgoodwin/bustimes.org/blob/main/LICENSE" target="_blank">MPL-2.0 license</a></td>
+              </tr>
+              <tr>
+                <td>Map Styles</td>
+                <td>Custom MapLibre style files used for basemap rendering.</td>
+                <td><a href="https://maps.fluffynet.dev/" target="_blank">https://maps.fluffynet.dev/</a></td>
+                <td>See provider site for licence/attribution</td>
+              </tr>
+              <tr>
+                <td>Map Library</td>
+                <td>Map rendering is performed with MapLibre GL JS.</td>
+                <td><a href="https://maplibre.org/" target="_blank">https://maplibre.org/</a></td>
+                <td>BSD-style / open-source</td>
+              </tr>
+              <tr>
+                <td>Basemap Data</td>
+                <td>Underlying basemap vector/tiles are provided by OpenStreetMap contributors.</td>
+                <td><a href="https://openstreetmap.org/" target="_blank">https://openstreetmap.org/</a></td>
+                <td>Open Database Licence (ODbL)</td>
+              </tr>
+              <tr>
+                <td>Web Fonts</td>
+                <td>Fonts are loaded from Google Fonts for UI typography.</td>
+                <td><a href="https://fonts.googleapis.com/" target="_blank">https://fonts.googleapis.com/</a></td>
+                <td>See Google Fonts for licence details</td>
+              </tr>
+              <tr>
+                <td>Bus Stops</td>
+                <td>Bus stop information is sourced from <a href="https://beta-naptan.dft.gov.uk/download" target="_blank">NaPTAN</a></td>
+                <td><a href="https://beta-naptan.dft.gov.uk/download" target="_blank">https://beta-naptan.dft.gov.uk/download</a></td>
+                <td><a href="http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government
+                    Licence v3.0.</a></td>
+              </tr>
+              <tr>
+                <td>Train Station Locations</td>
+                <td>Train station location information is sourced from Network Rail</td>
+                <td><a href="https://github.com/davwheat/uk-railway-stations/blob/main/stations.json"
+                    target="_blank">davwheat's uk-railway-stations stations.json</a></td>
+                <td><a href="https://github.com/davwheat/uk-railway-stations/blob/main/LICENSE" target="_blank">ODC Open Database License (ODbL)</a></td>
+              </tr>
+              <tr>
+                <td>Other Rail Locations</td>
+                <td>Other rail location information is sourced from Network Rail SCHEDULE TiplocV1</td>
+                <td><a href="https://publicdatafeeds.networkrail.co.uk"
+                    target="_blank">https://publicdatafeeds.networkrail.co.uk/</a></td>
+                <td><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a></td>
+              </tr>
+              <tr>
+                <td>Realtime Trains links</td>
+                <td>Some pages include links to RealTimeTrains for convenience; timetable data shown here is derived from Network Rail SCHEDULE feeds rather than provided by RealTimeTrains.</td>
+                <td><a href="https://www.realtimetrains.co.uk/" target="_blank">https://www.realtimetrains.co.uk/</a></td>
+                <td>External site - see their terms</td>
+              </tr>
+              <tr>
+                <td>Bustimes links</td>
+                <td>Some pages include links to bustimes.org for convenience; live bus departures displayed are obtained from bustimes.org.</td>
+                <td><a href="https://bustimes.org/" target="_blank">https://bustimes.org/</a></td>
+                <td>External site - see their terms</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+</div>
+{% endblock %}

@@ -1,0 +1,211 @@
+{% comment %}
+  Sidebar - Django Include
+  Usage: {% include "includes/sidebar.html" %}
+  Requires: request.user, request context processor enabled
+  Requires: sidebar.css loaded on the page (included by base.html or home.html)
+{% endcomment %}
+
+<!-- ── mobile hamburger ─────────────────────────────────────────── -->
+<button class="ts-sidebar-toggle" id="ts-sidebar-toggle" aria-label="Toggle menu">
+  <span></span><span></span><span></span>
+</button>
+
+<!-- ── overlay ──────────────────────────────────────────────────── -->
+<div class="ts-sidebar-overlay" id="ts-sidebar-overlay"></div>
+
+<!-- ── sidebar ──────────────────────────────────────────────────── -->
+<aside class="ts-sidebar" id="ts-sidebar">
+
+  <!-- brand -->
+  <div class="ts-sidebar-brand">
+    <div class="ts-sidebar-logo">TS</div>
+    <div class="ts-sidebar-wordmark">
+      <div class="ts-sidebar-title">Transport<br>Statistics</div>
+    </div>
+  </div>
+
+  <!-- nav -->
+  <nav class="ts-sidebar-nav">
+
+    <div class="ts-nav-section">
+      <a href="{% url 'home' %}" class="ts-nav-item {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+        <span class="ts-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 6.5L8 2l6 4.5V14a.5.5 0 01-.5.5h-3.75v-3.75h-3.5V14.5H2.5A.5.5 0 012 14V6.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        Home
+      </a>
+
+      <a href="{% url 'profile' %}" class="ts-nav-item {% if request.resolver_match.url_name == 'profile' %}active{% endif %}">
+        <span class="ts-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M2.5 13.5c0-2.485 2.462-4.5 5.5-4.5s5.5 2.015 5.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </span>
+        Profile
+      </a>
+    </div>
+
+    {% if request.user.is_staff %}
+    <div class="ts-nav-section">
+      <div class="ts-nav-section-label">Staff</div>
+
+      <a href="{% url 'manage' %}" class="ts-nav-item {% if request.resolver_match.url_name == 'manage' %}active{% endif %}">
+        <span class="ts-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/>
+            <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/>
+            <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/>
+            <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/>
+          </svg>
+        </span>
+        Manage
+      </a>
+
+      <a href="{% url 'admin:index' %}" class="ts-nav-item {% if 'admin' in request.path %}active{% endif %}">
+        <span class="ts-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2l1.5 3 3.5.5-2.5 2.5.5 3.5L8 10l-3 1.5.5-3.5L3 5.5 6.5 5 8 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        Admin
+      </a>
+    </div>
+    {% endif %}
+
+  </nav>
+
+  <!-- footer -->
+  <div class="ts-sidebar-footer">
+
+    {% if request.user.is_authenticated %}
+    <div class="ts-user-card">
+      <div class="ts-user-avatar">{{ request.user.username|first|upper }}</div>
+      <div class="ts-user-info">
+        <div class="ts-user-name">{{ request.user.username }}</div>
+        <div class="ts-user-role">{% if request.user.is_staff %}Staff{% else %}Member{% endif %}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- theme toggle -->
+    <button class="ts-theme-toggle" id="ts-theme-toggle" type="button">
+      <span class="ts-nav-icon">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" id="ts-theme-icon">
+          <!-- moon (dark mode indicator) - swapped by JS -->
+          <path d="M7.5 1.5A6 6 0 1013.5 7.5 4.5 4.5 0 017.5 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span id="ts-theme-label">Dark mode</span>
+      <span class="ts-toggle-track" id="ts-toggle-track">
+        <span class="ts-toggle-thumb"></span>
+      </span>
+    </button>
+
+    {% if request.user.is_authenticated %}
+    <form method="post" action="{% url 'logout' %}" style="margin:0">
+      {% csrf_token %}
+      <button type="submit" class="ts-footer-btn danger">
+        <span class="ts-nav-icon">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M5.5 2.5H3a1 1 0 00-1 1v8a1 1 0 001 1h2.5M10 10.5l3-3-3-3M13 7.5H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        Log out
+      </button>
+    </form>
+    {% else %}
+    <a href="{% url 'login' %}" class="ts-footer-btn">
+      <span class="ts-nav-icon">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <path d="M9.5 2.5H12a1 1 0 011 1v8a1 1 0 01-1 1H9.5M5 10.5l3 3 3-3M8 13.5V6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      Log in
+    </a>
+    {% endif %}
+    <a href="{% url 'legal' %}" class="ts-footer-btn">Legal</a>
+  </div>
+</aside>
+
+<script>
+(function () {
+  'use strict';
+
+  const sidebar  = document.getElementById('ts-sidebar');
+  const toggle   = document.getElementById('ts-sidebar-toggle');
+  const overlay  = document.getElementById('ts-sidebar-overlay');
+
+  // ── mobile open/close ──────────────────────────────────────────────────────
+  function openSidebar() {
+    sidebar.classList.add('open');
+    toggle.classList.add('open');
+    overlay.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    toggle.classList.remove('open');
+    overlay.classList.remove('visible');
+    document.body.style.overflow = '';
+  }
+
+  toggle.addEventListener('click', () => {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+
+  overlay.addEventListener('click', closeSidebar);
+
+  // close on nav item click (mobile)
+  sidebar.querySelectorAll('.ts-nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      if (window.innerWidth < 768) closeSidebar();
+    });
+  });
+
+  // ── theme toggle ───────────────────────────────────────────────────────────
+  const themeToggleBtn = document.getElementById('ts-theme-toggle');
+  const toggleTrack    = document.getElementById('ts-toggle-track');
+  const themeLabel     = document.getElementById('ts-theme-label');
+  const themeIcon      = document.getElementById('ts-theme-icon');
+
+  const SUN_PATH  = '<path d="M7.5 5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM7.5 1v1.5M7.5 12.5V14M1 7.5h1.5M12.5 7.5H14M3.05 3.05l1.06 1.06M10.89 10.89l1.06 1.06M3.05 11.95l1.06-1.06M10.89 4.11l1.06-1.06" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
+  const MOON_PATH = '<path d="M7.5 1.5A6 6 0 1013.5 7.5 4.5 4.5 0 017.5 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>';
+
+  function getCurrentTheme() {
+    return localStorage.getItem('ts_theme') || 'light';
+  }
+
+  function applyTheme(theme, persist) {
+    const isDark = theme === 'dark';
+
+    // swap stylesheet href   e.g. /static/css/light/map.css → /static/css/dark/map.css
+    document.querySelectorAll('link[data-ts-theme]').forEach(link => {
+      link.href = link.href.replace(/\/(light|dark)\//, `/${theme}/`);
+    });
+
+    // toggle track visual
+    toggleTrack.classList.toggle('on', isDark);
+    themeLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+    themeIcon.innerHTML    = isDark ? SUN_PATH : MOON_PATH;
+
+    // persist
+    if (persist) localStorage.setItem('ts_theme', theme);
+
+    // tell the map wrapper so it can use correct map tile style if needed
+    document.dispatchEvent(new CustomEvent('ts:themechange', { detail: { theme } }));
+  }
+
+  themeToggleBtn.addEventListener('click', () => {
+    const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
+    applyTheme(next, true);
+  });
+
+  // apply saved theme on load (without persisting again)
+  applyTheme(getCurrentTheme(), false);
+
+})();
+</script>

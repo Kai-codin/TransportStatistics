@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Map - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<script>
+  (function(){
+    var theme = 'light';
+    try{ theme = localStorage.getItem('ts_theme') || 'light'; }catch(e){}
+    var href = "{% static 'css/light/sidebar.css' %}".replace('/light/', '/' + theme + '/');
+    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-ts-theme','');
+    document.head.appendChild(l);
+  })();
+</script>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+
+  {% include "includes/sidebar.html" %}
+
+  <main class="ts-main">
+    {% include "includes/ts-map.html" with theme="light" %}
+  </main>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // initMap() is defined by ts-map.html - call it once the DOM is ready
+  document.addEventListener('DOMContentLoaded', function () {
+    if (typeof initMap === 'function') {
+      initMap();
+    }
+  });
+
+  // Re-init isn't needed for theme toggle, but if the map tile style ever
+  // needs to swap on theme change you can hook in here:
+  // document.addEventListener('ts:themechange', function (e) { ... });
+</script>
+{% endblock %}

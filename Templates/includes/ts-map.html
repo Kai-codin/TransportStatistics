@@ -383,6 +383,7 @@
 
     // ── stops fetch ───────────────────────────────────────────────────────────
     let _controller = null, _loadedBbox = null, _debounce = null;
+    let _lastZoomLoaded = null;
 
     let _lastFeatures = [];
 
@@ -404,8 +405,10 @@
     }
 
     async function fetchStops(bbox) {
+      // Abort any currently-running fetch and create a per-run controller
       if (_controller) { try { _controller.abort(); } catch(_) {} }
-      _controller = new AbortController();
+      const controller = new AbortController();
+      _controller = controller;
       _lastFeatures = [];
       setZoomHint(false);
       const features = [];
@@ -413,7 +416,7 @@
               + `&min_lat=${bbox[1]}&max_lat=${bbox[3]}&min_lon=${bbox[0]}&max_lon=${bbox[2]}`;
       try {
         while (url) {
-          const resp = await fetch(url, { signal: _controller.signal });
+          const resp = await fetch(url, { signal: controller.signal });
           if (!resp.ok) break;
           const data  = await resp.json();
           for (const s of (data.results || data)) {
@@ -434,8 +437,9 @@
           url = data.next || null;
         }
         _loadedBbox = bbox;
+        try { _lastZoomLoaded = map.getZoom(); } catch(_) { _lastZoomLoaded = null; }
       } catch(err) { if (err.name!=='AbortError') console.error('[ts-map]', err); }
-      finally { _controller = null; }
+      finally { if (_controller === controller) _controller = null; }
     }
 
     function checkAndLoad() {
@@ -444,7 +448,9 @@
         persistView();
         if (!wantStops) return;
         const vp = mapBbox(map);
-        if (!inside(vp, _loadedBbox)) fetchStops(expandBbox(vp, BUFFER_FACTOR));
+        const zoom = map.getZoom();
+        const zoomChanged = _lastZoomLoaded == null ? true : Math.abs(zoom - _lastZoomLoaded) > 0.5;
+        if (!inside(vp, _loadedBbox) || zoomChanged) fetchStops(expandBbox(vp, BUFFER_FACTOR));
       }, DEBOUNCE_MS);
     }
 

@@ -8,10 +8,39 @@ from .models import Timetable, ScheduleLocation
 
 @admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
-    list_display = ('CIF_train_uid', 'headcode', 'operator', 'schedule_start_date', 'schedule_end_date')
+    list_display = ('CIF_train_uid', 'headcode', 'operator', 'safe_schedule_start_date', 'safe_schedule_end_date')
     search_fields = ('CIF_train_uid', 'train_service_code', 'headcode')
     list_filter = ('headcode', 'operator')
     autocomplete_fields = ('operator',)
+
+    def _coerce_date(self, value):
+        import datetime as _dt
+        # If DB returned a string, try to parse ISO date or ISO datetime; otherwise return as-is
+        if isinstance(value, str):
+            try:
+                # Try date first (YYYY-MM-DD)
+                return _dt.date.fromisoformat(value)
+            except Exception:
+                try:
+                    # Try full ISO datetime and extract date part
+                    return _dt.datetime.fromisoformat(value).date()
+                except Exception:
+                    return value
+        return value
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Defer heavy datetime fields so MySQL's datetime converter doesn't see
+        # any string values for those fields when rendering the changelist.
+        return qs.defer('created_at', 'modified_at')
+
+    @admin.display(ordering='schedule_start_date', description='schedule_start_date')
+    def safe_schedule_start_date(self, obj):
+        return self._coerce_date(getattr(obj, 'schedule_start_date'))
+
+    @admin.display(ordering='schedule_end_date', description='schedule_end_date')
+    def safe_schedule_end_date(self, obj):
+        return self._coerce_date(getattr(obj, 'schedule_end_date'))
 
 
 @admin.register(ScheduleLocation)
@@ -23,8 +52,10 @@ class ScheduleLocationAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        # Cast the coalesced string time to a proper TimeField so admin treats
-        # it as a time value instead of a plain string (avoids timezone.is_aware errors).
+        # Select related timetable and defer its datetime fields so the DB
+        # backend doesn't attempt to pass unexpected string values into
+        # timezone utilities which expect datetime/time objects.
+        qs = qs.select_related('timetable').defer('timetable__created_at', 'timetable__modified_at')
         return qs.annotate(
             primary_time=Cast(
                 Coalesce(F('departure_time'), F('arrival_time'), F('pass_time')),

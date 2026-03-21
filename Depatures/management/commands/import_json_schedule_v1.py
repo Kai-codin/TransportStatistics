@@ -37,13 +37,19 @@ MySQL-safe rewrite. Key differences from the original:
   RESUME
   ──────
   • --resume-from N still works: the first N lines are skipped cheaply.
+
+  LOCK DIAGNOSIS
+  ──────────────
+  • --show-locks  prints open connections and InnoDB lock waits then exits.
+  • --kill-locks  kills stale/blocking connections then exits.
+    If the import hangs on the very first INSERT, run --kill-locks then
+    --replace.
 """
 
 import datetime
 import gzip
 import json
 import logging
-import sys
 import time
 import traceback
 from pathlib import Path
@@ -59,9 +65,10 @@ from Stops.models import Stop
 logger = logging.getLogger(__name__)
 
 
-def p(msg: str, *, prefix: str = "") -> None:
-    """Flush-safe print so every line appears immediately even over SSH/pipe."""
-    print(f"{prefix}{msg}", flush=True)
+def p(msg: str) -> None:
+    """Flush-safe print — output appears immediately even over SSH/pipe."""
+    print(msg, flush=True)
+
 
 # ── Tuning knobs ─────────────────────────────────────────────────────────────
 STP_PRIORITY         = {"C": 0, "N": 1, "O": 2, "P": 3}
@@ -94,10 +101,8 @@ def open_maybe_gz(path: Path):
         fh = gzip.open(path, "rt", encoding="utf-8", errors="replace")
         fh.read(1)
         fh.seek(0)
-        p(f"  [file] Opened as gzip: {path}")
         return fh
     except Exception:
-        p(f"  [file] Opened as plain text: {path}")
         return open(path, "r", encoding="utf-8", errors="replace")
 
 
@@ -113,8 +118,10 @@ def iter_records(fh, resume_from: int = 0) -> Iterator[Tuple[int, dict]]:
             obj = json.loads(raw)
         except Exception as exc:
             bad_json += 1
-            p(f"  [parse] Bad JSON on line {lineno} ({exc}) — skipped  "
-              f"(total bad: {bad_json})")
+            if bad_json <= 5:
+                logger.warning("Bad JSON on line %d (%s) — skipped", lineno, exc)
+            elif bad_json == 6:
+                logger.warning("Further bad-JSON warnings suppressed")
             continue
         rec = obj.get("JsonScheduleV1", obj) if isinstance(obj, dict) else obj
         yield lineno, rec
@@ -196,54 +203,43 @@ class OperatorCache:
         self._cache: Dict[str, Optional[int]] = {
             op.code: op.pk for op in Operator.objects.all()
         }
-        p(f"  [cache] OperatorCache loaded {len(self._cache):,} operators")
 
     def get_pk(self, atoc_code: Optional[str]) -> Optional[int]:
         if not atoc_code:
             return None
         code = str(atoc_code).strip().upper()
         if code not in self._cache:
-            p(f"  [operator] Unknown code '{code}' — creating in DB")
             try:
                 op, created = Operator.objects.get_or_create(
                     code=code, defaults={"name": ""}
                 )
                 if created:
-                    p(f"  [operator] Created new Operator: {code} (pk={op.pk})")
-                else:
-                    p(f"  [operator] Found existing Operator: {code} (pk={op.pk})")
+                    p(f"  [operator] Created new operator: {code}")
                 self._cache[code] = op.pk
             except Exception as exc:
-                p(f"  [operator] ERROR creating operator '{code}': {exc}")
+                logger.error("Failed to create operator '%s': %s", code, exc)
                 self._cache[code] = None
         return self._cache[code]
 
 
 class StopCache:
     def __init__(self):
-        self._cache: Dict[str, Optional[int]] = {}  # tiploc -> pk or None
+        self._cache: Dict[str, Optional[int]] = {}
         for row in (
             Stop.objects.exclude(tiploc__isnull=True)
             .exclude(tiploc="")
             .values("pk", "tiploc")
         ):
             self._cache[row["tiploc"].strip().upper()] = row["pk"]
-        p(f"  [cache] StopCache loaded {len(self._cache):,} TIPLOCs")
 
     def warm_batch(self, tiplocs: List[str]):
         missing = [t for t in tiplocs if t not in self._cache]
         if not missing:
             return
-        p(f"  [stops] Warming {len(missing):,} unseen TIPLOCs: {missing[:5]}"
-          f"{'…' if len(missing) > 5 else ''}")
-        found = 0
         for row in Stop.objects.filter(tiploc__in=missing).values("pk", "tiploc"):
             self._cache[row["tiploc"].strip().upper()] = row["pk"]
-            found += 1
         for t in missing:
             self._cache.setdefault(t, None)
-        p(f"  [stops] Warmed: {found}/{len(missing)} matched a Stop row"
-          f" ({len(missing) - found} will be NULL stop_id)")
 
     def get_pk(self, tiploc: Optional[str]) -> Optional[int]:
         if not tiploc:
@@ -254,30 +250,22 @@ class StopCache:
 # ── Retry helper ──────────────────────────────────────────────────────────────
 
 def _is_lock_error(exc: Exception) -> bool:
-    """True for MySQL lock-wait-timeout (1205) and deadlock (1213)."""
     cause = getattr(exc, "__cause__", None) or exc
     errno = getattr(cause, "args", [None])[0]
     return errno in MYSQL_LOCK_ERRORS
 
 
 def _with_retry(fn, *args, **kwargs):
-    """
-    Call fn(*args, **kwargs), retrying on MySQL lock errors with
-    exponential back-off.  Raises on non-lock errors immediately.
-    """
+    """Retry fn on MySQL lock errors with exponential back-off."""
     delay = RETRY_BASE_DELAY
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             return fn(*args, **kwargs)
         except Exception as exc:
             if attempt == MAX_RETRIES or not _is_lock_error(exc):
-                p(f"  [DB ERROR] {fn.__name__} failed (attempt {attempt}/{MAX_RETRIES}): "
-                  f"{type(exc).__name__}: {exc}")
-                p(f"  [DB ERROR] Full traceback:")
-                traceback.print_exc()
                 raise
-            p(f"  [retry] Lock error in {fn.__name__} "
-              f"(attempt {attempt}/{MAX_RETRIES}) — retrying in {delay:.2f}s: {exc}")
+            p(f"  [retry] Lock error (attempt {attempt}/{MAX_RETRIES}) "
+              f"— retrying in {delay:.1f}s")
             time.sleep(delay)
             delay = min(delay * 2, 30)
 
@@ -316,14 +304,9 @@ def _insert_timetable_rows(rows: List[dict]) -> None:
     col_sql = ", ".join(f"`{c}`" for c in TIMETABLE_COLS)
     ph      = ", ".join(["%s"] * len(TIMETABLE_COLS))
     sql     = f"INSERT IGNORE INTO `{_tt_table()}` ({col_sql}) VALUES ({ph})"
-    params  = [_row_values(r) for r in rows]
-    p(f"  [sql] INSERT IGNORE {len(rows)} timetable rows into `{_tt_table()}`")
-    p(f"  [sql] First row sample: uid={params[0][0]!r}  operator_id={params[0][1]!r}"
-      f"  headcode={params[0][6]!r}")
     with transaction.atomic():
         with connection.cursor() as cur:
-            cur.executemany(sql, params)
-    p(f"  [sql] INSERT IGNORE committed OK")
+            cur.executemany(sql, [_row_values(r) for r in rows])
 
 
 def _upsert_timetable_rows(rows: List[dict]) -> None:
@@ -338,40 +321,35 @@ def _upsert_timetable_rows(rows: List[dict]) -> None:
         f"INSERT INTO `{_tt_table()}` ({col_sql}) VALUES ({ph}) "
         f"ON DUPLICATE KEY UPDATE {update_sql}"
     )
-    params = [_row_values(r) for r in rows]
-    p(f"  [sql] UPSERT {len(rows)} timetable rows into `{_tt_table()}`")
     with transaction.atomic():
         with connection.cursor() as cur:
-            cur.executemany(sql, params)
-    p(f"  [sql] UPSERT committed OK")
+            cur.executemany(sql, [_row_values(r) for r in rows])
 
 
 def _fetch_uid_to_pk(uids: List[str]) -> Dict[str, int]:
     if not uids:
         return {}
     ph  = ", ".join(["%s"] * len(uids))
-    sql = f"SELECT `CIF_train_uid`, `id` FROM `{_tt_table()}` WHERE `CIF_train_uid` IN ({ph})"
-    p(f"  [sql] SELECT PKs for {len(uids)} UIDs")
+    sql = (
+        f"SELECT `CIF_train_uid`, `id` FROM `{_tt_table()}` "
+        f"WHERE `CIF_train_uid` IN ({ph})"
+    )
     with connection.cursor() as cur:
         cur.execute(sql, uids)
-        result = {row[0]: row[1] for row in cur.fetchall()}
-    p(f"  [sql] Got {len(result)}/{len(uids)} PKs back "
-      f"({'all found' if len(result) == len(uids) else f'{len(uids) - len(result)} MISSING — were INSERT IGNOREd?'})")
-    return result
+        return {row[0]: row[1] for row in cur.fetchall()}
 
 
 def _fetch_pks_with_locations(pks: List[int]) -> set:
     if not pks:
         return set()
     ph  = ", ".join(["%s"] * len(pks))
-    sql = f"SELECT DISTINCT `timetable_id` FROM `{_loc_table()}` WHERE `timetable_id` IN ({ph})"
-    p(f"  [sql] Checking which of {len(pks)} timetable PKs already have locations")
+    sql = (
+        f"SELECT DISTINCT `timetable_id` FROM `{_loc_table()}` "
+        f"WHERE `timetable_id` IN ({ph})"
+    )
     with connection.cursor() as cur:
         cur.execute(sql, pks)
-        result = {row[0] for row in cur.fetchall()}
-    p(f"  [sql] {len(result)} already have locations, "
-      f"{len(pks) - len(result)} need them written")
-    return result
+        return {row[0] for row in cur.fetchall()}
 
 
 def _delete_locations_for(pks: List[int]) -> None:
@@ -379,11 +357,9 @@ def _delete_locations_for(pks: List[int]) -> None:
         return
     ph  = ", ".join(["%s"] * len(pks))
     sql = f"DELETE FROM `{_loc_table()}` WHERE `timetable_id` IN ({ph})"
-    p(f"  [sql] DELETE existing locations for {len(pks)} timetable PKs")
     with transaction.atomic():
         with connection.cursor() as cur:
             cur.execute(sql, pks)
-    p(f"  [sql] DELETE committed OK")
 
 
 def _insert_location_rows(loc_rows: List[tuple]) -> None:
@@ -393,17 +369,11 @@ def _insert_location_rows(loc_rows: List[tuple]) -> None:
     col_sql = ", ".join(f"`{c}`" for c in LOC_COLS)
     ph      = ", ".join(["%s"] * len(LOC_COLS))
     sql     = f"INSERT IGNORE INTO `{_loc_table()}` ({col_sql}) VALUES ({ph})"
-    total_chunks = (len(loc_rows) + LOC_BATCH_SIZE - 1) // LOC_BATCH_SIZE
-    p(f"  [sql] Inserting {len(loc_rows):,} location rows "
-      f"in {total_chunks} sub-batch(es) of up to {LOC_BATCH_SIZE}")
-    for chunk_num, start in enumerate(range(0, len(loc_rows), LOC_BATCH_SIZE), 1):
+    for start in range(0, len(loc_rows), LOC_BATCH_SIZE):
         chunk = loc_rows[start : start + LOC_BATCH_SIZE]
-        p(f"  [sql] Location sub-batch {chunk_num}/{total_chunks}: {len(chunk)} rows  "
-          f"timetable_ids={sorted({r[0] for r in chunk})[:3]}…")
         with transaction.atomic():
             with connection.cursor() as cur:
                 cur.executemany(sql, chunk)
-        p(f"  [sql] Sub-batch {chunk_num} committed OK")
 
 
 # ── Record helpers ────────────────────────────────────────────────────────────
@@ -494,6 +464,17 @@ class Command(BaseCommand):
                 "Fastest option for a full weekly re-import."
             ),
         )
+        parser.add_argument(
+            "--show-locks", action="store_true",
+            help="Print all open connections and InnoDB lock waits then exit.",
+        )
+        parser.add_argument(
+            "--kill-locks", action="store_true",
+            help=(
+                "Kill any connection blocking the timetable or location tables, "
+                "then exit. Run this before --replace if the import hangs."
+            ),
+        )
 
     # ── handle ───────────────────────────────────────────────────────────────
 
@@ -504,83 +485,60 @@ class Command(BaseCommand):
         resume_from = options["resume_from"] or 0
         do_update   = options["update"]
         do_replace  = options["replace"]
+        show_locks  = options["show_locks"]
+        kill_locks  = options["kill_locks"]
 
-        p("=" * 60)
-        p("import_json_schedule_v1  —  startup")
-        p(f"  file        : {file_path}")
-        p(f"  batch-size  : {batch_size}")
-        p(f"  dry-run     : {dry_run}")
-        p(f"  resume-from : {resume_from}")
-        p(f"  --update    : {do_update}")
-        p(f"  --replace   : {do_replace}")
-        p("=" * 60)
-
-        if not file_path.exists():
-            p(f"ERROR: File not found: {file_path}")
-            self.stderr.write(f"File not found: {file_path}")
+        # ── Lock diagnosis / kill (runs before anything else, then exits) ─────
+        if show_locks or kill_locks:
+            self._diagnose_locks(kill=kill_locks)
             return
 
-        p(f"  File size: {file_path.stat().st_size / 1_048_576:.1f} MB")
+        p("=" * 60)
+        p("import_json_schedule_v1")
+        p(f"  file  : {file_path}  "
+          f"({file_path.stat().st_size / 1_048_576:.0f} MB)")
+        p(f"  mode  : {'dry-run' if dry_run else 'replace' if do_replace else 'update' if do_update else 'insert'}")
+        p(f"  batch : {batch_size}")
+        if resume_from:
+            p(f"  resume: from line {resume_from + 1}")
+        p("=" * 60)
 
         # ── Session setup ─────────────────────────────────────────────────────
         if not dry_run:
-            p("\n[DB] Setting session timeouts ...")
             try:
                 with connection.cursor() as cur:
                     cur.execute("SET SESSION innodb_lock_wait_timeout = 120")
                     cur.execute("SET SESSION wait_timeout = 28800")
-                p("  innodb_lock_wait_timeout = 120s  ✓")
-                p("  wait_timeout             = 28800s  ✓")
-            except Exception as e:
-                p(f"  WARNING: Could not set session timeouts: {e}")
-                p("  (import will continue — but may hit Railway's default 50s lock timeout)")
-
-            # Print what MySQL thinks the values are now
-            try:
-                with connection.cursor() as cur:
                     cur.execute(
-                        "SELECT @@SESSION.innodb_lock_wait_timeout, "
-                        "@@SESSION.wait_timeout, @@SESSION.max_allowed_packet"
+                        "SELECT VERSION(), DATABASE(), "
+                        "@@SESSION.innodb_lock_wait_timeout"
                     )
                     row = cur.fetchone()
-                    p(f"  Confirmed session values: "
-                      f"innodb_lock_wait_timeout={row[0]}  "
-                      f"wait_timeout={row[1]}  "
-                      f"max_allowed_packet={row[2]:,}")
-            except Exception as e:
-                p(f"  Could not read session vars: {e}")
-
-            # Print DB version & connection info
-            try:
-                with connection.cursor() as cur:
-                    cur.execute("SELECT VERSION(), DATABASE(), USER()")
-                    row = cur.fetchone()
-                    p(f"\n[DB] Connected: version={row[0]}  db={row[1]}  user={row[2]}")
-            except Exception as e:
-                p(f"[DB] Could not query connection info: {e}")
+                p(f"  DB: MySQL {row[0]}  db={row[1]}  "
+                  f"lock_wait_timeout={row[2]}s")
+            except Exception as exc:
+                p(f"  WARNING: session setup failed: {exc}")
 
         if do_replace and not dry_run:
             self._truncate_tables()
 
-        if resume_from:
-            p(f"\nResuming from line {resume_from + 1}")
-
         today = datetime.date.today()
-        p(f"\n[date] Today = {today}  (used for STP validity check)")
 
         # ── Cache warm-up ─────────────────────────────────────────────────────
-        p("\n[cache] Pre-warming caches ...")
-        t0 = time.time()
+        p("\nWarming caches ...")
+        t0         = time.time()
         stop_cache = StopCache()
         op_cache   = OperatorCache()
-        p(f"[cache] Done in {time.time() - t0:.1f}s")
+        p(f"  {len(stop_cache._cache):,} stops  |  "
+          f"{len(op_cache._cache):,} operators  |  "
+          f"{time.time() - t0:.1f}s")
 
         # ── Pass 1: STP selection ─────────────────────────────────────────────
         raw_records: Dict[str, dict] = {}
         total_lines = 0
         no_uid      = 0
 
-        p(f"\n[pass1] Reading {file_path} ...")
+        p(f"\nReading {file_path.name} ...")
         t_read = time.time()
         with open_maybe_gz(file_path) as fh:
             for lineno, rec in iter_records(fh, resume_from=resume_from):
@@ -598,8 +556,7 @@ class Command(BaseCommand):
                 try:
                     start = datetime.date.fromisoformat(start_raw) if start_raw else None
                     end   = datetime.date.fromisoformat(end_raw)   if end_raw   else None
-                except ValueError as e:
-                    p(f"  [pass1] Bad date on line {lineno} uid={uid!r}: {e} — set to None")
+                except ValueError:
                     start = end = None
 
                 candidate = {"_stp": stp, "_start": start, "_end": end, "_rec": rec}
@@ -610,87 +567,73 @@ class Command(BaseCommand):
                 else:
                     raw_records[uid] = candidate
 
-                if total_lines % 10_000 == 0:
+                if total_lines % 50_000 == 0:
                     elapsed = time.time() - t_read
-                    rate    = total_lines / elapsed if elapsed else 0
-                    p(f"  [pass1] {total_lines:,} lines  "
-                      f"{len(raw_records):,} UIDs  "
-                      f"{rate:,.0f} lines/s  "
-                      f"({no_uid} missing UIDs so far)")
+                    p(f"  {total_lines:,} lines  {len(raw_records):,} UIDs  "
+                      f"{total_lines / elapsed:,.0f} lines/s")
 
         elapsed_read = time.time() - t_read
-        p(f"\n[pass1] Complete: {total_lines:,} lines in {elapsed_read:.1f}s  "
-          f"({total_lines / elapsed_read:,.0f} lines/s)")
-        p(f"  Unique UIDs : {len(raw_records):,}")
-        p(f"  No-UID rows : {no_uid:,}")
-
-        # STP distribution summary
         stp_counts: Dict[str, int] = {}
         for best in raw_records.values():
             stp_counts[best["_stp"]] = stp_counts.get(best["_stp"], 0) + 1
-        p(f"  STP breakdown of winners: {dict(sorted(stp_counts.items()))}")
+
+        p(f"\nRead complete: {total_lines:,} lines in {elapsed_read:.1f}s  "
+          f"({total_lines / elapsed_read:,.0f} lines/s)")
+        p(f"  {len(raw_records):,} unique UIDs  "
+          f"|  STP winners: {dict(sorted(stp_counts.items()))}")
+        if no_uid:
+            p(f"  WARNING: {no_uid:,} records had no CIF_train_uid and were skipped")
 
         # ── Pass 2: flush ─────────────────────────────────────────────────────
-        p(f"\n[pass2] Flushing {len(raw_records):,} records to DB "
-          f"in batches of {batch_size} ...")
+        p(f"\nFlushing to DB ...")
         created_tt = updated_tt = created_loc = skipped_tt = 0
-        uid_list   = list(raw_records.keys())
-        t_flush    = time.time()
+        uid_list      = list(raw_records.keys())
+        total_batches = (len(uid_list) + batch_size - 1) // batch_size
+        t_flush       = time.time()
+        REPORT_EVERY  = max(1, total_batches // 20)  # ~20 progress lines total
 
-        for batch_start in range(0, len(uid_list), batch_size):
+        for batch_num, batch_start in enumerate(range(0, len(uid_list), batch_size), 1):
             batch_uids = uid_list[batch_start : batch_start + batch_size]
-            batch_num  = batch_start // batch_size + 1
-            total_batches = (len(uid_list) + batch_size - 1) // batch_size
-            done       = min(batch_start + batch_size, len(uid_list))
-
-            p(f"\n[batch {batch_num}/{total_batches}] UIDs {batch_start+1}–{done}  "
-              f"({batch_uids[0]!r} … {batch_uids[-1]!r})")
-
-            records = [
+            records    = [
                 _expand_record(uid, raw_records[uid], op_cache)
                 for uid in batch_uids
             ]
-            p(f"  Expanded {len(records)} records OK")
 
-            t_batch = time.time()
             try:
                 c, u, s, loc = self._flush_batch(
                     records, dry_run, stop_cache, do_update
                 )
             except Exception as exc:
-                p(f"\n  !! BATCH FAILED at batch {batch_num}/{total_batches} "
-                  f"(UIDs {batch_start+1}–{done})")
-                p(f"  !! Exception: {type(exc).__name__}: {exc}")
-                p(f"  !! First UID in failed batch: {batch_uids[0]!r}")
-                p(f"  !! Full traceback:")
+                done = batch_start + len(batch_uids)
+                p(f"\nERROR at batch {batch_num}/{total_batches} "
+                  f"(records {batch_start + 1}–{done}, "
+                  f"first UID={batch_uids[0]!r})")
+                p(f"  {type(exc).__name__}: {exc}")
                 traceback.print_exc()
                 raise
 
-            elapsed_batch = time.time() - t_batch
             created_tt  += c
             updated_tt  += u
             skipped_tt  += s
             created_loc += loc
 
-            elapsed_total = time.time() - t_flush
-            rate = done / elapsed_total if elapsed_total else 0
-            eta_s = (len(uid_list) - done) / rate if rate else 0
-
-            p(f"  Result: +{c} new  ~{u} updated  ={s} skipped  {loc} locs  "
-              f"({elapsed_batch:.2f}s this batch)")
-            p(f"  Progress: {done:,}/{len(uid_list):,}  "
-              f"({100 * done / len(uid_list):.1f}%)  "
-              f"ETA {eta_s / 60:.1f} min")
+            if batch_num % REPORT_EVERY == 0 or batch_num == total_batches:
+                done    = min(batch_start + batch_size, len(uid_list))
+                elapsed = time.time() - t_flush
+                rate    = done / elapsed if elapsed else 0
+                eta_min = (len(uid_list) - done) / rate / 60 if rate else 0
+                p(f"  {done:,}/{len(uid_list):,} ({100 * done / len(uid_list):.0f}%)  "
+                  f"+{created_tt:,} new  {created_loc:,} locs  "
+                  f"ETA {eta_min:.0f} min")
 
         elapsed_total = time.time() - t_flush
         p(f"\n{'=' * 60}")
-        p(f"Done in {elapsed_total:.1f}s")
-        p(f"  Lines read  : {total_lines:,}")
-        p(f"  Unique UIDs : {len(raw_records):,}")
-        p(f"  Created     : {created_tt:,}")
-        p(f"  Updated     : {updated_tt:,}")
-        p(f"  Skipped     : {skipped_tt:,}")
-        p(f"  Locations   : {created_loc:,}")
+        p(f"Done in {elapsed_total:.1f}s  "
+          f"({len(uid_list) / elapsed_total:,.0f} UIDs/s)")
+        p(f"  Created   : {created_tt:,}")
+        p(f"  Updated   : {updated_tt:,}")
+        p(f"  Skipped   : {skipped_tt:,}")
+        p(f"  Locations : {created_loc:,}")
         p("=" * 60)
         self.stdout.write(self.style.SUCCESS(
             f"Done — lines: {total_lines:,} | UIDs: {len(raw_records):,} | "
@@ -701,24 +644,18 @@ class Command(BaseCommand):
     # ── helpers ───────────────────────────────────────────────────────────────
 
     def _truncate_tables(self):
-        p("\n[truncate] Truncating tables ...")
-        p(f"  Location table : {_loc_table()}")
-        p(f"  Timetable table: {_tt_table()}")
+        p("\nTruncating tables ...")
         try:
             with connection.cursor() as cur:
                 cur.execute("SET FOREIGN_KEY_CHECKS=0")
-                p("  SET FOREIGN_KEY_CHECKS=0 OK")
                 cur.execute(f"TRUNCATE TABLE `{_loc_table()}`")
-                p(f"  TRUNCATE `{_loc_table()}` OK")
                 cur.execute(f"TRUNCATE TABLE `{_tt_table()}`")
-                p(f"  TRUNCATE `{_tt_table()}` OK")
                 cur.execute("SET FOREIGN_KEY_CHECKS=1")
-                p("  SET FOREIGN_KEY_CHECKS=1 OK")
+            p("  Truncated OK")
         except Exception as exc:
-            p(f"  ERROR during truncate: {type(exc).__name__}: {exc}")
+            p(f"  ERROR during truncate: {exc}")
             traceback.print_exc()
             raise
-        p("[truncate] Done.")
 
     def _flush_batch(
         self,
@@ -733,39 +670,31 @@ class Command(BaseCommand):
         """
         uids = [r["CIF_train_uid"] for r in records]
 
-        # Warm stop cache for any new TIPLOCs in this batch
-        all_tiplocs = [
+        stop_cache.warm_batch([
             str(raw_tip).strip().upper()
             for r in records
             for loc in r["schedule_locations"]
             for raw_tip in [loc.get("tiploc_code") or loc.get("tiploc")]
             if raw_tip
-        ]
-        p(f"  [flush] {len(records)} records  |  {len(all_tiplocs)} raw tiplocs")
-        stop_cache.warm_batch(all_tiplocs)
+        ])
 
         if dry_run:
             loc_count = sum(len(r["schedule_locations"]) for r in records)
-            p(f"  [flush] DRY RUN — would insert {len(records)} timetables, {loc_count} locations")
             return len(records), 0, 0, loc_count
 
         # ── 1. Write timetable rows ───────────────────────────────────────────
-        p(f"  [flush] Step 1: writing timetable rows (update={do_update})")
         if do_update:
             _with_retry(_upsert_timetable_rows, records)
         else:
             _with_retry(_insert_timetable_rows, records)
 
         # ── 2. Resolve PKs ────────────────────────────────────────────────────
-        p(f"  [flush] Step 2: resolving PKs for {len(uids)} UIDs")
         uid_to_pk = _with_retry(_fetch_uid_to_pk, uids)
 
         # ── 3. Decide which rows need locations ───────────────────────────────
-        p(f"  [flush] Step 3: deciding which rows need locations (update={do_update})")
         if do_update:
             _with_retry(_delete_locations_for, list(uid_to_pk.values()))
             uids_for_locations = set(uid_to_pk.keys())
-            p(f"  [flush] --update mode: will write locations for all {len(uids_for_locations)} rows")
         else:
             already_have_locs = _with_retry(
                 _fetch_pks_with_locations, list(uid_to_pk.values())
@@ -774,34 +703,21 @@ class Command(BaseCommand):
                 uid for uid, pk in uid_to_pk.items()
                 if pk not in already_have_locs
             }
-            p(f"  [flush] insert-only mode: {len(uids_for_locations)} need locations, "
-              f"{len(uid_to_pk) - len(uids_for_locations)} already have them")
 
         # ── 4. Build and insert ScheduleLocation rows ─────────────────────────
-        p(f"  [flush] Step 4: building location rows for {len(uids_for_locations)} timetables")
         loc_rows: List[tuple] = []
-        missing_pks = []
         for r in records:
             uid = r["CIF_train_uid"]
             if uid not in uids_for_locations:
                 continue
             pk = uid_to_pk.get(uid)
             if pk is None:
-                missing_pks.append(uid)
+                logger.warning("No PK for uid %s — locations skipped", uid)
                 continue
-            built = _build_location_rows(r, pk, stop_cache)
-            loc_rows.extend(built)
-
-        if missing_pks:
-            p(f"  [flush] WARNING: {len(missing_pks)} UIDs had no PK — locations skipped: "
-              f"{missing_pks[:5]}{'…' if len(missing_pks) > 5 else ''}")
-
-        p(f"  [flush] Built {len(loc_rows):,} location rows total")
+            loc_rows.extend(_build_location_rows(r, pk, stop_cache))
 
         if loc_rows:
             _with_retry(_insert_location_rows, loc_rows)
-        else:
-            p(f"  [flush] No location rows to insert")
 
         # ── 5. Tally ──────────────────────────────────────────────────────────
         n_in_db   = len(uid_to_pk)
@@ -809,7 +725,141 @@ class Command(BaseCommand):
         n_updated = n_in_db - n_new if not do_update else n_in_db
         n_skipped = len(records) - n_in_db
 
-        p(f"  [flush] Tally: in_db={n_in_db}  new={n_new}  "
-          f"updated={max(n_updated,0)}  skipped={max(n_skipped,0)}  locs={len(loc_rows)}")
-
         return n_new, max(n_updated, 0), max(n_skipped, 0), len(loc_rows)
+
+    def _diagnose_locks(self, kill: bool = False) -> None:
+        """
+        Print everything MySQL knows about open connections and lock waits.
+        If kill=True, also KILL any connection blocking our tables.
+        """
+        our_tables = {_tt_table().lower(), _loc_table().lower()}
+
+        p("\n── PROCESS LIST ─────────────────────────────────────────────")
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SHOW FULL PROCESSLIST")
+                rows = cur.fetchall()
+                cols = [d[0] for d in cur.description]
+            if not rows:
+                p("  (no processes)")
+            else:
+                col_w  = [
+                    max(len(str(c)), max(len(str(r[i])) for r in rows))
+                    for i, c in enumerate(cols)
+                ]
+                header = "  " + "  ".join(
+                    str(c).ljust(col_w[i]) for i, c in enumerate(cols)
+                )
+                p(header)
+                p("  " + "-" * (len(header) - 2))
+                for row in rows:
+                    p("  " + "  ".join(
+                        str(v).ljust(col_w[i]) for i, v in enumerate(row)
+                    ))
+        except Exception as exc:
+            p(f"  ERROR reading PROCESSLIST: {exc}")
+
+        p("\n── INNODB LOCK WAITS ────────────────────────────────────────")
+        try:
+            with connection.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        r.trx_mysql_thread_id AS waiting_thread,
+                        LEFT(r.trx_query, 80) AS waiting_query,
+                        b.trx_mysql_thread_id AS blocking_thread,
+                        LEFT(b.trx_query, 80) AS blocking_query,
+                        b.trx_started         AS blocking_since
+                    FROM information_schema.innodb_lock_waits w
+                    JOIN information_schema.innodb_trx r
+                      ON r.trx_id = w.requesting_trx_id
+                    JOIN information_schema.innodb_trx b
+                      ON b.trx_id = w.blocking_trx_id
+                """)
+                waits = cur.fetchall()
+            if not waits:
+                p("  No InnoDB lock waits.")
+            else:
+                for row in waits:
+                    p(f"  Thread {row[0]} waiting   — {row[1]}")
+                    p(f"  Blocked by thread {row[2]} (since {row[4]}) — {row[3]}")
+                    p("")
+        except Exception as exc:
+            p(f"  information_schema query failed: {exc}")
+
+        p("\n── OPEN TRANSACTIONS ────────────────────────────────────────")
+        try:
+            with connection.cursor() as cur:
+                cur.execute("""
+                    SELECT trx_mysql_thread_id, trx_started, trx_state,
+                           trx_tables_locked, trx_rows_locked,
+                           LEFT(trx_query, 100) AS query
+                    FROM information_schema.innodb_trx
+                    ORDER BY trx_started
+                """)
+                trxs = cur.fetchall()
+            if not trxs:
+                p("  No open InnoDB transactions.")
+            else:
+                p(f"  {len(trxs)} open transaction(s):")
+                for t in trxs:
+                    p(f"  thread={t[0]}  started={t[1]}  state={t[2]}")
+                    p(f"    tables_locked={t[3]}  rows_locked={t[4]}  query={t[5]}")
+        except Exception as exc:
+            p(f"  ERROR reading innodb_trx: {exc}")
+
+        p("\n── TABLES IN USE ────────────────────────────────────────────")
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SHOW OPEN TABLES WHERE In_use > 0")
+                rows = cur.fetchall()
+            if not rows:
+                p("  No tables currently in use.")
+            else:
+                for db, tbl, in_use, name_locked in rows:
+                    p(f"  {db}.{tbl}  In_use={in_use}  Name_locked={name_locked}")
+        except Exception as exc:
+            p(f"  ERROR: {exc}")
+
+        if not kill:
+            p("\nRe-run with --kill-locks to kill blocking connections.")
+            return
+
+        p("\n── KILLING BLOCKING CONNECTIONS ─────────────────────────────")
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SELECT CONNECTION_ID()")
+                my_id = cur.fetchone()[0]
+                cur.execute("SHOW FULL PROCESSLIST")
+                procs = cur.fetchall()
+
+            killed = []
+            for proc in procs:
+                pid, user, host, db, cmd, secs, state, info = proc[:8]
+                if pid == my_id:
+                    continue
+                info_lower = (info or "").lower()
+                is_blocker = any(t in info_lower for t in our_tables)
+                is_stale   = cmd == "Sleep" and (secs or 0) > 30
+
+                if is_blocker or is_stale:
+                    reason = ("touches timetable table" if is_blocker
+                              else f"idle Sleep for {secs}s")
+                    p(f"  KILL {pid}  ({cmd}, {secs}s)  reason: {reason}")
+                    try:
+                        with connection.cursor() as cur:
+                            cur.execute(f"KILL {pid}")
+                        killed.append(pid)
+                        p(f"    → killed")
+                    except Exception as exc:
+                        p(f"    → KILL failed: {exc}")
+
+            if killed:
+                p(f"\nKilled {len(killed)} connection(s): {killed}")
+                p("Now re-run the import with --replace")
+            else:
+                p("Nothing to kill.")
+                p("The table may be locked by Railway internals — "
+                  "try restarting the DB from the Railway dashboard.")
+        except Exception as exc:
+            p(f"  ERROR during kill: {exc}")
+            traceback.print_exc()

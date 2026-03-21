@@ -11,6 +11,11 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import dj_database_url
+from dotenv import load_dotenv
+load_dotenv()
+import pymysql
+pymysql.install_as_MySQLdb()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -93,13 +98,10 @@ from urllib.parse import urlparse, parse_qs
 #   mysql://user:pass@host:port/dbname
 #   postgres://user:pass@host:port/dbname
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        "OPTIONS": {
-            "timeout": 60,  # wait up to 60s for the lock to release
-        }
-    }
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600,
+    )
 }
 
 # Allow configuring database with a single DATABASE_URL environment variable.

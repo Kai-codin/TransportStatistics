@@ -26,7 +26,7 @@
 }
 
 .ts-log-panel-header {
-  padding: 16px 18px 12px;
+  padding: 10px;
   border-bottom: 1.5px solid var(--ts-border-soft);
   flex-shrink: 0;
 }
@@ -43,6 +43,9 @@
   font-size: 12px;
   color: var(--ts-text-3);
   font-weight: 500;
+  position: relative;
+  left: 225px;
+  margin-top: -20px;
 }
 
 .ts-log-panel-body {
@@ -326,6 +329,7 @@ textarea.ts-panel-input {
   .ts-log-panel-header { flex-shrink: 0; }
   .ts-log-panel-body   { flex: 1; min-height: 0; }
   .ts-log-actions      { flex-shrink: 0; }
+  .ts-log-panel-sub {left: calc(100% - 100px);}
 }
 </style>
 {% endblock %}

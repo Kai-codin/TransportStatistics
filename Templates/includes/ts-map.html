@@ -225,6 +225,7 @@
           data-stop-atco="${_activeProps ? (_activeProps.atco_code||'') : ''}"
           data-vehicle="${vehicle}"
           data-operator="${r.operator||''}"
+          data-cif-uid="${r.cif_train_uid||''}"
           data-transport-type="${_activeProps ? (BUS_TYPE_CODES.has(_activeProps.stop_type_code)?'bus':'rail') : 'rail'}"
           title="Log this service">Log</button></td>
       </tr>`;
@@ -304,6 +305,8 @@
           operator:       btn.dataset.operator       || '',
           transport_type: btn.dataset.transportType  || 'rail',
         });
+        // include cif_train_uid when available for the route map
+        if (btn.dataset.cifUid) p.set('cif_train_uid', btn.dataset.cifUid);
         window.location.href = '/log-trip/?' + p.toString();
       });
     });

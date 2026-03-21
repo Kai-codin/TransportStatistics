@@ -4,7 +4,354 @@
 {% block title %}Log Trip — Transport Statistics{% endblock %}
 
 {% block extra_head %}
+<link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
 <link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
+<style>
+/* ── log trip layout ─────────────────────────────────────────────── */
+.ts-log-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* left panel — form */
+.ts-log-panel {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1.5px solid var(--ts-border);
+  background: var(--ts-surface);
+  overflow: hidden;
+}
+
+.ts-log-panel-header {
+  padding: 18px 18px 12px;
+  border-bottom: 1.5px solid var(--ts-border-soft);
+  flex-shrink: 0;
+}
+
+.ts-log-panel-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ts-text-1);
+  margin-bottom: 2px;
+}
+
+.ts-log-panel-sub {
+  font-size: 12px;
+  color: var(--ts-text-3);
+  font-weight: 500;
+}
+
+.ts-log-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* right panel — map */
+.ts-log-map-area {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+#ts-route-map {
+  width: 100%;
+  height: 100%;
+}
+
+/* service info card at top of panel */
+.ts-service-card {
+  background: var(--ts-surface-2);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r);
+  padding: 12px 14px;
+}
+
+.ts-service-card-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ts-text-3);
+  font-size: 13px;
+}
+
+.ts-service-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ts-headcode-chip {
+  font-family: var(--ts-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ts-text-inv);
+  background: var(--ts-accent);
+  border-radius: var(--ts-r-sm);
+  padding: 3px 10px;
+  letter-spacing: 0.04em;
+}
+
+.ts-service-meta {
+  font-size: 12px;
+  color: var(--ts-text-3);
+  font-weight: 500;
+}
+
+/* stop selection */
+.ts-stop-select-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ts-text-3);
+  margin-bottom: 8px;
+}
+
+.ts-stop-hint {
+  font-size: 12px;
+  color: var(--ts-text-3);
+  font-style: italic;
+  padding: 6px 0;
+}
+
+.ts-selected-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ts-selected-stop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--ts-surface);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  font-size: 13px;
+}
+
+.ts-selected-stop-row.is-from { border-color: var(--ts-accent); background: var(--ts-accent-light); }
+.ts-selected-stop-row.is-to   { border-color: var(--ts-rail-blue, #1d4ed8); background: rgba(29,78,216,0.06); }
+
+.ts-stop-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ts-stop-dot.from { background: var(--ts-accent); }
+.ts-stop-dot.to   { background: #1d4ed8; }
+
+.ts-selected-stop-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--ts-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ts-selected-stop-time {
+  font-family: var(--ts-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ts-text-3);
+}
+
+.ts-clear-stop {
+  background: none;
+  border: none;
+  color: var(--ts-text-3);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.13s;
+}
+.ts-clear-stop:hover { color: var(--ts-danger); }
+
+/* form fields in panel */
+.ts-panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ts-panel-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ts-text-3);
+}
+
+.ts-panel-input {
+  font-family: var(--ts-font);
+  font-size: 13.5px;
+  color: var(--ts-text-1);
+  background: var(--ts-surface);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 7px 10px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.ts-panel-input:focus { border-color: var(--ts-accent); box-shadow: var(--ts-glow); }
+.ts-panel-input.mono  { font-family: var(--ts-mono); font-size: 12.5px; }
+
+textarea.ts-panel-input {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.55;
+}
+
+/* colour row */
+.ts-colour-row { display: flex; gap: 8px; align-items: center; }
+.ts-colour-swatch {
+  width: 36px; height: 34px;
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 2px; cursor: pointer;
+  background: var(--ts-surface); flex-shrink: 0;
+}
+.ts-colour-hex { flex: 1; }
+
+/* divider */
+.ts-panel-divider {
+  height: 1px;
+  background: var(--ts-border-soft);
+  margin: 2px 0;
+}
+
+/* vehicle section toggle */
+.ts-vehicle-section { display: flex; flex-direction: column; gap: 14px; }
+.ts-hidden { display: none !important; }
+
+/* action bar at bottom of panel */
+.ts-log-actions {
+  padding: 12px 18px 16px;
+  border-top: 1.5px solid var(--ts-border-soft);
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  background: var(--ts-surface);
+}
+
+.ts-btn-primary {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: var(--ts-font);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ts-text-inv);
+  background: var(--ts-accent);
+  border: none;
+  border-radius: var(--ts-r-sm);
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: all 0.15s var(--ts-ease);
+}
+.ts-btn-primary:hover { background: var(--ts-accent-h); }
+.ts-btn-primary:disabled { opacity: 0.5; cursor: default; }
+
+.ts-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: var(--ts-font);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ts-text-2);
+  background: var(--ts-surface-2);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 9px 14px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s var(--ts-ease);
+}
+.ts-btn-secondary:hover { background: var(--ts-surface-3); color: var(--ts-text-1); }
+
+/* map instruction overlay */
+.ts-map-instruction {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: var(--ts-surface);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-lg);
+  padding: 7px 14px;
+  font-family: var(--ts-font);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ts-text-2);
+  box-shadow: var(--ts-shadow);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.ts-map-instruction.visible { opacity: 1; }
+
+/* select form */
+.ts-panel-select {
+  font-family: var(--ts-font);
+  font-size: 13.5px;
+  color: var(--ts-text-1);
+  background: var(--ts-surface);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 7px 10px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+  appearance: none;
+  cursor: pointer;
+}
+.ts-panel-select:focus { border-color: var(--ts-accent); box-shadow: var(--ts-glow); }
+
+.ts-rtt-panel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ts-text-3);
+  text-decoration: none;
+  padding: 5px 0 2px;
+  border-bottom: 1px dashed var(--ts-border);
+  transition: color 0.13s, border-color 0.13s;
+  align-self: flex-start;
+}
+.ts-rtt-panel-link:hover {
+  color: var(--ts-accent);
+  border-bottom-color: var(--ts-accent);
+}
+
+@media (max-width: 768px) {
+  .ts-log-layout { flex-direction: column; }
+  .ts-log-panel { width: 100%; height: 50vh; border-right: none; border-bottom: 1.5px solid var(--ts-border); }
+  .ts-log-map-area { height: 50vh; }
+}
+</style>
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -15,249 +362,558 @@
   {% include "includes/sidebar.html" %}
 
   <main class="ts-main">
-    <div class="ts-content">
+    <div class="ts-log-layout">
 
-      <h1 class="ts-page-title">Log trip</h1>
-      <p class="ts-page-subtitle">Record the details of your journey.</p>
+      <!-- ── left panel ──────────────────────────────────────────── -->
+      <div class="ts-log-panel">
 
-      <form method="post" class="ts-log-form" id="ts-log-form" novalidate>
-        {% csrf_token %}
-
-        {# Hidden fields #}
-        {{ form.route_geometry }}
-        {{ form.origin_crs }}
-        {{ form.destination_crs }}
-        {{ form.boarded_stop_crs }}
-        {{ form.boarded_stop_atco }}
-
-        {% if form.non_field_errors %}
-        <div class="ts-form-error-banner" role="alert">
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4.5v3.5M7.5 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          {{ form.non_field_errors }}
+        <div class="ts-log-panel-header">
+          <div class="ts-log-panel-title">Log trip</div>
+          <div class="ts-log-panel-sub" id="ts-panel-sub">Loading service…</div>
         </div>
-        {% endif %}
 
-        {# ── Service ─────────────────────────────────────────────────────── #}
-        <div class="ts-section">
-          <div class="ts-section-title">Service</div>
-          <div class="ts-form-grid">
+        <div class="ts-log-panel-body" id="ts-panel-body">
 
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.headcode.id_for_label }}">Headcode / Service</label>
-              <input type="text" id="{{ form.headcode.id_for_label }}" name="headcode"
-                     class="ts-form-input ts-mono-input{% if form.headcode.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.headcode.value|default:'' }}" />
+          <!-- service card -->
+          <div class="ts-service-card" id="ts-service-card">
+            <div class="ts-service-card-loading">
+              <span class="ts-spinner"></span> Fetching route…
             </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.service_date.id_for_label }}">Date</label>
-              <input type="date" id="{{ form.service_date.id_for_label }}" name="service_date"
-                     class="ts-form-input{% if form.service_date.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.service_date.value|default:'' }}" />
-            </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.transport_type.id_for_label }}">Type</label>
-              <select id="{{ form.transport_type.id_for_label }}" name="transport_type"
-                      class="ts-form-input ts-form-select" id="id_transport_type">
-                {% for val, label in form.fields.transport_type.choices %}
-                <option value="{{ val }}" {% if form.transport_type.value == val %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.operator.id_for_label }}">Operator</label>
-              <input type="text" id="{{ form.operator.id_for_label }}" name="operator"
-                     class="ts-form-input{% if form.operator.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.operator.value|default:'' }}" />
-            </div>
-
           </div>
-        </div>
 
-        {# ── Journey ─────────────────────────────────────────────────────── #}
-        <div class="ts-section">
-          <div class="ts-section-title">Journey</div>
-          <div class="ts-form-grid">
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.origin_name.id_for_label }}">From</label>
-              <input type="text" id="{{ form.origin_name.id_for_label }}" name="origin_name"
-                     class="ts-form-input{% if form.origin_name.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.origin_name.value|default:'' }}" />
+          <!-- stop selection -->
+          <div>
+            <div class="ts-stop-select-label">Click stops on the map to set your journey</div>
+            <div class="ts-selected-stops" id="ts-selected-stops">
+              <div class="ts-stop-hint" id="ts-stop-hint">No stops selected yet. Click a stop on the map.</div>
             </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.destination_name.id_for_label }}">To</label>
-              <input type="text" id="{{ form.destination_name.id_for_label }}" name="destination_name"
-                     class="ts-form-input{% if form.destination_name.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.destination_name.value|default:'' }}" />
-            </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.boarded_stop_name.id_for_label }}">Boarded at</label>
-              <input type="text" id="{{ form.boarded_stop_name.id_for_label }}" name="boarded_stop_name"
-                     class="ts-form-input{% if form.boarded_stop_name.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.boarded_stop_name.value|default:'' }}" />
-            </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.scheduled_departure.id_for_label }}">Scheduled dep.</label>
-              <input type="time" id="{{ form.scheduled_departure.id_for_label }}" name="scheduled_departure"
-                     class="ts-form-input ts-mono-input{% if form.scheduled_departure.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.scheduled_departure.value|default:'' }}" />
-            </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.actual_departure.id_for_label }}">Actual dep. <span class="ts-form-optional">optional</span></label>
-              <input type="time" id="{{ form.actual_departure.id_for_label }}" name="actual_departure"
-                     class="ts-form-input ts-mono-input{% if form.actual_departure.errors %} ts-form-input--error{% endif %}"
-                     value="{{ form.actual_departure.value|default:'' }}" />
-            </div>
-
           </div>
-        </div>
 
-        {# ── Rail vehicle ─────────────────────────────────────────────────── #}
-        <div class="ts-section ts-vehicle-rail{% if is_bus %} ts-hidden{% endif %}" id="ts-vehicle-rail">
-          <div class="ts-section-title">Train</div>
-          <div class="ts-form-grid">
+          <div class="ts-panel-divider"></div>
 
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.train_fleet_number.id_for_label }}">Fleet number <span class="ts-form-optional">optional</span></label>
-              <input type="text" id="{{ form.train_fleet_number.id_for_label }}" name="train_fleet_number"
-                     class="ts-form-input ts-mono-input"
-                     value="{{ form.train_fleet_number.value|default:'' }}"
-                     placeholder="e.g. 390115" />
-            </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.train_type.id_for_label }}">Type <span class="ts-form-optional">optional</span></label>
-              <input type="text" id="{{ form.train_type.id_for_label }}" name="train_type"
-                     class="ts-form-input"
-                     value="{{ form.train_type.value|default:'' }}"
-                     placeholder="e.g. Class 390 Pendolino" />
-            </div>
-
+          <!-- operator -->
+          <div class="ts-panel-field">
+            <label class="ts-panel-label" for="lf-operator">Operator</label>
+            <input type="text" id="lf-operator" name="operator" class="ts-panel-input" />
           </div>
-        </div>
 
-        {# ── Bus vehicle ──────────────────────────────────────────────────── #}
-        <div class="ts-section ts-vehicle-bus{% if is_rail %} ts-hidden{% endif %}" id="ts-vehicle-bus">
-          <div class="ts-section-title">Bus / Vehicle</div>
-          <div class="ts-form-grid">
+          <!-- transport type -->
+          <div class="ts-panel-field">
+            <label class="ts-panel-label" for="lf-type">Type</label>
+            <select id="lf-type" name="transport_type" class="ts-panel-select">
+              <option value="rail">Rail</option>
+              <option value="bus">Bus</option>
+              <option value="tram">Tram</option>
+              <option value="ferry">Ferry</option>
+            </select>
+          </div>
 
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.bus_fleet_number.id_for_label }}">Fleet number <span class="ts-form-optional">optional</span></label>
-              <input type="text" id="{{ form.bus_fleet_number.id_for_label }}" name="bus_fleet_number"
-                     class="ts-form-input ts-mono-input"
-                     value="{{ form.bus_fleet_number.value|default:'' }}"
-                     placeholder="e.g. 21425" />
+          <!-- rail vehicle -->
+          <div class="ts-vehicle-section" id="ts-vehicle-rail">
+            <div class="ts-panel-divider"></div>
+            <div class="ts-stop-select-label">Train</div>
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-train-fleet">Fleet number</label>
+              <input type="text" id="lf-train-fleet" name="train_fleet_number" class="ts-panel-input mono" placeholder="e.g. 390115" />
+            </div>
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-train-type">Type</label>
+              <input type="text" id="lf-train-type" name="train_type" class="ts-panel-input" placeholder="e.g. Class 390 Pendolino" />
             </div>
 
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.bus_registration.id_for_label }}">Registration <span class="ts-form-optional">optional</span></label>
-              <input type="text" id="{{ form.bus_registration.id_for_label }}" name="bus_registration"
-                     class="ts-form-input ts-mono-input"
-                     value="{{ form.bus_registration.value|default:'' }}"
-                     placeholder="e.g. BV24 LSJ" />
-            </div>
+            <a href="#" id="ts-rtt-link" class="ts-rtt-panel-link" target="_blank" rel="noopener" style="display:none">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><path d="M7 1h4v4M11 1L5.5 6.5M2 3h3M2 3v7h7V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              View on Realtime Trains
+            </a>
+          </div>
 
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.bus_type.id_for_label }}">Vehicle type <span class="ts-form-optional">optional</span></label>
-              <input type="text" id="{{ form.bus_type.id_for_label }}" name="bus_type"
-                     class="ts-form-input"
-                     value="{{ form.bus_type.value|default:'' }}"
-                     placeholder="e.g. Wrightbus StreetDeck" />
+          <!-- bus vehicle -->
+          <div class="ts-vehicle-section ts-hidden" id="ts-vehicle-bus">
+            <div class="ts-panel-divider"></div>
+            <div class="ts-stop-select-label">Bus / Vehicle</div>
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-bus-fleet">Fleet number</label>
+              <input type="text" id="lf-bus-fleet" name="bus_fleet_number" class="ts-panel-input mono" placeholder="e.g. 21425" />
             </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.bus_livery_name.id_for_label }}">Livery name <span class="ts-form-optional">optional</span></label>
-              <input type="text" id="{{ form.bus_livery_name.id_for_label }}" name="bus_livery_name"
-                     class="ts-form-input"
-                     value="{{ form.bus_livery_name.value|default:'' }}"
-                     placeholder="e.g. First Greater Manchester pink" />
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-bus-reg">Registration</label>
+              <input type="text" id="lf-bus-reg" name="bus_registration" class="ts-panel-input mono" placeholder="e.g. BV24 LSJ" />
             </div>
-
-            <div class="ts-form-field">
-              <label class="ts-form-label" for="{{ form.bus_livery.id_for_label }}">
-                Livery colour <span class="ts-form-optional">optional</span>
-              </label>
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-bus-vtype">Vehicle type</label>
+              <input type="text" id="lf-bus-vtype" name="bus_type" class="ts-panel-input" placeholder="e.g. Wrightbus StreetDeck" />
+            </div>
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-livery-name">Livery name</label>
+              <input type="text" id="lf-livery-name" name="bus_livery_name" class="ts-panel-input" />
+            </div>
+            <div class="ts-panel-field">
+              <label class="ts-panel-label" for="lf-livery">Livery colour</label>
               <div class="ts-colour-row">
-                <input type="color" id="{{ form.bus_livery.id_for_label }}" name="bus_livery"
-                       class="ts-colour-swatch"
-                       value="{{ form.bus_livery.value|default:'#15803d' }}" />
-                <input type="text" id="ts-livery-hex"
-                       class="ts-form-input ts-mono-input ts-colour-hex"
-                       value="{{ form.bus_livery.value|default:'' }}"
-                       placeholder="#rrggbb" maxlength="7" />
+                <input type="color" id="lf-livery" name="bus_livery" class="ts-colour-swatch" value="#15803d" />
+                <input type="text" id="lf-livery-hex" class="ts-panel-input mono ts-colour-hex" placeholder="#rrggbb" maxlength="7" />
               </div>
             </div>
-
           </div>
-        </div>
 
-        {# ── Notes ────────────────────────────────────────────────────────── #}
-        <div class="ts-section">
-          <div class="ts-section-title">Notes <span class="ts-form-optional">optional</span></div>
-          <div class="ts-form-field">
-            <textarea id="{{ form.notes.id_for_label }}" name="notes"
-                      class="ts-form-input ts-form-textarea"
-                      rows="3"
-                      placeholder="Anything worth remembering about this trip…">{{ form.notes.value|default:'' }}</textarea>
+          <div class="ts-panel-divider"></div>
+
+          <!-- notes -->
+          <div class="ts-panel-field">
+            <label class="ts-panel-label" for="lf-notes">Notes</label>
+            <textarea id="lf-notes" name="notes" class="ts-panel-input" rows="3" placeholder="Anything worth remembering…"></textarea>
           </div>
-        </div>
 
-        {# ── Actions ──────────────────────────────────────────────────────── #}
-        <div class="ts-form-actions ts-form-actions--spread">
+        </div><!-- /.ts-log-panel-body -->
+
+        <div class="ts-log-actions">
           <a href="{% url 'home' %}" class="ts-btn-secondary">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 7H3M6.5 3.5L3 7l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Back to map
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M10 6.5H3M6 3L3 6.5 6 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Cancel
           </a>
-          <button type="submit" class="ts-btn-primary">
+          <button type="button" class="ts-btn-primary" id="ts-save-btn" disabled>
             Save trip
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 6.5l3.5 3.5 5.5-5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
 
-      </form>
-    </div>
+      </div><!-- /.ts-log-panel -->
+
+      <!-- ── map area ────────────────────────────────────────────── -->
+      <div class="ts-log-map-area">
+        <div id="ts-route-map"></div>
+        <div class="ts-map-instruction" id="ts-map-instruction">
+          Click a stop to set your <strong>From</strong> station
+        </div>
+      </div>
+
+    </div><!-- /.ts-log-layout -->
   </main>
 
 </div>
-{% endblock %}
 
-{% block extra_js %}
+<script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
 <script>
 (function () {
   'use strict';
 
-  // ── transport type toggle ──────────────────────────────────────────────────
-  const typeSelect  = document.getElementById('id_transport_type');
-  const railSection = document.getElementById('ts-vehicle-rail');
-  const busSection  = document.getElementById('ts-vehicle-bus');
-  const BUS_TYPES   = new Set(['bus', 'tram', 'ferry']);
+  // ── URL params ─────────────────────────────────────────────────────────────
+  const params       = new URLSearchParams(window.location.search);
+  const headcode     = params.get('headcode')      || '';
+  const cifUid       = params.get('cif_train_uid') || params.get('headcode') || '';
+  const bustimesId   = params.get('bustimes_id')   || '';
+  const transportType = params.get('transport_type') || 'rail';
+  const prefVehicle  = params.get('vehicle')       || '';
+  const prefOperator = params.get('operator')      || '';
+  const prefDate     = params.get('date')          || '';
+
+  // ── theme ──────────────────────────────────────────────────────────────────
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
+  function styleFor(t) { return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
+  let _theme    = (function(){ try{ return localStorage.getItem('ts_theme')||'light'; }catch(e){ return 'light'; }})();
+  let STYLE_URL = styleFor(_theme);
+
+  // ── state ──────────────────────────────────────────────────────────────────
+  let _locations = [];    // valid stops from API, in order
+  let _fromStop  = null;  // { index, loc }
+  let _toStop    = null;  // { index, loc }
+  let _map       = null;
+
+  // ── pre-fill panel ─────────────────────────────────────────────────────────
+  document.getElementById('lf-operator').value      = prefOperator;
+  document.getElementById('lf-type').value          = transportType;
+  if (prefVehicle && prefVehicle.includes(' - ')) {
+    const [fleet, reg] = prefVehicle.split(' - ', 2);
+    document.getElementById('lf-bus-fleet').value = fleet.trim();
+    document.getElementById('lf-bus-reg').value   = reg.trim();
+  }
+  syncVehicleSections();
+
+  document.getElementById('lf-type').addEventListener('change', syncVehicleSections);
 
   function syncVehicleSections() {
-    const isBus = BUS_TYPES.has(typeSelect.value);
-    railSection.classList.toggle('ts-hidden', isBus);
-    busSection.classList.toggle('ts-hidden', !isBus);
+    const isBus = ['bus','tram','ferry'].includes(document.getElementById('lf-type').value);
+    document.getElementById('ts-vehicle-rail').classList.toggle('ts-hidden', isBus);
+    document.getElementById('ts-vehicle-bus').classList.toggle('ts-hidden', !isBus);
   }
 
-  if (typeSelect) typeSelect.addEventListener('change', syncVehicleSections);
+  // livery sync
+  const colourPicker = document.getElementById('lf-livery');
+  const hexInput     = document.getElementById('lf-livery-hex');
+  colourPicker.addEventListener('input', () => { hexInput.value = colourPicker.value; });
+  hexInput.addEventListener('input', () => {
+    if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value.trim())) colourPicker.value = hexInput.value.trim();
+  });
 
-  // ── livery colour <-> hex text sync ───────────────────────────────────────
-  const colourPicker = document.getElementById('{{ form.bus_livery.id_for_label }}');
-  const hexInput     = document.getElementById('ts-livery-hex');
+  // ── fetch service ──────────────────────────────────────────────────────────
+  const serviceCard  = document.getElementById('ts-service-card');
+  const panelSub     = document.getElementById('ts-panel-sub');
+  const instruction  = document.getElementById('ts-map-instruction');
 
-  if (colourPicker && hexInput) {
-    colourPicker.addEventListener('input', () => { hexInput.value = colourPicker.value; });
-    hexInput.addEventListener('input', () => {
-      const val = hexInput.value.trim();
-      if (/^#[0-9a-fA-F]{6}$/.test(val)) colourPicker.value = val;
+  function showInstruction(text) {
+    instruction.innerHTML = text;
+    instruction.classList.add('visible');
+  }
+
+  function fetchService() {
+    let url = '';
+    if (bustimesId) {
+      url = `/api/bus-service/?bustimes_id=${encodeURIComponent(bustimesId)}`;
+    } else {
+      // use cif_train_uid if we have it, otherwise headcode (API will handle)
+      const uid = params.get('cif_train_uid') || '';
+      const hc  = params.get('headcode')      || '';
+      url = uid
+        ? `/api/train-service/?cif_train_uid=${encodeURIComponent(uid)}`
+        : `/api/train-service/?headcode=${encodeURIComponent(hc)}`;
+    }
+
+    fetch(url)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        // filter out broken/junction locations (lat/lon 0,0 or null)
+        _locations = (data.locations || []).filter(loc => {
+          const s = loc.stop;
+          return s && s.lat && s.lon && s.lat !== 0 && s.lon !== 0
+              && Math.abs(s.lat) > 0.001 && Math.abs(s.lon) > 0.001;
+        });
+
+        // render service card
+        const hc   = data.headcode  || headcode || '?';
+        const days = data.schedule_days_runs || '';
+        serviceCard.innerHTML = `
+          <div class="ts-service-badge">
+            <span class="ts-headcode-chip">${hc}</span>
+          </div>
+          <div class="ts-service-meta">
+            ${_locations.length ? `${_locations[0].stop.name} → ${_locations[_locations.length-1].stop.name}` : ''}
+            ${days ? ` &nbsp;·&nbsp; ${days}` : ''}
+            &nbsp;·&nbsp; ${_locations.filter(l=>l.time.type==='stopping').length} stops
+          </div>`;
+
+        panelSub.textContent = `${hc} · ${_locations.length} locations`;
+
+        // build RTT link from cif_train_uid + date
+        const rttLink = document.getElementById('ts-rtt-link');
+        if (rttLink) {
+          const uid  = params.get('cif_train_uid') || data.timetable || '';
+          const date = prefDate || new Date().toISOString().slice(0, 10);
+          if (uid) {
+            rttLink.href = `https://www.realtimetrains.co.uk/service/gb-nr:${uid}/${date}/detailed`;
+            rttLink.style.display = 'inline-flex';
+          }
+        }
+
+        drawRoute();
+        showInstruction('Click a stop to set your <strong>From</strong> station');
+      })
+      .catch(err => {
+        serviceCard.innerHTML = `<div style="color:var(--ts-danger);font-size:13px">⚠ Could not load service (${err})</div>`;
+        panelSub.textContent = 'Failed to load';
+      });
+  }
+
+  // ── map ────────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    _map = new maplibregl.Map({
+      container: 'ts-route-map',
+      style:     STYLE_URL,
+      center:    [-1.5, 52.5],
+      zoom:      6,
+    });
+
+    _map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    _map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+
+    _map.on('load', () => {
+      fetchService();
+    });
+
+    // theme change
+    document.addEventListener('ts:themechange', function(e) {
+      const theme = e.detail && e.detail.theme ? e.detail.theme : _theme;
+      _theme = theme;
+      const next = styleFor(theme);
+      if (next === STYLE_URL) return;
+      STYLE_URL = next;
+      _map.once('styledata', () => { if (_locations.length) drawRoute(); });
+      _map.setStyle(STYLE_URL);
+    });
+  });
+
+  // ── draw route on map ──────────────────────────────────────────────────────
+  function drawRoute() {
+    if (!_map || !_locations.length) return;
+
+    const stopping = _locations.filter(l => l.time.type === 'stopping');
+    const passing  = _locations.filter(l => l.time.type === 'passing');
+
+    // route line — all locations in order
+    const lineCoords = _locations.map(l => [l.stop.lon, l.stop.lat]);
+
+    // remove existing layers/sources
+    ['ts-route-line','ts-stops-stopping','ts-stops-passing','ts-stops-selected'].forEach(id => {
+      if (_map.getLayer(id))  _map.removeLayer(id);
+      if (_map.getSource(id)) _map.removeSource(id);
+    });
+
+    // route line
+    _map.addSource('ts-route-line', {
+      type: 'geojson',
+      data: { type:'Feature', geometry:{ type:'LineString', coordinates: lineCoords } }
+    });
+    _map.addLayer({
+      id: 'ts-route-line', type: 'line', source: 'ts-route-line',
+      paint: {
+        'line-color':   '#15803d',
+        'line-width':   3,
+        'line-opacity': 0.8,
+      }
+    });
+
+    // passing stops (hollow, small)
+    _map.addSource('ts-stops-passing', {
+      type: 'geojson',
+      data: { type:'FeatureCollection', features: passing.map((l,_i) => ({
+        type:'Feature',
+        geometry:{ type:'Point', coordinates:[l.stop.lon, l.stop.lat] },
+        properties:{ name: l.stop.name, time: l.time.display, crs: l.stop.crs||'', index: _locations.indexOf(l) }
+      }))}
+    });
+    _map.addLayer({
+      id:'ts-stops-passing', type:'circle', source:'ts-stops-passing',
+      paint:{
+        'circle-radius': 4,
+        'circle-color': 'transparent',
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#15803d',
+      }
+    });
+
+    // stopping stops (filled)
+    _map.addSource('ts-stops-stopping', {
+      type:'geojson',
+      data:{ type:'FeatureCollection', features: stopping.map((l,_i) => ({
+        type:'Feature',
+        geometry:{ type:'Point', coordinates:[l.stop.lon, l.stop.lat] },
+        properties:{ name: l.stop.name, time: l.time.display, crs: l.stop.crs||'', platform: l.platform||'', index: _locations.indexOf(l) }
+      }))}
+    });
+    _map.addLayer({
+      id:'ts-stops-stopping', type:'circle', source:'ts-stops-stopping',
+      paint:{
+        'circle-radius': 6,
+        'circle-color': '#ffffff',
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#15803d',
+      }
+    });
+
+    // selected stops layer (drawn on top, updated on click)
+    _map.addSource('ts-stops-selected', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
+    _map.addLayer({
+      id:'ts-stops-selected', type:'circle', source:'ts-stops-selected',
+      paint:{
+        'circle-radius': 8,
+        'circle-color': ['match',['get','role'], 'from','#15803d', 'to','#1d4ed8', '#888'],
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#ffffff',
+      }
+    });
+
+    // stop click
+    ['ts-stops-stopping','ts-stops-passing'].forEach(layer => {
+      _map.on('click', layer, e => {
+        const feat  = e.features[0];
+        const props = feat.properties;
+        const idx   = props.index;
+        const loc   = _locations[idx];
+        handleStopClick(idx, loc);
+      });
+      _map.on('mouseenter', layer, () => _map.getCanvas().style.cursor = 'pointer');
+      _map.on('mouseleave', layer, () => _map.getCanvas().style.cursor = '');
+    });
+
+    // fit map to route
+    const lons = lineCoords.map(c=>c[0]);
+    const lats = lineCoords.map(c=>c[1]);
+    _map.fitBounds(
+      [[Math.min(...lons)-0.05, Math.min(...lats)-0.05], [Math.max(...lons)+0.05, Math.max(...lats)+0.05]],
+      { padding: 40, duration: 600 }
+    );
+  }
+
+  // ── handle stop click ──────────────────────────────────────────────────────
+  function handleStopClick(idx, loc) {
+    if (!_fromStop) {
+      _fromStop = { index: idx, loc };
+      showInstruction('Now click your <strong>To</strong> station');
+    } else if (!_toStop) {
+      // ensure from < to in time order
+      if (idx === _fromStop.index) return;
+      if (idx < _fromStop.index) {
+        _toStop   = _fromStop;
+        _fromStop = { index: idx, loc };
+      } else {
+        _toStop = { index: idx, loc };
+      }
+      instruction.classList.remove('visible');
+    } else {
+      // third click — reset and start over
+      _fromStop = { index: idx, loc };
+      _toStop   = null;
+      showInstruction('Now click your <strong>To</strong> station');
+    }
+
+    updateSelectedUI();
+    updateSelectedLayer();
+    updateRouteHighlight();
+    updateSaveBtn();
+  }
+
+  // ── update selected stops panel ────────────────────────────────────────────
+  function stopRowHTML(stop, time, role) {
+    const label = role === 'from' ? 'From' : 'To';
+    const colour = role === 'from' ? 'from' : 'to';
+    return `
+      <div class="ts-selected-stop-row is-${role}">
+        <span class="ts-stop-dot ${colour}"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ts-text-3)">${label}</div>
+          <div class="ts-selected-stop-name">${stop.name}</div>
+        </div>
+        <span class="ts-selected-stop-time">${time.display.split('|')[0].trim()}</span>
+        <button class="ts-clear-stop" data-role="${role}" title="Clear">✕</button>
+      </div>`;
+  }
+
+  function updateSelectedUI() {
+    const container = document.getElementById('ts-selected-stops');
+    const hint      = document.getElementById('ts-stop-hint');
+
+    if (!_fromStop && !_toStop) {
+      hint.style.display = '';
+      container.querySelectorAll('.ts-selected-stop-row').forEach(el => el.remove());
+      return;
+    }
+
+    hint.style.display = 'none';
+    container.querySelectorAll('.ts-selected-stop-row').forEach(el => el.remove());
+
+    if (_fromStop) container.insertAdjacentHTML('beforeend', stopRowHTML(_fromStop.loc.stop, _fromStop.loc.time, 'from'));
+    if (_toStop)   container.insertAdjacentHTML('beforeend', stopRowHTML(_toStop.loc.stop,   _toStop.loc.time,   'to'));
+
+    // wire clear buttons
+    container.querySelectorAll('.ts-clear-stop').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.role === 'from') { _fromStop = null; }
+        else                             { _toStop   = null; }
+        updateSelectedUI();
+        updateSelectedLayer();
+        updateRouteHighlight();
+        updateSaveBtn();
+        if (!_fromStop) showInstruction('Click a stop to set your <strong>From</strong> station');
+        else if (!_toStop) showInstruction('Now click your <strong>To</strong> station');
+      });
     });
   }
+
+  // ── update selected layer on map ───────────────────────────────────────────
+  function updateSelectedLayer() {
+    if (!_map || !_map.getSource('ts-stops-selected')) return;
+    const features = [];
+    if (_fromStop) features.push({
+      type:'Feature',
+      geometry:{ type:'Point', coordinates:[_fromStop.loc.stop.lon, _fromStop.loc.stop.lat] },
+      properties:{ role:'from' }
+    });
+    if (_toStop) features.push({
+      type:'Feature',
+      geometry:{ type:'Point', coordinates:[_toStop.loc.stop.lon, _toStop.loc.stop.lat] },
+      properties:{ role:'to' }
+    });
+    _map.getSource('ts-stops-selected').setData({ type:'FeatureCollection', features });
+  }
+
+  // ── highlight the segment between from and to ──────────────────────────────
+  function updateRouteHighlight() {
+    if (!_map) return;
+    if (_map.getLayer('ts-route-highlight'))  _map.removeLayer('ts-route-highlight');
+    if (_map.getSource('ts-route-highlight')) _map.removeSource('ts-route-highlight');
+    if (!_fromStop || !_toStop) return;
+
+    const segCoords = _locations
+      .slice(_fromStop.index, _toStop.index + 1)
+      .map(l => [l.stop.lon, l.stop.lat]);
+
+    _map.addSource('ts-route-highlight', {
+      type:'geojson',
+      data:{ type:'Feature', geometry:{ type:'LineString', coordinates: segCoords } }
+    });
+    _map.addLayer({
+      id:'ts-route-highlight', type:'line', source:'ts-route-highlight',
+      paint:{ 'line-color':'#1d4ed8', 'line-width':4, 'line-opacity':0.9 }
+    }, 'ts-stops-stopping');  // insert below stop dots
+  }
+
+  // ── save button state ──────────────────────────────────────────────────────
+  function updateSaveBtn() {
+    document.getElementById('ts-save-btn').disabled = !(_fromStop && _toStop);
+  }
+
+  // ── save ───────────────────────────────────────────────────────────────────
+  document.getElementById('ts-save-btn').addEventListener('click', () => {
+    if (!_fromStop || !_toStop) return;
+
+    // build route geometry from segment
+    const segCoords = _locations
+      .slice(_fromStop.index, _toStop.index + 1)
+      .map(l => [l.stop.lon, l.stop.lat]);
+
+    const payload = new URLSearchParams({
+      headcode:           headcode,
+      date:               prefDate,
+      transport_type:     document.getElementById('lf-type').value,
+      operator:           document.getElementById('lf-operator').value,
+      origin:             _fromStop.loc.stop.name,
+      origin_crs:         _fromStop.loc.stop.crs||'',
+      destination:        _toStop.loc.stop.name,
+      destination_crs:    _toStop.loc.stop.crs||'',
+      scheduled_time:     (_fromStop.loc.time.departure||_fromStop.loc.time.arrival||'').slice(0,5),
+      stop:               _fromStop.loc.stop.name,
+      stop_crs:           _fromStop.loc.stop.crs||'',
+      train_fleet_number: document.getElementById('lf-train-fleet').value,
+      train_type:         document.getElementById('lf-train-type').value,
+      bus_fleet_number:   document.getElementById('lf-bus-fleet').value,
+      bus_registration:   document.getElementById('lf-bus-reg').value,
+      bus_type:           document.getElementById('lf-bus-vtype').value,
+      bus_livery:         document.getElementById('lf-livery').value,
+      bus_livery_name:    document.getElementById('lf-livery-name').value,
+      notes:              document.getElementById('lf-notes').value,
+      route_geometry:     JSON.stringify(segCoords),
+    });
+
+    // POST to the log-trip view
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{% url "log_trip" %}';
+    form.style.display = 'none';
+
+    // CSRF
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = '{{ csrf_token }}';
+    form.appendChild(csrf);
+
+    for (const [k, v] of payload.entries()) {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = k; inp.value = v;
+      form.appendChild(inp);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+  });
 
 })();
 </script>

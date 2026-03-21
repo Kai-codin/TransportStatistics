@@ -50,6 +50,7 @@
   let _currentTheme = (function(){ try { return localStorage.getItem('ts_theme') || 'light'; } catch(e) { return 'light'; } })();
   let STYLE_URL = styleFor(_currentTheme);
   const STORAGE_KEY   = 'ts_map_view';
+  const SHEET_DATETIME_KEY = 'ts_sheet_datetime';
   const STOPS_API      = '/api/stops/';
   const TRAIN_DEPS_API = '/api/train-departures/';
   const BUS_DEPS_API   = '/api/bus-departures/';
@@ -118,6 +119,26 @@
       if (v && typeof v.lat==='number') return v;
     } catch(_) {}
     return null;
+  }
+
+  // Persist the sheet datetime selection (ISO string) so opening another
+  // stop will reuse the last chosen date/time. Use empty string for "now".
+  function saveSheetDatetime(dt) {
+    try {
+      if (!dt) { localStorage.removeItem(SHEET_DATETIME_KEY); return; }
+      const iso = (dt instanceof Date) ? dt.toISOString() : String(dt);
+      localStorage.setItem(SHEET_DATETIME_KEY, iso);
+    } catch(_) {}
+  }
+
+  function loadSavedSheetDatetime() {
+    try {
+      const v = localStorage.getItem(SHEET_DATETIME_KEY);
+      if (!v) return null;
+      const d = new Date(v);
+      if (isNaN(d.getTime())) return null;
+      return d;
+    } catch(_) { return null; }
   }
 
   // ── bbox ───────────────────────────────────────────────────────────────────
@@ -293,6 +314,7 @@
         const t = new Date();
         t.setMinutes(t.getMinutes() + mins);
         _sheetQueryTime = t;
+        try { saveSheetDatetime(_sheetQueryTime); } catch(_) {}
         if (_activeProps) loadDepartures(_activeProps);
       });
     });
@@ -300,6 +322,7 @@
     sheetInner.querySelectorAll('[data-now]').forEach(btn => {
       btn.addEventListener('click', () => {
         _sheetQueryTime = null;
+        try { saveSheetDatetime(null); } catch(_) {}
         if (_activeProps) loadDepartures(_activeProps);
       });
     });
@@ -307,6 +330,7 @@
     sheetInner.querySelector('.ts-datetime-picker')
       ?.addEventListener('change', function() {
         _sheetQueryTime = this.value ? new Date(this.value) : null;
+        try { saveSheetDatetime(_sheetQueryTime); } catch(_) {}
         if (_activeProps) loadDepartures(_activeProps);
       });
 
@@ -343,6 +367,11 @@
   // ── fetch departures ───────────────────────────────────────────────────────
   function loadDepartures(props) {
     _activeProps = props;
+    // If no in-memory selection, try to load a previously saved datetime
+    if (!_sheetQueryTime) {
+      const saved = loadSavedSheetDatetime();
+      if (saved) _sheetQueryTime = saved;
+    }
     const qt   = _sheetQueryTime;
     const dt   = qt || new Date();
 
@@ -536,7 +565,9 @@
       map.on('click','unclustered-point', e => {
         const props = e.features[0].properties || {};
         if (onStopClick) { onStopClick(props); return; }
-        _sheetQueryTime = null;
+        // Do not reset _sheetQueryTime here — reuse the last selected
+        // datetime when opening another stop. If no selection exists,
+        // loadDepartures will consult saved value.
         loadDepartures(props);
       });
 

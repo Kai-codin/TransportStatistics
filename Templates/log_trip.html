@@ -1029,10 +1029,11 @@ textarea.ts-panel-input {
                        data-type="${label}"
                        data-livery-name="${livery.name || v.branding || ''}"
                        data-livery-left="${livery.left || ''}"
-                       data-livery-right="${livery.right || ''}">
+                       data-livery-right="${livery.right || ''}"
+                       data-withdrawn="${v.withdrawn ? '1' : '0'}">
             <div class="ts-vehicle-result-swatch" style="${swatchStyle}"></div>
             <div class="ts-vehicle-result-info">
-              <div class="ts-vehicle-result-code">${code}${reg ? ' · ' + reg : ''}</div>
+              <div class="ts-vehicle-result-code">${code}${reg ? ' · ' + reg : ''}${v.withdrawn ? ' · <span style="color: red;">Withdrawn</span>' : ''}</div>
               <div class="ts-vehicle-result-detail">${label}${livery.name ? ' · ' + livery.name : ''}</div>
             </div>
           </div>`;

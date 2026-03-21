@@ -311,9 +311,21 @@ textarea.ts-panel-input {
 .ts-map-instruction.visible { opacity: 1; }
 
 @media (max-width: 768px) {
-  .ts-log-layout { flex-direction: column; }
-  .ts-log-panel { width: 100%; height: 55vh; border-right: none; border-bottom: 1.5px solid var(--ts-border); }
-  .ts-log-map-area { height: 45vh; }
+  .ts-log-layout   { flex-direction: column; }
+  .ts-log-map-area { order: 1; height: 45vh; flex-shrink: 0; }
+
+  .ts-log-panel {
+    order: 2;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    border-right: none;
+    border-top: 1.5px solid var(--ts-border);
+  }
+
+  .ts-log-panel-header { flex-shrink: 0; }
+  .ts-log-panel-body   { flex: 1; min-height: 0; }
+  .ts-log-actions      { flex-shrink: 0; }
 }
 </style>
 {% endblock %}

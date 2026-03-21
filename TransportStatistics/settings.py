@@ -176,6 +176,29 @@ REST_FRAMEWORK = {
     ],
 }
 
+# Cache configuration: prefer Redis if REDIS_URL is provided, otherwise fall
+# back to Django's local-memory cache. Uses `django-redis` if available.
+REDIS_URL = os.getenv('REDIS_URL', '')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'IGNORE_EXCEPTIONS': True,
+            }
+        }
+    }
+else:
+    # Local-memory cache for development if Redis not configured
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'transportstatistics-local',
+        }
+    }
+
 # ── Misc ──────────────────────────────────────────────────────────────────────
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

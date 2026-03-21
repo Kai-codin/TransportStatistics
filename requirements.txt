@@ -24,3 +24,4 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 uvicorn==0.42.0
 redis>=4.6.0
+django-redis>=5.2.0

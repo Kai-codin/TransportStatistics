@@ -14,6 +14,9 @@ from .filters import DeparturesFilter
 import datetime
 import requests
 from bs4 import BeautifulSoup
+from django.core.cache import cache
+import hashlib
+import json
  
 # ---------------------------------------------------------------------------
 # Time helpers
@@ -74,13 +77,30 @@ def _readable_days(mask: str) -> Optional[str]:
 def _stop_info(stop_obj, request) -> Optional[dict]:
     if not stop_obj:
         return None
+    # Cache stop metadata (excluding request-specific link) for 7 days to
+    # reduce DB lookups. Build the link per-request so host/path are correct.
+    try:
+        cache_key = f"stop:{getattr(stop_obj, 'pk', None)}"
+        cached = cache.get(cache_key)
+    except Exception:
+        cached = None
+
+    if not cached:
+        cached = {
+            "name":   stop_obj.name,
+            "crs":    stop_obj.crs,
+            "tiploc": stop_obj.tiploc,
+            "lat":    stop_obj.lat,
+            "lon":    stop_obj.lon,
+        }
+        try:
+            cache.set(cache_key, cached, 7 * 24 * 3600)  # 7 days
+        except Exception:
+            pass
+
     return {
-        "name":   stop_obj.name,
-        "crs":    stop_obj.crs,
-        "tiploc": stop_obj.tiploc,
-        "lat":    stop_obj.lat,
-        "lon":    stop_obj.lon,
-        "link":   request.build_absolute_uri(f"/api/departures/?crs={stop_obj.crs}") if stop_obj.crs else None,
+        **cached,
+        "link": request.build_absolute_uri(f"/api/departures/?crs={cached.get('crs')}") if cached.get('crs') else None,
     }
 
 
@@ -388,6 +408,29 @@ class TrainDeparturesView(APIView):
         threshold_secs     = hh * 3600 + mm * 60 + ss
         threshold_sort_str = f"{hh:02d}:{mm:02d}:{ss:02d}"   # matches sort_time format
 
+        # ── caching: short-lived cache keyed by relevant request params ───
+        try:
+            cache_ttl = 30  # seconds; tune as needed
+            cache_params = {
+                "crs": crs,
+                "tiploc": tiploc,
+                "date": date_val.isoformat(),
+                "time": threshold_sort_str,
+                "show_passing": bool(show_passing),
+                "show_zz": bool(show_zz),
+                "type": type_filter,
+                "headcode": headcode_filter,
+                "operator": operator_filter,
+            }
+            cache_key_raw = "train_departures:" + json.dumps(cache_params, sort_keys=True, separators=(',',':'))
+            cache_key = "tdv:" + hashlib.sha1(cache_key_raw.encode('utf-8')).hexdigest()
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+        except Exception:
+            # Don't let caching failures break the API; proceed without cache
+            cached = None
+
         # ── optional filters ───────────────────────────────────────────────────
         type_filter     = request.query_params.get("type", "").lower() or None
         headcode_filter = request.query_params.get("headcode", "").strip()
@@ -522,12 +565,21 @@ class TrainDeparturesView(APIView):
                 "rtt_link":           _rtt_link(tt.CIF_train_uid, date_val.isoformat()) if tt else None,
             })
 
-        return Response({
+        response_data = {
             "date":       date_val.isoformat(),
             "time_after": threshold_secs,
             "station":    station_info,
             "results":    results,
-        })
+        }
+
+        # Store in cache if we built a cache key earlier
+        try:
+            if 'cache_key' in locals() and cache_key:
+                cache.set(cache_key, response_data, cache_ttl)
+        except Exception:
+            pass
+
+        return Response(response_data)
 
 # ---------------------------------------------------------------------------
 # ServiceLocationsView

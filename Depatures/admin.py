@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.db.models import F
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Cast
+from django.db import models
 
 from .models import Timetable, ScheduleLocation
 
@@ -22,7 +23,14 @@ class ScheduleLocationAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        return qs.annotate(primary_time=Coalesce(F('departure_time'), F('arrival_time'), F('pass_time')))
+        # Cast the coalesced string time to a proper TimeField so admin treats
+        # it as a time value instead of a plain string (avoids timezone.is_aware errors).
+        return qs.annotate(
+            primary_time=Cast(
+                Coalesce(F('departure_time'), F('arrival_time'), F('pass_time')),
+                output_field=models.TimeField(),
+            )
+        )
 
     @admin.display(ordering='primary_time', description='time')
     def time_display(self, obj):

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Create Account — Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+
+  {% include "includes/sidebar.html" %}
+
+  <main class="ts-main">
+    <div class="ts-content">
+
+      <h1 class="ts-page-title">Create account</h1>
+      <p class="ts-page-subtitle">Fill in your details to register for Transport Statistics.</p>
+
+      <div class="ts-section">
+        <div class="ts-section-title">Account details</div>
+
+        <form method="post" action="{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}" class="ts-form" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+          <div class="ts-form-error-banner" role="alert">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+              <circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M7.5 4.5v3.5M7.5 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            {{ form.non_field_errors }}
+          </div>
+          {% endif %}
+
+          <div class="ts-form-field">
+            <label class="ts-form-label" for="id_username">Username</label>
+            <input
+              type="text"
+              id="id_username"
+              name="username"
+              class="ts-form-input{% if form.username.errors %} ts-form-input--error{% endif %}"
+              value="{{ form.username.value|default:'' }}"
+              autocomplete="username"
+              autofocus
+              required
+            />
+            {% if form.username.errors %}
+            <div class="ts-form-field-error">{{ form.username.errors|join:", " }}</div>
+            {% else %}
+            <div class="ts-form-hint">Letters, digits and @/./+/-/_ only.</div>
+            {% endif %}
+          </div>
+
+          <div class="ts-form-field">
+            <label class="ts-form-label" for="id_password1">Password</label>
+            <input
+              type="password"
+              id="id_password1"
+              name="password1"
+              class="ts-form-input{% if form.password1.errors %} ts-form-input--error{% endif %}"
+              autocomplete="new-password"
+              required
+            />
+            {% if form.password1.errors %}
+            <div class="ts-form-field-error">{{ form.password1.errors|join:", " }}</div>
+            {% else %}
+            <div class="ts-form-hint">At least 8 characters. Can't be entirely numeric.</div>
+            {% endif %}
+          </div>
+
+          <div class="ts-form-field">
+            <label class="ts-form-label" for="id_password2">Confirm password</label>
+            <input
+              type="password"
+              id="id_password2"
+              name="password2"
+              class="ts-form-input{% if form.password2.errors %} ts-form-input--error{% endif %}"
+              autocomplete="new-password"
+              required
+            />
+            {% if form.password2.errors %}
+            <div class="ts-form-field-error">{{ form.password2.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+
+          <div class="ts-form-actions">
+            <button type="submit" class="ts-btn-primary">
+              Create account
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+        </form>
+
+        <p class="ts-form-footer">
+          Already have an account? <a href="{% url 'login' %}">Sign in</a>.
+        </p>
+
+      </div>
+    </div>
+  </main>
+
+</div>
+{% endblock %}

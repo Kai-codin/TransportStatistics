@@ -82,12 +82,80 @@ WSGI_APPLICATION = 'TransportStatistics.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+import os
+from urllib.parse import urlparse, parse_qs
+
+# Default to a local sqlite database. This may be overridden by setting
+# the environment variable `DATABASE_URL` to a URL such as:
+#   sqlite:///db.sqlite3
+#   sqlite:////absolute/path/to/db.sqlite3
+#   sqlite:///:memory:
+#   mysql://user:pass@host:port/dbname
+#   postgres://user:pass@host:port/dbname
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# Allow configuring database with a single DATABASE_URL environment variable.
+# Supports sqlite and mysql (postgresql also handled as a convenience).
+db_url = os.getenv('DATABASE_URL')
+if db_url:
+    parsed = urlparse(db_url)
+    scheme = (parsed.scheme or '').lower()
+
+    if scheme.startswith('mysql'):
+        ENGINE = 'django.db.backends.mysql'
+    elif scheme.startswith('postgres') or scheme.startswith('postgresql'):
+        ENGINE = 'django.db.backends.postgresql'
+    elif scheme == 'sqlite':
+        ENGINE = 'django.db.backends.sqlite3'
+    else:
+        ENGINE = 'django.db.backends.sqlite3'
+
+    if ENGINE == 'django.db.backends.sqlite3':
+        # Handle common sqlite URL forms. Treat three slashes as project-relative
+        # (sqlite:///db.sqlite3) and four slashes as absolute file paths
+        path = parsed.path or ''
+        if path == '/:memory:' or path == ':memory:':
+            NAME = ':memory:'
+        else:
+            # sqlite:///db.sqlite3 -> relative to BASE_DIR
+            if db_url.startswith('sqlite:///') and not db_url.startswith('sqlite:////'):
+                NAME = BASE_DIR / path.lstrip('/')
+            else:
+                NAME = Path(path)
+
+        DATABASES['default'] = {
+            'ENGINE': ENGINE,
+            'NAME': str(NAME),
+        }
+    else:
+        # network-backed DB (mysql/postgres)
+        NAME = (parsed.path or '').lstrip('/')
+        USER = parsed.username or ''
+        PASSWORD = parsed.password or ''
+        HOST = parsed.hostname or ''
+        PORT = str(parsed.port) if parsed.port else ''
+
+        # convert query params into OPTIONS where appropriate
+        query = parse_qs(parsed.query)
+        OPTIONS = {}
+        # For example: ?charset=utf8mb4
+        if 'charset' in query:
+            OPTIONS['charset'] = query['charset'][-1]
+
+        DATABASES['default'] = {
+            'ENGINE': ENGINE,
+            'NAME': NAME,
+            'USER': USER,
+            'PASSWORD': PASSWORD,
+            'HOST': HOST,
+            'PORT': PORT,
+            'OPTIONS': OPTIONS,
+        }
 
 
 # Password validation
@@ -145,3 +213,8 @@ REST_FRAMEWORK = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Authentication redirects
+LOGIN_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'

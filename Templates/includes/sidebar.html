@@ -1,5 +1,5 @@
 {% comment %}
-  Sidebar - Django Include
+  Sidebar — Django Include
   Usage: {% include "includes/sidebar.html" %}
   Requires: request.user, request context processor enabled
   Requires: sidebar.css loaded on the page (included by base.html or home.html)
@@ -94,7 +94,7 @@
     <button class="ts-theme-toggle" id="ts-theme-toggle" type="button">
       <span class="ts-nav-icon">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none" id="ts-theme-icon">
-          <!-- moon (dark mode indicator) - swapped by JS -->
+          <!-- moon (dark mode indicator) — swapped by JS -->
           <path d="M7.5 1.5A6 6 0 1013.5 7.5 4.5 4.5 0 017.5 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
         </svg>
       </span>
@@ -120,13 +120,13 @@
     <a href="{% url 'login' %}" class="ts-footer-btn">
       <span class="ts-nav-icon">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-          <path d="M9.5 2.5H12a1 1 0 011 1v8a1 1 0 01-1 1H9.5M5 10.5l3 3 3-3M8 13.5V6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M5.5 2.5H3a1 1 0 00-1 1v8a1 1 0 001 1h2.5M10 10.5l3-3-3-3M13 7.5H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </span>
       Log in
     </a>
     {% endif %}
-    <a href="{% url 'legal' %}" class="ts-footer-btn">Legal</a>
+    <a href="{% url 'legal' %}" class="ts-footer-btn">Legal & Data</a>
   </div>
 </aside>
 
@@ -204,8 +204,20 @@
     applyTheme(next, true);
   });
 
-  // apply saved theme on load (without persisting again)
-  applyTheme(getCurrentTheme(), false);
+  // Sync the toggle UI to match the theme already applied by base.html.
+  // We only update the visual controls here — CSS was already correct from
+  // the synchronous <script> in base.html, so no href swap needed.
+  (function syncUI() {
+    const theme  = getCurrentTheme();
+    const isDark = theme === 'dark';
+    toggleTrack.classList.toggle('on', isDark);
+    themeLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+    themeIcon.innerHTML    = isDark ? SUN_PATH : MOON_PATH;
+    // Still do a href pass in case this include is used without base.html
+    document.querySelectorAll('link[data-ts-theme]').forEach(link => {
+      link.href = link.href.replace(/\/(light|dark)\//, `/${theme}/`);
+    });
+  })();
 
 })();
 </script>

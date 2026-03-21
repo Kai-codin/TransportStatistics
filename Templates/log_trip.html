@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Log Trip — Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+
+  {% include "includes/sidebar.html" %}
+
+  <main class="ts-main">
+    <div class="ts-content">
+
+      <h1 class="ts-page-title">Log trip</h1>
+      <p class="ts-page-subtitle">Record the details of your journey.</p>
+
+      <form method="post" class="ts-log-form" id="ts-log-form" novalidate>
+        {% csrf_token %}
+
+        {# Hidden fields #}
+        {{ form.route_geometry }}
+        {{ form.origin_crs }}
+        {{ form.destination_crs }}
+        {{ form.boarded_stop_crs }}
+        {{ form.boarded_stop_atco }}
+
+        {% if form.non_field_errors %}
+        <div class="ts-form-error-banner" role="alert">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4.5v3.5M7.5 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          {{ form.non_field_errors }}
+        </div>
+        {% endif %}
+
+        {# ── Service ─────────────────────────────────────────────────────── #}
+        <div class="ts-section">
+          <div class="ts-section-title">Service</div>
+          <div class="ts-form-grid">
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.headcode.id_for_label }}">Headcode / Service</label>
+              <input type="text" id="{{ form.headcode.id_for_label }}" name="headcode"
+                     class="ts-form-input ts-mono-input{% if form.headcode.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.headcode.value|default:'' }}" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.service_date.id_for_label }}">Date</label>
+              <input type="date" id="{{ form.service_date.id_for_label }}" name="service_date"
+                     class="ts-form-input{% if form.service_date.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.service_date.value|default:'' }}" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.transport_type.id_for_label }}">Type</label>
+              <select id="{{ form.transport_type.id_for_label }}" name="transport_type"
+                      class="ts-form-input ts-form-select" id="id_transport_type">
+                {% for val, label in form.fields.transport_type.choices %}
+                <option value="{{ val }}" {% if form.transport_type.value == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.operator.id_for_label }}">Operator</label>
+              <input type="text" id="{{ form.operator.id_for_label }}" name="operator"
+                     class="ts-form-input{% if form.operator.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.operator.value|default:'' }}" />
+            </div>
+
+          </div>
+        </div>
+
+        {# ── Journey ─────────────────────────────────────────────────────── #}
+        <div class="ts-section">
+          <div class="ts-section-title">Journey</div>
+          <div class="ts-form-grid">
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.origin_name.id_for_label }}">From</label>
+              <input type="text" id="{{ form.origin_name.id_for_label }}" name="origin_name"
+                     class="ts-form-input{% if form.origin_name.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.origin_name.value|default:'' }}" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.destination_name.id_for_label }}">To</label>
+              <input type="text" id="{{ form.destination_name.id_for_label }}" name="destination_name"
+                     class="ts-form-input{% if form.destination_name.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.destination_name.value|default:'' }}" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.boarded_stop_name.id_for_label }}">Boarded at</label>
+              <input type="text" id="{{ form.boarded_stop_name.id_for_label }}" name="boarded_stop_name"
+                     class="ts-form-input{% if form.boarded_stop_name.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.boarded_stop_name.value|default:'' }}" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.scheduled_departure.id_for_label }}">Scheduled dep.</label>
+              <input type="time" id="{{ form.scheduled_departure.id_for_label }}" name="scheduled_departure"
+                     class="ts-form-input ts-mono-input{% if form.scheduled_departure.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.scheduled_departure.value|default:'' }}" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.actual_departure.id_for_label }}">Actual dep. <span class="ts-form-optional">optional</span></label>
+              <input type="time" id="{{ form.actual_departure.id_for_label }}" name="actual_departure"
+                     class="ts-form-input ts-mono-input{% if form.actual_departure.errors %} ts-form-input--error{% endif %}"
+                     value="{{ form.actual_departure.value|default:'' }}" />
+            </div>
+
+          </div>
+        </div>
+
+        {# ── Rail vehicle ─────────────────────────────────────────────────── #}
+        <div class="ts-section ts-vehicle-rail{% if is_bus %} ts-hidden{% endif %}" id="ts-vehicle-rail">
+          <div class="ts-section-title">Train</div>
+          <div class="ts-form-grid">
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.train_fleet_number.id_for_label }}">Fleet number <span class="ts-form-optional">optional</span></label>
+              <input type="text" id="{{ form.train_fleet_number.id_for_label }}" name="train_fleet_number"
+                     class="ts-form-input ts-mono-input"
+                     value="{{ form.train_fleet_number.value|default:'' }}"
+                     placeholder="e.g. 390115" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.train_type.id_for_label }}">Type <span class="ts-form-optional">optional</span></label>
+              <input type="text" id="{{ form.train_type.id_for_label }}" name="train_type"
+                     class="ts-form-input"
+                     value="{{ form.train_type.value|default:'' }}"
+                     placeholder="e.g. Class 390 Pendolino" />
+            </div>
+
+          </div>
+        </div>
+
+        {# ── Bus vehicle ──────────────────────────────────────────────────── #}
+        <div class="ts-section ts-vehicle-bus{% if is_rail %} ts-hidden{% endif %}" id="ts-vehicle-bus">
+          <div class="ts-section-title">Bus / Vehicle</div>
+          <div class="ts-form-grid">
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.bus_fleet_number.id_for_label }}">Fleet number <span class="ts-form-optional">optional</span></label>
+              <input type="text" id="{{ form.bus_fleet_number.id_for_label }}" name="bus_fleet_number"
+                     class="ts-form-input ts-mono-input"
+                     value="{{ form.bus_fleet_number.value|default:'' }}"
+                     placeholder="e.g. 21425" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.bus_registration.id_for_label }}">Registration <span class="ts-form-optional">optional</span></label>
+              <input type="text" id="{{ form.bus_registration.id_for_label }}" name="bus_registration"
+                     class="ts-form-input ts-mono-input"
+                     value="{{ form.bus_registration.value|default:'' }}"
+                     placeholder="e.g. BV24 LSJ" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.bus_type.id_for_label }}">Vehicle type <span class="ts-form-optional">optional</span></label>
+              <input type="text" id="{{ form.bus_type.id_for_label }}" name="bus_type"
+                     class="ts-form-input"
+                     value="{{ form.bus_type.value|default:'' }}"
+                     placeholder="e.g. Wrightbus StreetDeck" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.bus_livery_name.id_for_label }}">Livery name <span class="ts-form-optional">optional</span></label>
+              <input type="text" id="{{ form.bus_livery_name.id_for_label }}" name="bus_livery_name"
+                     class="ts-form-input"
+                     value="{{ form.bus_livery_name.value|default:'' }}"
+                     placeholder="e.g. First Greater Manchester pink" />
+            </div>
+
+            <div class="ts-form-field">
+              <label class="ts-form-label" for="{{ form.bus_livery.id_for_label }}">
+                Livery colour <span class="ts-form-optional">optional</span>
+              </label>
+              <div class="ts-colour-row">
+                <input type="color" id="{{ form.bus_livery.id_for_label }}" name="bus_livery"
+                       class="ts-colour-swatch"
+                       value="{{ form.bus_livery.value|default:'#15803d' }}" />
+                <input type="text" id="ts-livery-hex"
+                       class="ts-form-input ts-mono-input ts-colour-hex"
+                       value="{{ form.bus_livery.value|default:'' }}"
+                       placeholder="#rrggbb" maxlength="7" />
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {# ── Notes ────────────────────────────────────────────────────────── #}
+        <div class="ts-section">
+          <div class="ts-section-title">Notes <span class="ts-form-optional">optional</span></div>
+          <div class="ts-form-field">
+            <textarea id="{{ form.notes.id_for_label }}" name="notes"
+                      class="ts-form-input ts-form-textarea"
+                      rows="3"
+                      placeholder="Anything worth remembering about this trip…">{{ form.notes.value|default:'' }}</textarea>
+          </div>
+        </div>
+
+        {# ── Actions ──────────────────────────────────────────────────────── #}
+        <div class="ts-form-actions ts-form-actions--spread">
+          <a href="{% url 'home' %}" class="ts-btn-secondary">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 7H3M6.5 3.5L3 7l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Back to map
+          </a>
+          <button type="submit" class="ts-btn-primary">
+            Save trip
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </main>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  'use strict';
+
+  // ── transport type toggle ──────────────────────────────────────────────────
+  const typeSelect  = document.getElementById('id_transport_type');
+  const railSection = document.getElementById('ts-vehicle-rail');
+  const busSection  = document.getElementById('ts-vehicle-bus');
+  const BUS_TYPES   = new Set(['bus', 'tram', 'ferry']);
+
+  function syncVehicleSections() {
+    const isBus = BUS_TYPES.has(typeSelect.value);
+    railSection.classList.toggle('ts-hidden', isBus);
+    busSection.classList.toggle('ts-hidden', !isBus);
+  }
+
+  if (typeSelect) typeSelect.addEventListener('change', syncVehicleSections);
+
+  // ── livery colour <-> hex text sync ───────────────────────────────────────
+  const colourPicker = document.getElementById('{{ form.bus_livery.id_for_label }}');
+  const hexInput     = document.getElementById('ts-livery-hex');
+
+  if (colourPicker && hexInput) {
+    colourPicker.addEventListener('input', () => { hexInput.value = colourPicker.value; });
+    hexInput.addEventListener('input', () => {
+      const val = hexInput.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(val)) colourPicker.value = val;
+    });
+  }
+
+})();
+</script>
+{% endblock %}

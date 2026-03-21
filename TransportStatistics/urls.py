@@ -17,14 +17,18 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
+from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
+from main import views_auth
 
 urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('legal/', TemplateView.as_view(template_name='legal.html'), name='legal'),
     path('profile/', TemplateView.as_view(template_name='profile.html'), name='profile'),
     path('manage/', TemplateView.as_view(template_name='manage.html'), name='manage'),
+    path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
+    path('accounts/register/', views_auth.register, name='register'),
     path('accounts/logout/', TemplateView.as_view(template_name='logged_out.html'), name='logout'),
     path('admin/', admin.site.urls),
     path('api/', include('API.urls')),

@@ -421,7 +421,7 @@ textarea.ts-panel-input {
             </div>
 
             <!-- vehicle search results dropdown -->
-            <div id="ts-vehicle-results" style="display:none;background:var(--ts-surface-2);border:1.5px solid var(--ts-border);border-radius:var(--ts-r-sm);overflow:hidden;"></div>
+            <div id="ts-vehicle-results" style="max-height: 250px;overflow-y: scroll;display:none;background:var(--ts-surface-2);border:1.5px solid var(--ts-border);border-radius:var(--ts-r-sm);"></div>
 
             <div class="ts-panel-field">
               <label class="ts-panel-label" for="lf-bus-vtype">Vehicle type</label>
@@ -487,6 +487,13 @@ textarea.ts-panel-input {
   const prefVehicle   = params.get('vehicle')       || '';
   const prefOperator  = params.get('operator')      || '';
   const prefDate      = params.get('date')          || '';
+  // Start-stop parameters passed from the map popup when the user clicked 'Log'
+  const initialBoarded = {
+    name: params.get('stop') || '',
+    crs:  params.get('stop_crs') || '',
+    atco: params.get('stop_atco') || '',
+    scheduled: params.get('scheduled_time') || '',
+  };
 
   // ── theme ──────────────────────────────────────────────────────────────────
   const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
@@ -645,6 +652,7 @@ textarea.ts-panel-input {
         }
 
         drawRoute();
+        tryAutoSelectStart();
         showInstruction('Click a stop to set your <strong>From</strong> station');
       })
       .catch(err => {
@@ -752,6 +760,48 @@ textarea.ts-panel-input {
     );
   }
 
+  // Try to auto-select the starting stop if the page was opened via the
+  // map 'Log' button. Matches by ATCO, then CRS, then name. If no match
+  // found in the fetched locations, fall back to a minimal synthetic start
+  // so the form is prefilled (map highlight won't be available).
+  function tryAutoSelectStart() {
+    if (!initialBoarded.name && !initialBoarded.crs && !initialBoarded.atco) return;
+    let idx = -1;
+    for (let i = 0; i < _locations.length; i++) {
+      const s = _locations[i].stop || {};
+      if (initialBoarded.atco && s.atco_code && s.atco_code === initialBoarded.atco) { idx = i; break; }
+      if (initialBoarded.crs && s.crs && s.crs === initialBoarded.crs) { idx = i; break; }
+      if (initialBoarded.name && s.name && s.name === initialBoarded.name) { idx = i; break; }
+    }
+
+    if (idx >= 0) {
+      _fromStop = { index: idx, loc: _locations[idx] };
+      updateSelectedUI(); updateSelectedLayer(); updateRouteHighlight(); updateSaveBtn();
+      showInstruction('Now click your <strong>To</strong> station');
+      return;
+    }
+
+    // fallback: create a minimal synthetic location so the form fields are populated
+    const syntheticStop = {
+      stop: {
+        name: initialBoarded.name || '',
+        crs:  initialBoarded.crs || '',
+        tiploc: '',
+        lat: null,
+        lon: null,
+        atco_code: initialBoarded.atco || '',
+      },
+      time: {
+        departure: initialBoarded.scheduled || '',
+        arrival: initialBoarded.scheduled || '',
+        display: (initialBoarded.scheduled ? (initialBoarded.scheduled + ' | dep') : '-'),
+      }
+    };
+    _fromStop = { index: -1, loc: syntheticStop };
+    updateSelectedUI(); updateSaveBtn();
+    showInstruction('Now click your <strong>To</strong> station');
+  }
+
   // ── stop click ─────────────────────────────────────────────────────────────
   function handleStopClick(idx, loc) {
     if (!_fromStop) {
@@ -839,7 +889,9 @@ textarea.ts-panel-input {
     if (_map.getSource('ts-route-highlight')) _map.removeSource('ts-route-highlight');
     if (!_fromStop || !_toStop) return;
 
-    const segCoords = buildSegmentCoords(_fromStop.index, _toStop.index);
+    const segCoords = (_fromStop.index >= 0)
+      ? buildSegmentCoords(_fromStop.index, _toStop.index)
+      : (_toStop && _toStop.index >= 0 ? buildSegmentCoords(0, _toStop.index) : []);
     _map.addSource('ts-route-highlight', { type:'geojson',
       data:{ type:'Feature', geometry:{ type:'LineString', coordinates: segCoords } } });
     _map.addLayer({ id:'ts-route-highlight', type:'line', source:'ts-route-highlight',
@@ -939,7 +991,7 @@ textarea.ts-panel-input {
     fetch(`https://bustimes.org/api/vehicles/?search=${encodeURIComponent(query)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
-        const items = (data.results || []).slice(0, 5);
+        const items = (data.results || []).slice(0, 100);
         if (!items.length) { results.style.display = 'none'; return; }
 
         // If exactly one match and this was an automatic search (not user-typed),

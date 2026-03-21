@@ -15,21 +15,21 @@ class StopType(models.Model):
 
 
 class Stop(models.Model):
-	name = models.CharField(max_length=255, null=True, blank=True)
-	atco_code = models.CharField(max_length=64, null=True, blank=True)
-	naptan_code = models.CharField(max_length=64, null=True, blank=True)
-	tiploc = models.CharField(max_length=64, null=True, blank=True)
-	crs = models.CharField(max_length=10, null=True, blank=True)
-	stop_type = models.ForeignKey(StopType, null=True, blank=True, on_delete=models.SET_NULL, related_name='stops')
-	active = models.BooleanField(default=True)
-	created_at = models.DateTimeField(auto_now_add=True)
-	modified_at = models.DateTimeField(auto_now=True)
-	bearing = models.FloatField(null=True, blank=True)
-	lat = models.FloatField()
-	lon = models.FloatField()
-	lines = models.CharField(max_length=255, null=True, blank=True)
-	indicator = models.CharField(max_length=64, null=True, blank=True)
-	icon = models.CharField(max_length=255, null=True, blank=True)
+	name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+	atco_code = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+	naptan_code = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+	tiploc = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+	crs = models.CharField(max_length=10, null=True, blank=True, db_index=True)
+	stop_type = models.ForeignKey(StopType, null=True, blank=True, on_delete=models.SET_NULL, related_name='stops', db_index=True)
+	active = models.BooleanField(default=True, db_index=True)
+	created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+	modified_at = models.DateTimeField(auto_now=True, db_index=True)
+	bearing = models.FloatField(null=True, blank=True, db_index=True)
+	lat = models.FloatField(db_index=True)
+	lon = models.FloatField(db_index=True)
+	lines = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+	indicator = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+	icon = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 
 	class Meta:
 		ordering = ['-created_at']

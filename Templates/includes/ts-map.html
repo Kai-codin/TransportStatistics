@@ -13,6 +13,12 @@
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
 <link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
 
+<style>
+.ts-toggle-row{display:flex;gap:14px;padding:10px 14px 6px;flex-wrap:wrap}
+.ts-toggle{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;opacity:0.9}
+.ts-toggle input{cursor:pointer}
+</style>
+
 <div class="ts-map-wrapper">
 
   <!-- ── map canvas ────────────────────────────────────────────────── -->
@@ -124,6 +130,9 @@
   const sheetInner = document.getElementById('ts-sheet-inner');
   let _activeProps    = null;
   let _sheetQueryTime = null;   // null = now
+  // popup toggles state
+  let _showZZ = false;
+  let _showPassing = false;
 
   function openSheet(html) {
     sheetInner.innerHTML = html;
@@ -191,6 +200,20 @@
       </div>`;
   }
 
+  function toggleControlsHTML() {
+    return `
+      <div class="ts-toggle-row">
+        <label class="ts-toggle">
+          <input type="checkbox" ${_showZZ ? 'checked' : ''} data-toggle="zz">
+          <span>Show ZZ services</span>
+        </label>
+        <label class="ts-toggle">
+          <input type="checkbox" ${_showPassing ? 'checked' : ''} data-toggle="passing">
+          <span>Show passing services</span>
+        </label>
+      </div>`;
+  }
+
   function departureRowsHTML(results, qt, hasExpected) {
     return results.slice(0, 15).map(r => {
       const sched   = (r.time && (r.time.departure || r.time.arrival || '')) || '';
@@ -232,7 +255,7 @@
   }
 
   function sheetHTML_loading(p, qt) {
-    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
       <div class="ts-popup-body">
         <div class="ts-popup-spinner"><span class="ts-spinner"></span>Fetching departures…</div>
       </div></div>`;
@@ -250,12 +273,12 @@
          </div>`
       : `<div class="ts-no-departures">No departures found for this time.</div>`;
 
-    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
       <div class="ts-popup-body">${body}</div></div>`;
   }
 
   function sheetHTML_error(p, qt) {
-    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
       <div class="ts-popup-body"><div class="ts-popup-error">⚠ Could not load departures.</div></div></div>`;
   }
 
@@ -286,6 +309,15 @@
         _sheetQueryTime = this.value ? new Date(this.value) : null;
         if (_activeProps) loadDepartures(_activeProps);
       });
+
+    // Toggle controls: show ZZ / show passing
+    sheetInner.querySelectorAll('[data-toggle]').forEach(el => {
+      el.addEventListener('change', () => {
+        if (el.dataset.toggle === 'zz') _showZZ = el.checked;
+        if (el.dataset.toggle === 'passing') _showPassing = el.checked;
+        if (_activeProps) loadDepartures(_activeProps);
+      });
+    });
 
     sheetInner.querySelectorAll('.ts-log-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -333,7 +365,8 @@
     // only send date/time for past or future — omit entirely for "now" so the
     // API (and bustimes upstream) uses its own live clock and serves live data
     const timeParams = qt ? `&date=${toDate(dt)}&time=${toTime(dt)}` : '';
-    fetch(`${depsApi(props.stop_type_code)}?${idParam}${timeParams}`)
+    const extraParams = `&show_zz=${_showZZ ? 'true' : 'false'}` + `&show_passing=${_showPassing ? 'true' : 'false'}`;
+    fetch(`${depsApi(props.stop_type_code)}?${idParam}${timeParams}${extraParams}`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => {
         openSheet(sheetHTML_loaded(props, (data.results || []), qt));

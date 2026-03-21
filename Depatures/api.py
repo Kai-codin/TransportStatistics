@@ -350,6 +350,7 @@ class TrainDeparturesView(APIView):
 
     def get(self, request):
         crs     = request.query_params.get("crs", "").strip()
+        show_passing = request.query_params.get("show_passing", "").lower() in ("1", "true", "yes")
         tiploc  = request.query_params.get("tiploc", "").strip()
         show_zz = request.query_params.get("show_zz", "").lower() in ("1", "true", "yes")
 
@@ -429,9 +430,17 @@ class TrainDeparturesView(APIView):
             extra_q &= ~Q(timetable__headcode__istartswith="ZZ")
             extra_q &= ~Q(timetable__operator__code__istartswith="ZZ")
 
+        # By default, only show services that stop at this station
+        # (have either a departure_time or an arrival_time). Passing
+        # trains (only pass_time) are shown only when `show_passing` is set.
+        if not show_passing:
+            stop_q = (Q(departure_time__gt="") | Q(arrival_time__gt=""))
+        else:
+            stop_q = Q()
+
         qs = (
             ScheduleLocation.objects
-            .filter(loc_q & date_q & time_q & extra_q)
+            .filter(loc_q & date_q & time_q & extra_q & stop_q)
             .select_related("stop", "timetable", "timetable__operator")
             .only(*self._SELECT)
             .order_by("sort_time")   # safe - always HH:MM:SS
@@ -534,7 +543,10 @@ class ServiceLocationsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        qs = Timetable.objects.all()
+        # Avoid fetching auto-managed datetime fields that may be returned
+        # as strings by some DB connectors; defer them so Django doesn't
+        # run timezone conversion on raw strings.
+        qs = Timetable.objects.all().defer('created_at', 'modified_at')
         if cif:
             qs = qs.filter(CIF_train_uid=cif)
         if headcode:
@@ -560,8 +572,20 @@ class ServiceLocationsView(APIView):
             return Response({"detail": "more than one service found", "matches": matches})
 
         timetable = qs.first()
+        # Coerce schedule date fields in case the DB returned strings
+        def _coerce_date(value):
+            if isinstance(value, str):
+                try:
+                    return datetime.date.fromisoformat(value)
+                except Exception:
+                    try:
+                        return datetime.datetime.fromisoformat(value).date()
+                    except Exception:
+                        return value
+            return value
         locations = (
             timetable.location_entries.all()
+            .select_related('stop')
             .order_by("position", "departure_time", "arrival_time", "pass_time")
         )
 
@@ -577,6 +601,8 @@ class ServiceLocationsView(APIView):
             "timetable":          timetable.CIF_train_uid,
             "headcode":           timetable.headcode,
             "schedule_days_runs": _readable_days(timetable.schedule_days_runs),
+            "schedule_start_date": _coerce_date(timetable.schedule_start_date),
+            "schedule_end_date": _coerce_date(timetable.schedule_end_date),
             "locations":          results,
         })
 

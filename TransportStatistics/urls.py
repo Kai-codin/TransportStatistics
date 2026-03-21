@@ -21,12 +21,13 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from main import views_auth
-from Trips.views import log_trip
+from Trips.views import log_trip, profile, trip_detail
 
 urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('legal/', TemplateView.as_view(template_name='legal.html'), name='legal'),
-    path('profile/', TemplateView.as_view(template_name='profile.html'), name='profile'),
+    path('profile/', profile, name='profile'),
+    path('trips/<int:pk>/', trip_detail, name='trip_detail'),
     path('manage/', TemplateView.as_view(template_name='manage.html'), name='manage'),
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('accounts/register/', views_auth.register, name='register'),

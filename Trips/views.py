@@ -1,9 +1,32 @@
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.dateparse import parse_time, parse_date
 
 from .forms import TripLogForm
+from .models import TripLog
 
+from itertools import groupby
+
+@login_required
+def trip_detail(request, pk):
+    trip = get_object_or_404(TripLog, pk=pk, user=request.user)
+    return render(request, 'trip_detail.html', {'trip': trip})
+
+@login_required
+def profile(request):
+    trips = TripLog.objects.filter(user=request.user).order_by('-service_date', '-scheduled_departure', '-logged_at')
+
+    # Group by date
+    days = []
+    for date, group in groupby(trips, key=lambda t: t.service_date):
+        trip_list = list(group)
+        days.append({'date': date, 'trips': trip_list})
+
+    return render(request, 'profile.html', {
+        'days':        days,
+        'total_trips': trips.count(),
+        'total_days':  len(days),
+    })
 
 @login_required
 def log_trip(request):

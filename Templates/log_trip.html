@@ -400,13 +400,17 @@ textarea.ts-panel-input {
             <div class="ts-field-row">
               <div class="ts-panel-field">
                 <label class="ts-panel-label" for="lf-bus-fleet">Fleet no.</label>
-                <input type="text" id="lf-bus-fleet" name="bus_fleet_number" class="ts-panel-input mono" placeholder="e.g. 35950" />
+                <input type="text" id="lf-bus-fleet" name="bus_fleet_number" class="ts-panel-input mono" placeholder="e.g. 35950" autocomplete="off" />
               </div>
               <div class="ts-panel-field">
                 <label class="ts-panel-label" for="lf-bus-reg">Registration</label>
-                <input type="text" id="lf-bus-reg" name="bus_registration" class="ts-panel-input mono" placeholder="e.g. BV24 LSJ" />
+                <input type="text" id="lf-bus-reg" name="bus_registration" class="ts-panel-input mono" placeholder="e.g. BV24 LSJ" autocomplete="off" />
               </div>
             </div>
+
+            <!-- vehicle search results dropdown -->
+            <div id="ts-vehicle-results" style="display:none;background:var(--ts-surface-2);border:1.5px solid var(--ts-border);border-radius:var(--ts-r-sm);overflow:hidden;"></div>
+
             <div class="ts-panel-field">
               <label class="ts-panel-label" for="lf-bus-vtype">Vehicle type</label>
               <input type="text" id="lf-bus-vtype" name="bus_type" class="ts-panel-input" placeholder="e.g. Wright StreetDeck" />
@@ -877,5 +881,85 @@ textarea.ts-panel-input {
   });
 
 })();
+
+// ── vehicle search ─────────────────────────────────────────────────────────
+  let _vehicleSearchTimer = null;
+
+  function setupVehicleSearch() {
+    const fleetInput = document.getElementById('lf-bus-fleet');
+    const regInput   = document.getElementById('lf-bus-reg');
+    const results    = document.getElementById('ts-vehicle-results');
+
+    function onInput() {
+      const query = (fleetInput.value || regInput.value).trim();
+      clearTimeout(_vehicleSearchTimer);
+      if (query.length < 2) { results.style.display = 'none'; return; }
+
+      _vehicleSearchTimer = setTimeout(() => searchVehicle(query), 400);
+    }
+
+    fleetInput.addEventListener('input', onInput);
+    regInput.addEventListener('input', onInput);
+
+    // hide results when clicking elsewhere
+    document.addEventListener('click', e => {
+      if (!results.contains(e.target) && e.target !== fleetInput && e.target !== regInput) {
+        results.style.display = 'none';
+      }
+    });
+  }
+
+  function searchVehicle(query) {
+    const results = document.getElementById('ts-vehicle-results');
+
+    fetch(`https://bustimes.org/api/vehicles/?search=${encodeURIComponent(query)}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        const items = (data.results || []).slice(0, 5);
+        if (!items.length) { results.style.display = 'none'; return; }
+
+        results.innerHTML = items.map(v => {
+          const livery  = v.livery || {};
+          const vtype   = v.vehicle_type || {};
+          const code    = v.fleet_code || v.fleet_number || '—';
+          const reg     = v.reg || '';
+          const label   = vtype.name || '';
+          const colour  = livery.left || '#888';
+          const isGrad  = colour.includes('gradient');
+          const swatchStyle = isGrad
+            ? `background:${colour}`
+            : `background:${colour}`;
+
+          return `<div class="ts-vehicle-result" data-id="${v.id}"
+                       data-fleet="${code}" data-reg="${reg}"
+                       data-type="${label}"
+                       data-livery-name="${livery.name || ''}"
+                       data-livery-left="${livery.left || ''}"
+                       data-livery-right="${livery.right || ''}">
+            <div class="ts-vehicle-result-swatch" style="${swatchStyle}"></div>
+            <div class="ts-vehicle-result-info">
+              <div class="ts-vehicle-result-code">${code}${reg ? ' · ' + reg : ''}</div>
+              <div class="ts-vehicle-result-detail">${label}${livery.name ? ' · ' + livery.name : ''}</div>
+            </div>
+          </div>`;
+        }).join('');
+
+        results.style.display = 'block';
+
+        results.querySelectorAll('.ts-vehicle-result').forEach(row => {
+          row.addEventListener('click', () => {
+            document.getElementById('lf-bus-fleet').value   = row.dataset.fleet;
+            document.getElementById('lf-bus-reg').value     = row.dataset.reg;
+            document.getElementById('lf-bus-vtype').value   = row.dataset.type;
+            document.getElementById('lf-livery-name').value = row.dataset.liveryName;
+            document.getElementById('lf-livery-hex').value  = row.dataset.liveryLeft;
+            results.style.display = 'none';
+          });
+        });
+      })
+      .catch(() => { results.style.display = 'none'; });
+  }
+
+  setupVehicleSearch();
 </script>
 {% endblock %}

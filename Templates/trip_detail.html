@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ trip.headcode }} · {{ trip.origin_name }} → {{ trip.destination_name }}{% endblock %}
+
+{% block extra_head %}
+<link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
+<style>
+.ts-detail-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── left panel ──────────────────────────────────────────────────── */
+.ts-detail-panel {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1.5px solid var(--ts-border);
+  background: var(--ts-surface);
+  overflow: hidden;
+}
+
+.ts-detail-panel-header {
+  padding: 14px 18px 12px;
+  border-bottom: 1.5px solid var(--ts-border-soft);
+  flex-shrink: 0;
+}
+
+.ts-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ts-text-3);
+  text-decoration: none;
+  margin-bottom: 10px;
+  transition: color 0.13s;
+}
+.ts-back-link:hover { color: var(--ts-accent); }
+
+.ts-detail-chip {
+  font-family: var(--ts-mono);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ts-text-inv);
+  background: var(--ts-accent);
+  border-radius: var(--ts-r-sm);
+  padding: 3px 11px;
+  letter-spacing: 0.04em;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+.ts-detail-chip.bus   { background: #f59e0b; }
+.ts-detail-chip.tram  { background: #8b5cf6; }
+.ts-detail-chip.ferry { background: #0ea5e9; }
+
+.ts-detail-route-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ts-text-1);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.ts-detail-meta {
+  font-size: 12px;
+  color: var(--ts-text-3);
+  margin-top: 4px;
+}
+
+.ts-detail-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── sections ────────────────────────────────────────────────────── */
+.ts-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ts-text-3);
+  margin-bottom: 8px;
+}
+
+/* ── journey stops ───────────────────────────────────────────────── */
+.ts-journey-stops { display: flex; flex-direction: column; }
+
+.ts-journey-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ts-stop-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  padding-top: 3px;
+}
+
+.ts-stop-dot-outer {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ts-accent);
+  background: var(--ts-surface);
+  flex-shrink: 0;
+}
+.ts-stop-dot-outer.filled  { background: var(--ts-accent); }
+.ts-stop-dot-outer.bus     { border-color: #f59e0b; }
+.ts-stop-dot-outer.bus.filled { background: #f59e0b; }
+.ts-stop-dot-outer.tram    { border-color: #8b5cf6; }
+.ts-stop-dot-outer.tram.filled { background: #8b5cf6; }
+.ts-stop-dot-outer.ferry   { border-color: #0ea5e9; }
+.ts-stop-dot-outer.ferry.filled { background: #0ea5e9; }
+
+.ts-stop-line {
+  width: 2px;
+  flex: 1;
+  min-height: 20px;
+  background: var(--ts-border);
+  margin: 3px 0;
+}
+
+.ts-stop-info {
+  padding-bottom: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ts-stop-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ts-text-1);
+}
+
+.ts-stop-sub {
+  font-size: 11px;
+  color: var(--ts-text-3);
+  margin-top: 1px;
+}
+
+/* ── info grid ───────────────────────────────────────────────────── */
+.ts-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ts-info-item {
+  background: var(--ts-surface-2);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 8px 10px;
+}
+
+.ts-info-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ts-text-3);
+  margin-bottom: 3px;
+}
+
+.ts-info-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ts-text-1);
+  word-break: break-word;
+}
+.ts-info-value.mono { font-family: var(--ts-mono); font-size: 12px; }
+
+/* ── livery swatch ───────────────────────────────────────────────── */
+.ts-livery-swatch {
+  width: 72px;
+  height: 48px;
+  border-radius: var(--ts-r-sm);
+  border: 1.5px solid var(--ts-border);
+  flex-shrink: 0;
+}
+
+.ts-vehicle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+/* ── notes ───────────────────────────────────────────────────────── */
+.ts-notes-box {
+  background: var(--ts-surface-2);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--ts-text-2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* ── map ─────────────────────────────────────────────────────────── */
+.ts-detail-map-area { flex: 1; min-width: 0; position: relative; }
+#ts-detail-map { width: 100%; height: 100%; }
+
+@media (max-width: 768px) {
+  .ts-detail-layout { flex-direction: column; }
+  .ts-detail-panel { width: 100%; height: 55vh; border-right: none; border-bottom: 1.5px solid var(--ts-border); }
+  .ts-detail-map-area { height: 45vh; }
+}
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+  {% include "includes/sidebar.html" %}
+
+  <main class="ts-main">
+    <div class="ts-detail-layout">
+
+      <!-- ── panel ───────────────────────────────────────────────── -->
+      <div class="ts-detail-panel">
+
+        <div class="ts-detail-panel-header">
+          <a href="{% url 'profile' %}" class="ts-back-link">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M8 2L4 6l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            My trips
+          </a>
+          <span class="ts-detail-chip {{ trip.transport_type }}">{{ trip.headcode|default:"—" }}</span>
+          <div class="ts-detail-route-title">
+            {{ trip.origin_name|default:"?" }} → {{ trip.destination_name|default:"?" }}
+          </div>
+          <div class="ts-detail-meta">
+            {{ trip.service_date|date:"l j F Y" }}{% if trip.scheduled_departure %}&nbsp;·&nbsp;{{ trip.scheduled_departure|time:"H:i" }}{% endif %}
+          </div>
+        </div>
+
+        <div class="ts-detail-panel-body">
+
+          <!-- journey -->
+          <div>
+            <div class="ts-section-title">Journey</div>
+            <div class="ts-journey-stops">
+              <div class="ts-journey-stop">
+                <div class="ts-stop-indicator">
+                  <div class="ts-stop-dot-outer filled {{ trip.transport_type }}"></div>
+                  <div class="ts-stop-line"></div>
+                </div>
+                <div class="ts-stop-info">
+                  <div class="ts-stop-name">{{ trip.origin_name|default:"?" }}</div>
+                  <div class="ts-stop-sub">
+                    {% if trip.scheduled_departure %}Dep {{ trip.scheduled_departure|time:"H:i" }}{% endif %}
+                    {% if trip.origin_crs %}&nbsp;· {{ trip.origin_crs }}{% endif %}
+                    {% if trip.boarded_stop_atco %}&nbsp;· {{ trip.boarded_stop_atco }}{% endif %}
+                  </div>
+                </div>
+              </div>
+              <div class="ts-journey-stop">
+                <div class="ts-stop-indicator">
+                  <div class="ts-stop-dot-outer {{ trip.transport_type }}"></div>
+                </div>
+                <div class="ts-stop-info" style="padding-bottom:0">
+                  <div class="ts-stop-name">{{ trip.destination_name|default:"?" }}</div>
+                  <div class="ts-stop-sub">{% if trip.destination_crs %}{{ trip.destination_crs }}{% endif %}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- service -->
+          <div>
+            <div class="ts-section-title">Service</div>
+            <div class="ts-info-grid">
+              <div class="ts-info-item">
+                <div class="ts-info-label">Operator</div>
+                <div class="ts-info-value">{{ trip.operator|default:"—" }}</div>
+              </div>
+              <div class="ts-info-item">
+                <div class="ts-info-label">Mode</div>
+                <div class="ts-info-value">{{ trip.get_transport_type_display }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- vehicle (bus) -->
+          {% if trip.is_bus and trip.bus_fleet_number or trip.is_bus and trip.bus_registration or trip.is_bus and trip.bus_type %}
+          <div>
+            <div class="ts-section-title">Vehicle</div>
+            {% if trip.bus_livery %}
+            <div class="ts-vehicle-row">
+              <div class="ts-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
+              {% if trip.bus_livery_name %}
+              <div>
+                <div class="ts-info-label">Livery</div>
+                <div class="ts-info-value" style="font-size:13px">{{ trip.bus_livery_name }}</div>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+            <div class="ts-info-grid">
+              {% if trip.bus_fleet_number %}
+              <div class="ts-info-item">
+                <div class="ts-info-label">Fleet no.</div>
+                <div class="ts-info-value mono">{{ trip.bus_fleet_number }}</div>
+              </div>
+              {% endif %}
+              {% if trip.bus_registration %}
+              <div class="ts-info-item">
+                <div class="ts-info-label">Registration</div>
+                <div class="ts-info-value mono">{{ trip.bus_registration }}</div>
+              </div>
+              {% endif %}
+              {% if trip.bus_type %}
+              <div class="ts-info-item" style="grid-column:1/-1">
+                <div class="ts-info-label">Vehicle type</div>
+                <div class="ts-info-value">{{ trip.bus_type }}</div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- vehicle (rail) -->
+          {% if trip.is_rail and trip.train_fleet_number %}
+          <div>
+            <div class="ts-section-title">Vehicle</div>
+            <div class="ts-info-grid">
+              <div class="ts-info-item">
+                <div class="ts-info-label">Fleet no.</div>
+                <div class="ts-info-value mono">{{ trip.train_fleet_number }}</div>
+              </div>
+              {% if trip.train_type %}
+              <div class="ts-info-item">
+                <div class="ts-info-label">Type</div>
+                <div class="ts-info-value">{{ trip.train_type }}</div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- notes -->
+          {% if trip.notes %}
+          <div>
+            <div class="ts-section-title">Notes</div>
+            <div class="ts-notes-box">{{ trip.notes }}</div>
+          </div>
+          {% endif %}
+
+          <div class="ts-detail-meta" style="margin-top:auto;padding-top:8px">
+            Logged {{ trip.logged_at|date:"j F Y" }} at {{ trip.logged_at|time:"H:i" }}
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── map ──────────────────────────────────────────────────── -->
+      <div class="ts-detail-map-area">
+        <div id="ts-detail-map"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const routeGeometry = {{ trip.route_geometry|default:"null"|safe }};
+  const mode          = '{{ trip.transport_type }}';
+
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
+  const styleFor = t => STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json';
+  let _theme = (() => { try { return localStorage.getItem('ts_theme') || 'light'; } catch { return 'light'; } })();
+
+  const map = new maplibregl.Map({
+    container: 'ts-detail-map',
+    style:     styleFor(_theme),
+    center:    [-1.5, 52.5],
+    zoom:      6,
+  });
+  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+
+  const modeColour = { rail: '#15803d', bus: '#f59e0b', tram: '#8b5cf6', ferry: '#0ea5e9' };
+  const colour = modeColour[mode] || '#15803d';
+
+  map.on('load', () => {
+    if (!routeGeometry || routeGeometry.length < 2) return;
+
+    map.addSource('route', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'LineString', coordinates: routeGeometry } }
+    });
+    map.addLayer({ id: 'route', type: 'line', source: 'route',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint:  { 'line-color': colour, 'line-width': 4, 'line-opacity': 0.9 }
+    });
+
+    const first = routeGeometry[0];
+    const last  = routeGeometry[routeGeometry.length - 1];
+
+    map.addSource('origin', { type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Point', coordinates: first }, properties: {} }
+    });
+    map.addLayer({ id: 'origin', type: 'circle', source: 'origin',
+      paint: { 'circle-radius': 8, 'circle-color': colour,
+               'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' }
+    });
+
+    map.addSource('dest', { type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Point', coordinates: last }, properties: {} }
+    });
+    map.addLayer({ id: 'dest', type: 'circle', source: 'dest',
+      paint: { 'circle-radius': 8, 'circle-color': '#ffffff',
+               'circle-stroke-width': 2.5, 'circle-stroke-color': colour }
+    });
+
+    const lons = routeGeometry.map(c => c[0]);
+    const lats = routeGeometry.map(c => c[1]);
+    map.fitBounds(
+      [[Math.min(...lons) - 0.01, Math.min(...lats) - 0.01],
+       [Math.max(...lons) + 0.01, Math.max(...lats) + 0.01]],
+      { padding: 48, duration: 500 }
+    );
+  });
+
+  document.addEventListener('ts:themechange', e => {
+    const theme = e.detail?.theme || _theme;
+    _theme = theme;
+    map.setStyle(styleFor(theme));
+  });
+
+})();
+</script>
+{% endblock %}

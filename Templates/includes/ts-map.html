@@ -38,10 +38,10 @@
   'use strict';
 
   // ── constants ──────────────────────────────────────────────────────────────
-  const STYLE_BASE    = 'https://maps.fluffynet.dev/styles/tf-';
-  function styleFor(t){ return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
-  // Determine initial theme from client storage so map matches UI theme
-  let _currentTheme = (function(){ try{ return localStorage.getItem('ts_theme') || '{{ map_theme }}'; }catch(e){ return '{{ map_theme }}'; } })();
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
+  function styleFor(t) { return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
+  // Read theme from localStorage so it matches the sidebar toggle regardless of Django context
+  let _currentTheme = (function(){ try { return localStorage.getItem('ts_theme') || 'light'; } catch(e) { return 'light'; } })();
   let STYLE_URL = styleFor(_currentTheme);
   const STORAGE_KEY   = 'ts_map_view';
   const STOPS_API      = '/api/stops/';
@@ -212,7 +212,21 @@
         <td class="td-dest" title="${dest}">${dest}${vehicle ? `<div class="td-vehicle">${vehicle}</div>` : ''}</td>
         <td class="td-time">${String(sched).slice(0,5) || '—'}</td>
         ${hasExpected ? `<td class="td-expected${late?' late':''}">${late ? String(exp).slice(0,5) : '—'}</td>` : ''}
-        <td><button class="ts-log-btn" data-headcode="${head}" data-date="${toDate(dt)}" title="Log this service">Log</button></td>
+        <td><button class="ts-log-btn"
+          data-headcode="${rawHead}"
+          data-date="${toDate(dt)}"
+          data-scheduled="${String(sched).slice(0,5)}"
+          data-origin="${(r.origin && r.origin.name) || ''}"
+          data-origin-crs="${(r.origin && r.origin.crs) || ''}"
+          data-destination="${dest}"
+          data-destination-crs="${(r.destination && r.destination.crs) || ''}"
+          data-stop="${_activeProps ? (_activeProps.name||'') : ''}"
+          data-stop-crs="${_activeProps ? (_activeProps.crs||'') : ''}"
+          data-stop-atco="${_activeProps ? (_activeProps.atco_code||'') : ''}"
+          data-vehicle="${vehicle}"
+          data-operator="${r.operator||''}"
+          data-transport-type="${_activeProps ? (BUS_TYPE_CODES.has(_activeProps.stop_type_code)?'bus':'rail') : 'rail'}"
+          title="Log this service">Log</button></td>
       </tr>`;
     }).join('');
   }
@@ -275,10 +289,22 @@
 
     sheetInner.querySelectorAll('.ts-log-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        btn.dispatchEvent(new CustomEvent('ts:log', {
-          bubbles: true,
-          detail: { headcode: btn.dataset.headcode, date: btn.dataset.date }
-        }));
+        const p = new URLSearchParams({
+          headcode:       btn.dataset.headcode       || '',
+          date:           btn.dataset.date           || '',
+          scheduled_time: btn.dataset.scheduled      || '',
+          origin:         btn.dataset.origin         || '',
+          origin_crs:     btn.dataset.originCrs      || '',
+          destination:    btn.dataset.destination    || '',
+          destination_crs: btn.dataset.destinationCrs || '',
+          stop:           btn.dataset.stop           || '',
+          stop_crs:       btn.dataset.stopCrs        || '',
+          stop_atco:      btn.dataset.stopAtco       || '',
+          vehicle:        btn.dataset.vehicle        || '',
+          operator:       btn.dataset.operator       || '',
+          transport_type: btn.dataset.transportType  || 'rail',
+        });
+        window.location.href = '/log-trip/?' + p.toString();
       });
     });
   }
@@ -339,51 +365,10 @@
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl(),      'bottom-left');
 
-    // Update map style when site theme changes
-    document.addEventListener('ts:themechange', function(e){
-      try{
-        const theme = e && e.detail && e.detail.theme ? e.detail.theme : (localStorage.getItem('ts_theme') || 'light');
-        const next = styleFor(theme);
-        if (next === STYLE_URL) return;
-        STYLE_URL = next;
-        // After style loads, re-create the stops source and essential layers
-        map.once('styledata', function(){
-          try{
-            if (!map.getSource('stops')){
-              map.addSource('stops', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
-            }
-            if (!map.getLayer('unclustered-point')){
-              map.addLayer({ id:'unclustered-point', type:'circle', source:'stops',
-                filter:['!',['has','point_count']],
-                paint:{
-                  'circle-color':['match',['get','stop_type_code'],
-                    'RLS','#1d4ed8','RSE','#2563eb','RLY','#3b82f6','RPL','#60a5fa',
-                    'BCT','#15803d','BCS','#16a34a','BCQ','#22c55e','BCE','#4ade80',
-                    'BST','#86efac','HAR','#166534','FLX','#14532d','MKD','#365314','CUS','#4d7c0f',
-                    'MET','#7e22ce','PLT','#9333ea','TMU','#a855f7',
-                    'FER','#0f766e','FBT','#0d9488','FTD','#2dd4bf',
-                    'GAT','#c2410c','AIR','#ea580c',
-                    'TXR','#ca8a04','STR','#eab308',
-                    '#6b7280'],
-                  'circle-radius':6, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
-                }
-              });
-            }
-            // restore previously fetched features (if any)
-            if (_lastFeatures && _lastFeatures.length) {
-              try{ map.getSource('stops').setData({ type:'FeatureCollection', features: _lastFeatures }); }catch(e){}
-            }
-          }catch(err){ console.warn('Failed to re-add map layers', err); }
-        });
-        map.setStyle(STYLE_URL);
-      }catch(err){ console.warn('ts:themechange handler error', err); }
-    });
-
     const persistView = () => saveView(map.getCenter().toArray(), map.getZoom());
 
     // ── stops fetch ───────────────────────────────────────────────────────────
     let _controller = null, _loadedBbox = null, _debounce = null;
-    let _lastZoomLoaded = null;
 
     let _lastFeatures = [];
 
@@ -399,16 +384,25 @@
       } catch(_) {}
     };
 
-    // called on zoom/move — re-evaluates the same cached features without re-fetching
+    // called on zoomend — re-evaluates cached features.
+    // If still too many (zoomed out), show hint.
+    // If we zoomed in enough that a fresh narrower fetch would fix it, clear
+    // _loadedBbox so checkAndLoad triggers a new request.
     function recheckDensity() {
-      if (_lastFeatures.length) setSource(_lastFeatures);
+      if (!_lastFeatures.length) return;
+      if (_lastFeatures.length > STOP_LIMIT) {
+        // too many — clear loaded bbox so checkAndLoad will re-fetch for the
+        // tighter viewport, which may return fewer stops
+        _loadedBbox = null;
+      } else {
+        // within limit — just redisplay what we have
+        setSource(_lastFeatures);
+      }
     }
 
     async function fetchStops(bbox) {
-      // Abort any currently-running fetch and create a per-run controller
       if (_controller) { try { _controller.abort(); } catch(_) {} }
-      const controller = new AbortController();
-      _controller = controller;
+      _controller = new AbortController();
       _lastFeatures = [];
       setZoomHint(false);
       const features = [];
@@ -416,7 +410,7 @@
               + `&min_lat=${bbox[1]}&max_lat=${bbox[3]}&min_lon=${bbox[0]}&max_lon=${bbox[2]}`;
       try {
         while (url) {
-          const resp = await fetch(url, { signal: controller.signal });
+          const resp = await fetch(url, { signal: _controller.signal });
           if (!resp.ok) break;
           const data  = await resp.json();
           for (const s of (data.results || data)) {
@@ -437,9 +431,8 @@
           url = data.next || null;
         }
         _loadedBbox = bbox;
-        try { _lastZoomLoaded = map.getZoom(); } catch(_) { _lastZoomLoaded = null; }
       } catch(err) { if (err.name!=='AbortError') console.error('[ts-map]', err); }
-      finally { if (_controller === controller) _controller = null; }
+      finally { _controller = null; }
     }
 
     function checkAndLoad() {
@@ -448,14 +441,45 @@
         persistView();
         if (!wantStops) return;
         const vp = mapBbox(map);
-        const zoom = map.getZoom();
-        const zoomChanged = _lastZoomLoaded == null ? true : Math.abs(zoom - _lastZoomLoaded) > 0.5;
-        if (!inside(vp, _loadedBbox) || zoomChanged) fetchStops(expandBbox(vp, BUFFER_FACTOR));
+        if (!inside(vp, _loadedBbox)) fetchStops(expandBbox(vp, BUFFER_FACTOR));
       }, DEBOUNCE_MS);
     }
 
     // ── map load ───────────────────────────────────────────────────────────────
     map.on('load', () => {
+
+      // ── runtime theme swap ───────────────────────────────────────────────────
+      document.addEventListener('ts:themechange', function(e) {
+        const theme = (e && e.detail && e.detail.theme) ? e.detail.theme : _currentTheme;
+        _currentTheme = theme;
+        const next = styleFor(theme);
+        if (next === STYLE_URL) return;
+        STYLE_URL = next;
+        // setStyle wipes all sources/layers — re-add them once the new style loads
+        map.once('styledata', function() {
+          if (!map.getSource('stops')) {
+            map.addSource('stops', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
+            map.addLayer({ id:'unclustered-point', type:'circle', source:'stops',
+              filter:['!',['has','point_count']],
+              paint:{
+                'circle-color':['match',['get','stop_type_code'],
+                  'RLS','#1d4ed8','RSE','#2563eb','RLY','#3b82f6','RPL','#60a5fa',
+                  'BCT','#15803d','BCS','#16a34a','BCQ','#22c55e','BCE','#4ade80',
+                  'BST','#86efac','HAR','#166534','FLX','#14532d','MKD','#365314','CUS','#4d7c0f',
+                  'MET','#7e22ce','PLT','#9333ea','TMU','#a855f7',
+                  'FER','#0f766e','FBT','#0d9488','FTD','#2dd4bf',
+                  'GAT','#c2410c','AIR','#ea580c',
+                  'TXR','#ca8a04','STR','#eab308',
+                  '#6b7280'],
+                'circle-radius':6, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+              }
+            });
+          }
+          // restore cached stops on the new style
+          if (_lastFeatures.length) setSource(_lastFeatures);
+        });
+        map.setStyle(STYLE_URL);
+      });
 
       map.addSource('stops', {
         type:'geojson', data:{ type:'FeatureCollection', features:[] },
@@ -493,8 +517,10 @@
       map.on('mouseenter','unclustered-point', ()=> map.getCanvas().style.cursor='pointer');
       map.on('mouseleave','unclustered-point', ()=> map.getCanvas().style.cursor='');
 
-      map.on('moveend', () => { checkAndLoad(); recheckDensity(); });
-      map.on('zoomend', () => { checkAndLoad(); recheckDensity(); });
+      map.on('moveend', checkAndLoad);
+      // on zoomend: re-evaluate density immediately (no fetch needed if already loaded)
+      // then also check if we need to load new data for the expanded viewport
+      map.on('zoomend', () => { recheckDensity(); checkAndLoad(); });
 
       if (initBbox) {
         map.fitBounds([[initBbox[0],initBbox[1]],[initBbox[2],initBbox[3]]],{padding:20});

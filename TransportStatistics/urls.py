@@ -21,6 +21,7 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from main import views_auth
+from Trips.views import log_trip
 
 urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
@@ -32,6 +33,7 @@ urlpatterns = [
     path('accounts/logout/', TemplateView.as_view(template_name='logged_out.html'), name='logout'),
     path('admin/', admin.site.urls),
     path('api/', include('API.urls')),
+    path('log-trip/', log_trip, name='log_trip'),
     path('demo-map/', TemplateView.as_view(template_name='demo_map.html'), name='demo-map'),
 ]
 

@@ -619,8 +619,20 @@ textarea.ts-panel-input {
           document.getElementById('lf-bus-fleet').value   = v.fleet_number || '';
           document.getElementById('lf-bus-reg').value     = v.reg          || '';
           document.getElementById('lf-bus-vtype').value   = v.type         || '';
-          document.getElementById('lf-livery-name').value = v.livery_name  || '';
+          document.getElementById('lf-livery-name').value = v.livery_name  || v.branding || '';
           document.getElementById('lf-livery-hex').value  = v.livery_left  || '';
+        }
+        else {
+          // If no vehicle info returned, but a fleet number is already
+          // present (auto-filled or passed via params), try the vehicle
+          // search API. If it returns a single match we'll auto-fill;
+          // if multiple, the user will be shown the search popup.
+          const fleetVal = (document.getElementById('lf-bus-fleet')?.value || prefVehicle || '').trim();
+          const regVal   = (document.getElementById('lf-bus-reg')?.value || '').trim();
+          const q = regVal ? `${fleetVal}` : fleetVal;
+          if (fleetVal) {
+            try { searchVehicle(q, true); } catch(_) { /* noop */ }
+          }
         }
 
         // RTT link (trains only)
@@ -921,7 +933,7 @@ textarea.ts-panel-input {
     });
   }
 
-  function searchVehicle(query) {
+  function searchVehicle(query, auto = false) {
     const results = document.getElementById('ts-vehicle-results');
 
     fetch(`https://bustimes.org/api/vehicles/?search=${encodeURIComponent(query)}`)
@@ -929,6 +941,20 @@ textarea.ts-panel-input {
       .then(data => {
         const items = (data.results || []).slice(0, 5);
         if (!items.length) { results.style.display = 'none'; return; }
+
+        // If exactly one match and this was an automatic search (not user-typed),
+        // auto-fill the bus fields and do not show the popup. If this was a
+        // user-initiated search, always show the popup even for a single match.
+        if (items.length === 1 && auto) {
+          const v = items[0];
+          document.getElementById('lf-bus-fleet').value   = v.fleet_code || v.fleet_number || '';
+          document.getElementById('lf-bus-reg').value     = v.reg || '';
+          document.getElementById('lf-bus-vtype').value   = (v.vehicle_type && v.vehicle_type.name) || '';
+          document.getElementById('lf-livery-name').value = (v.livery && v.livery.name) || v.branding || '';
+          document.getElementById('lf-livery-hex').value  = (v.livery && v.livery.left) || '';
+          results.style.display = 'none';
+          return;
+        }
 
         results.innerHTML = items.map(v => {
           const livery  = v.livery || {};
@@ -945,7 +971,7 @@ textarea.ts-panel-input {
           return `<div class="ts-vehicle-result" data-id="${v.id}"
                        data-fleet="${code}" data-reg="${reg}"
                        data-type="${label}"
-                       data-livery-name="${livery.name || ''}"
+                       data-livery-name="${livery.name || v.branding || ''}"
                        data-livery-left="${livery.left || ''}"
                        data-livery-right="${livery.right || ''}">
             <div class="ts-vehicle-result-swatch" style="${swatchStyle}"></div>

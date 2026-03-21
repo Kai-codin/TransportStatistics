@@ -50,6 +50,7 @@ import datetime
 import gzip
 import json
 import logging
+import os
 import time
 import traceback
 from pathlib import Path
@@ -63,6 +64,25 @@ from main.models import Operator
 from Stops.models import Stop
 
 logger = logging.getLogger(__name__)
+
+
+# Redis cache client (optional)
+REDIS_URL = os.getenv("REDIS_URL", "")
+_redis_client = None
+_redis_usable = False
+if REDIS_URL:
+    try:
+        import redis as _redis_mod
+
+        _redis_client = _redis_mod.from_url(REDIS_URL, decode_responses=True)
+        # quick smoke test
+        _redis_client.ping()
+        _redis_usable = True
+        logger.info("Using Redis cache at %s", REDIS_URL)
+    except Exception as exc:
+        logger.warning("Redis not available for import caches: %s", exc)
+        _redis_client = None
+        _redis_usable = False
 
 
 def p(msg: str) -> None:
@@ -200,14 +220,47 @@ def _pick_sort_time(dep, arr, pas) -> Optional[str]:
 
 class OperatorCache:
     def __init__(self):
-        self._cache: Dict[str, Optional[int]] = {
-            op.code: op.pk for op in Operator.objects.all()
-        }
+        # If Redis is usable, use it as the backing store to avoid DB RAM caching.
+        self._use_redis = _redis_usable and _redis_client is not None
+        self._prefix = "import:operator:"
+        if not self._use_redis:
+            self._cache: Dict[str, Optional[int]] = {
+                op.code: op.pk for op in Operator.objects.all()
+            }
 
     def get_pk(self, atoc_code: Optional[str]) -> Optional[int]:
         if not atoc_code:
             return None
         code = str(atoc_code).strip().upper()
+        if self._use_redis:
+            key = f"{self._prefix}{code}"
+            try:
+                val = _redis_client.get(key)
+            except Exception:
+                val = None
+            if val is not None:
+                return int(val) if val != "" else None
+            # cache miss — create or fetch from DB and store in Redis
+            try:
+                op, created = Operator.objects.get_or_create(
+                    code=code, defaults={"name": ""}
+                )
+                if created:
+                    p(f"  [operator] Created new operator: {code}")
+                try:
+                    _redis_client.set(key, str(op.pk) if op.pk is not None else "")
+                except Exception:
+                    pass
+                return op.pk
+            except Exception as exc:
+                logger.error("Failed to create operator '%s': %s", code, exc)
+                try:
+                    _redis_client.set(key, "")
+                except Exception:
+                    pass
+                return None
+
+        # Fallback to in-memory dict
         if code not in self._cache:
             try:
                 op, created = Operator.objects.get_or_create(
@@ -224,27 +277,97 @@ class OperatorCache:
 
 class StopCache:
     def __init__(self):
-        self._cache: Dict[str, Optional[int]] = {}
-        for row in (
-            Stop.objects.exclude(tiploc__isnull=True)
-            .exclude(tiploc="")
-            .values("pk", "tiploc")
-        ):
-            self._cache[row["tiploc"].strip().upper()] = row["pk"]
+        # If Redis is available, use it to avoid holding all stop PKs in RAM.
+        self._use_redis = _redis_usable and _redis_client is not None
+        self._prefix = "import:stop:"
+        if self._use_redis:
+            # Preload stops into Redis keys. Use a pipeline for efficiency.
+            try:
+                pipe = _redis_client.pipeline()
+                for row in (
+                    Stop.objects.exclude(tiploc__isnull=True)
+                    .exclude(tiploc="")
+                    .values("pk", "tiploc")
+                ):
+                    key = f"{self._prefix}{row['tiploc'].strip().upper()}"
+                    pipe.set(key, str(row["pk"]))
+                pipe.execute()
+            except Exception:
+                # If Redis fails during preload, fall back to local dict
+                self._use_redis = False
+                self._cache: Dict[str, Optional[int]] = {}
+                for row in (
+                    Stop.objects.exclude(tiploc__isnull=True)
+                    .exclude(tiploc="")
+                    .values("pk", "tiploc")
+                ):
+                    self._cache[row["tiploc"].strip().upper()] = row["pk"]
+        else:
+            self._cache: Dict[str, Optional[int]] = {}
+            for row in (
+                Stop.objects.exclude(tiploc__isnull=True)
+                .exclude(tiploc="")
+                .values("pk", "tiploc")
+            ):
+                self._cache[row["tiploc"].strip().upper()] = row["pk"]
 
     def warm_batch(self, tiplocs: List[str]):
-        missing = [t for t in tiplocs if t not in self._cache]
-        if not missing:
-            return
-        for row in Stop.objects.filter(tiploc__in=missing).values("pk", "tiploc"):
-            self._cache[row["tiploc"].strip().upper()] = row["pk"]
-        for t in missing:
-            self._cache.setdefault(t, None)
+        if self._use_redis:
+            keys = [f"{self._prefix}{t}" for t in tiplocs]
+            try:
+                vals = _redis_client.mget(keys)
+            except Exception:
+                vals = [None] * len(keys)
+            missing = []
+            for t, v in zip(tiplocs, vals):
+                if v is None:
+                    missing.append(t)
+            if not missing:
+                return
+            # Fetch missing from DB and populate Redis
+            rows = Stop.objects.filter(tiploc__in=missing).values("pk", "tiploc")
+            try:
+                pipe = _redis_client.pipeline()
+                found = set()
+                for row in rows:
+                    key = f"{self._prefix}{row['tiploc'].strip().upper()}"
+                    pipe.set(key, str(row["pk"]))
+                    found.add(row["tiploc"].strip().upper())
+                # mark not-found tiplocs with empty value to avoid repeated DB hits
+                for t in missing:
+                    if t.strip().upper() not in found:
+                        pipe.set(f"{self._prefix}{t}", "")
+                pipe.execute()
+            except Exception:
+                # On failure, fallback to DB-only fills (no Redis writes)
+                for row in rows:
+                    key = row["tiploc"].strip().upper()
+                    try:
+                        _redis_client.set(f"{self._prefix}{key}", str(row["pk"]))
+                    except Exception:
+                        pass
+        else:
+            missing = [t for t in tiplocs if t not in self._cache]
+            if not missing:
+                return
+            for row in Stop.objects.filter(tiploc__in=missing).values("pk", "tiploc"):
+                self._cache[row["tiploc"].strip().upper()] = row["pk"]
+            for t in missing:
+                self._cache.setdefault(t, None)
 
     def get_pk(self, tiploc: Optional[str]) -> Optional[int]:
         if not tiploc:
             return None
-        return self._cache.get(tiploc.strip().upper())
+        key = tiploc.strip().upper()
+        if self._use_redis:
+            try:
+                v = _redis_client.get(f"{self._prefix}{key}")
+            except Exception:
+                v = None
+            if v is None:
+                return None
+            return int(v) if v != "" else None
+        return self._cache.get(key)
 
 
 # ── Retry helper ──────────────────────────────────────────────────────────────

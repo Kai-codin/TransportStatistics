@@ -687,8 +687,8 @@ html, body { height: 100%; font-family: var(--ts-font); background: var(--ts-bg)
 .ts-vehicle-result:last-child { border-bottom: none; }
 .ts-vehicle-result:hover { background: var(--ts-surface-3); }
 .ts-vehicle-result-swatch {
-  width: 28px; height: 28px;
-  border-radius: var(--ts-r-sm);
+  width: 36px;
+  height: 26px;
   flex-shrink: 0;
   border: 1px solid var(--ts-border);
 }

@@ -9,3 +9,4 @@ class TripLogAdmin(admin.ModelAdmin):
     search_fields = ['headcode', 'origin_name', 'destination_name',
                      'bus_registration', 'train_fleet_number']
     readonly_fields = ['logged_at']
+    autocomplete_fields = ['user']

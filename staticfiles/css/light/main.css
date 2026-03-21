@@ -213,6 +213,9 @@ html, body { height: 100%; font-family: var(--ts-font); background: var(--ts-bg)
   .ts-table tbody td { padding-left: 12px; padding-right: 12px; }
   .ts-table thead th:first-child,
   .ts-table tbody td:first-child { padding-left: 14px; }
+  .ts-profile-header {
+    padding: 15px 28px 15px 65px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════

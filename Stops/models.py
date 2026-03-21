@@ -15,7 +15,9 @@ class StopType(models.Model):
 
 
 class Stop(models.Model):
+	common_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 	name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+	long_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 	atco_code = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 	naptan_code = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 	tiploc = models.CharField(max_length=64, null=True, blank=True, db_index=True)

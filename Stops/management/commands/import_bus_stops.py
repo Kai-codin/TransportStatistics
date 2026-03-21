@@ -138,7 +138,17 @@ class Command(BaseCommand):
 
             for r in batch_rows:
                 try:
-                    name = r.get('CommonName') or r.get('name') or None
+                    if r.get('CommonName'):
+                        stop_name = r.get('CommonName').strip()
+                    elif r.get('name'):
+                        stop_name = r.get('name').strip()
+                    else:
+                        stop_name = None
+
+                    if r.get('Indicator'):
+                        stop_name += ' (' + r.get('Indicator').strip() + ')'
+
+                    name = stop_name
                     atco = r.get('ATCOCode') or None
                     naptan = r.get('NaptanCode') or None
                     plate = r.get('PlateCode') or None

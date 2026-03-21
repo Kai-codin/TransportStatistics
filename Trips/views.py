@@ -20,13 +20,15 @@ def log_trip(request):
         vehicle   (bus: "fleet - REG", populated from the vehicle field)
     """
     if request.method == 'POST':
+        print("POST data:", dict(request.POST))
         form = TripLogForm(request.POST)
         if form.is_valid():
             trip = form.save(commit=False)
             trip.user = request.user
             trip.save()
             return redirect('home')
-        # fall through to re-render with errors
+        else:
+            print("Form errors:", form.errors) 
 
     else:
         p = request.GET
@@ -43,21 +45,21 @@ def log_trip(request):
         initial = {
             'headcode':           p.get('headcode', ''),
             'operator':           p.get('operator', ''),
-            'service_date':       p.get('date', ''),
-            'scheduled_departure': p.get('scheduled_time', ''),
+            'service_date':       p.get('date', '') or p.get('service_date', ''),
+            'scheduled_departure': p.get('scheduled_time', '') or p.get('scheduled_departure', ''),
             'transport_type':     p.get('transport_type', 'rail'),
 
-            'origin_name':        p.get('origin', ''),
+            'origin_name':        p.get('origin_name', '') or p.get('origin', ''),
             'origin_crs':         p.get('origin_crs', ''),
             'origin_tiploc':      p.get('origin_tiploc', ''),
 
-            'destination_name':   p.get('destination', ''),
+            'destination_name':   p.get('destination_name', '') or p.get('destination', ''),
             'destination_crs':    p.get('destination_crs', ''),
             'destination_tiploc': p.get('destination_tiploc', ''),
 
-            'boarded_stop_name':  p.get('stop', ''),
-            'boarded_stop_crs':   p.get('stop_crs', ''),
-            'boarded_stop_atco':  p.get('stop_atco', ''),
+            'boarded_stop_name':  p.get('boarded_stop_name', '') or p.get('stop', ''),
+            'boarded_stop_crs':   p.get('boarded_stop_crs', '')  or p.get('stop_crs', ''),
+            'boarded_stop_atco':  p.get('boarded_stop_atco', '') or p.get('stop_atco', ''),
 
             'bus_fleet_number':   bus_fleet,
             'bus_registration':   bus_reg,

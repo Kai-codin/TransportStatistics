@@ -61,7 +61,7 @@ class TripLog(models.Model):
         help_text='e.g. BV24 LSJ')
     bus_type            = models.CharField(max_length=80,  blank=True,
         help_text='e.g. Wrightbus StreetDeck')
-    bus_livery          = models.CharField(max_length=30,  blank=True,
+    bus_livery          = models.TextField(blank=True,
         help_text='Hex colour code, e.g. #15803d')
     bus_livery_name     = models.CharField(max_length=80,  blank=True,
         help_text='e.g. First Greater Manchester pink')

@@ -214,6 +214,7 @@
         ${hasExpected ? `<td class="td-expected${late?' late':''}">${late ? String(exp).slice(0,5) : '—'}</td>` : ''}
         <td><button class="ts-log-btn"
           data-headcode="${rawHead}"
+          data-trip-id="${r.trip_id || ''}"
           data-date="${toDate(dt)}"
           data-scheduled="${String(sched).slice(0,5)}"
           data-origin="${(r.origin && r.origin.name) || ''}"
@@ -293,6 +294,7 @@
         const p = new URLSearchParams({
           headcode:       btn.dataset.headcode       || '',
           date:           btn.dataset.date           || '',
+          trip_id:        btn.dataset.tripId        || '',
           scheduled_time: btn.dataset.scheduled      || '',
           origin:         btn.dataset.origin         || '',
           origin_crs:     btn.dataset.originCrs      || '',

@@ -39,7 +39,7 @@ def _format_time(raw):
     return f"{s[:2]}:{s[2:4]}:{seconds}"
 
 
-def _to_seconds_from_raw(raw_time: Optional[str]) -> Optional[int]:
+def _to_seconds(raw_time: Optional[str]) -> Optional[int]:
     if not raw_time:
         return None
     formatted = _format_time(raw_time)
@@ -84,46 +84,18 @@ def _stop_info(stop_obj, request) -> Optional[dict]:
     }
 
 
-def _rtt_link(CIF_train_uid: str, date: str) -> Optional[str]:
-    if not CIF_train_uid:
+def _rtt_link(cif_uid: str, date: str) -> Optional[str]:
+    if not cif_uid:
         return None
-    return f"https://www.realtimetrains.co.uk/service/gb-nr:{CIF_train_uid}/{date}/detailed"
+    return f"https://www.realtimetrains.co.uk/service/gb-nr:{cif_uid}/{date}/detailed"
 
 
 def _time_info(loc) -> dict:
-    """
-    Build the rich time block for a ScheduleLocation.
-
-    Returns
-    -------
-    {
-        "arrival":   "HH:MM:SS" | null,
-        "departure": "HH:MM:SS" | null,
-        "pass":      "HH:MM:SS" | null,
-        "display":   human-readable summary string,
-        "sort_time": "HH:MM:SS" - time used for ordering (dep > arr > pass),
-        "type":      "stopping" | "passing",
-    }
-
-    display format examples
-    -----------------------
-      Both arrival + departure  →  "13:21 - 13:23 | arr-dep"
-      Departure only            →  "13:21 | dep"
-      Arrival only              →  "13:21 | arr"
-      Pass only                 →  "13:21 | pass"
-      Nothing                   →  "-"
-
-    type rules
-    ----------
-      "passing"  - pass time present, no arrival, no departure
-      "stopping" - everything else (has arr, dep, or both)
-    """
     arr = _format_time(loc.arrival_time)
     dep = _format_time(loc.departure_time)
     pas = _format_time(loc.pass_time)
 
-    def _hhmm(t: Optional[str]) -> Optional[str]:
-        """Trim HH:MM:SS → HH:MM for display."""
+    def _hhmm(t):
         return t[:5] if t else None
 
     if dep and arr:
@@ -150,10 +122,14 @@ def _time_info(loc) -> dict:
     }
 
 
-_WEEKDAY_CHAR = {i: i for i in range(7)}
+# ---------------------------------------------------------------------------
+# Helpers to build the day-mask SQL filter
+# ---------------------------------------------------------------------------
 
-
-# (filter docs live in the DeparturesView docstring below)
+def _day_mask_q(weekday: int) -> Q:
+    # Allow any characters before position, just check the bit itself
+    prefix = "." * weekday
+    return Q(timetable__schedule_days_runs__regex=rf"^{prefix}1")
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +272,9 @@ class BusDeparturesView(APIView):
             scheduled  = sched_link.get_text(strip=True) if sched_link else sched_cell.get_text(strip=True)
             trip_href  = sched_link.get("href", "") if sched_link else ""
             trip_url   = f"https://bustimes.org{trip_href}" if trip_href else None
+
+            # trip_id is the end string of /trips/577592344
+            trip_id = trip_href.split("/trips/")[-1] if "/trips/" in trip_href else None
  
             # normalise time to HH:MM
             scheduled = scheduled.strip()
@@ -314,6 +293,7 @@ class BusDeparturesView(APIView):
                 "headcode":    headcode,
                 "service_url": service_url,
                 "rtt_link":    trip_url,          # frontend uses rtt_link for the headcode hyperlink
+                "trip_id":     trip_id,              # not available from bustimes table
                 "operator":    None,              # not available from bustimes table
                 "platform":    None,
                 "vehicle":     vehicle,
@@ -338,51 +318,26 @@ class BusDeparturesView(APIView):
             "results": results,
         })
  
-
 class TrainDeparturesView(APIView):
     """
-    Return upcoming departures for a station identified by CRS code or TIPLOC.
+    Return the next 10 departures for a station identified by CRS or TIPLOC.
 
-    All query parameters are optional unless marked required.
-    Filters are additive (AND logic) - combine freely.
-
-    ── Station (required, one of) ──────────────────────────────────────────
-      crs        CRS code of the queried station.           e.g. MAN
-      tiploc     TIPLOC of the queried station.             e.g. MNCRPIC
-
-    ── Date / time window ──────────────────────────────────────────────────
-      date       Timetable date (YYYY-MM-DD).               default: today
-      time       Show services at or after this time        default: now
-                 (HH:MM or HHMM).                           e.g. 14:30
-      show_zz    Include ZZ engineering / ECS services.     default: hidden
-                 Pass 1, true, or yes to enable.
-
-    ── Service filters ─────────────────────────────────────────────────────
-      headcode         Exact headcode match (case-insensitive).   e.g. 1A01
-      operator         Partial operator name  OR  exact code.     e.g. Avanti
-      day              Services running on a given day.
-                       Accepts day name or index (Monday=0 … Sunday=6).
-                                                                  e.g. Monday
-
-    ── Origin / destination ────────────────────────────────────────────────
-      origin_crs       CRS of the service's first stop.           e.g. EUS
-      origin_name      Partial name of the service's first stop.  e.g. London
-      destination_crs  CRS of the service's last stop.            e.g. GLC
-      destination_name Partial name of the service's last stop.   e.g. Glasgow
-
-    ── Stop type ───────────────────────────────────────────────────────────
-      type       stopping  - service has an arrival and/or departure time.
-                 passing   - pass time only; the train does not stop.
+    Query parameters
+    ────────────────
+      crs              CRS code                    e.g. SOT
+      tiploc           TIPLOC code                 e.g. STOKEOT
+      date             YYYY-MM-DD                  default: today
+      time             HH:MM or HHMM               default: now
+      show_zz          1 / true / yes              default: hidden
+      type             stopping | passing
+      headcode         exact headcode match        e.g. 1V45
+      operator         partial name or exact code  e.g. CrossCountry
     """
 
-    _CANDIDATE_ONLY = [
-        "id",
-        "stop_id",
-        "timetable_id",
-        "departure_time",
-        "arrival_time",
-        "pass_time",
-        "platform",
+    _SELECT = [
+        "id", "stop_id", "timetable_id",
+        "departure_time", "arrival_time", "pass_time", "sort_time",
+        "platform", "tiploc_code",
         "stop__name", "stop__crs", "stop__tiploc", "stop__lat", "stop__lon",
         "timetable__CIF_train_uid",
         "timetable__headcode",
@@ -394,31 +349,25 @@ class TrainDeparturesView(APIView):
     ]
 
     def get(self, request):
-        crs     = request.query_params.get("crs")
-        tiploc  = request.query_params.get("tiploc")
+        crs     = request.query_params.get("crs", "").strip()
+        tiploc  = request.query_params.get("tiploc", "").strip()
         show_zz = request.query_params.get("show_zz", "").lower() in ("1", "true", "yes")
 
         if not crs and not tiploc:
-            return Response(
-                {"detail": "Provide crs or tiploc"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "Provide crs or tiploc"}, status=400)
 
-        # ── date ─────────────────────────────────────────────────────────────
-        date_str = request.query_params.get("date")
+        # ── date ──────────────────────────────────────────────────────────────
+        date_str = request.query_params.get("date", "")
         if date_str:
             try:
                 date_val = datetime.date.fromisoformat(date_str)
-            except Exception:
-                return Response(
-                    {"detail": "Invalid date format, use YYYY-MM-DD"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            except ValueError:
+                return Response({"detail": "Invalid date, use YYYY-MM-DD"}, status=400)
         else:
             date_val = datetime.date.today()
 
-        # ── time threshold ────────────────────────────────────────────────────
-        time_str = request.query_params.get("time")
+        # ── time threshold → stored as "HH:MM:SS" to match sort_time ──────────
+        time_str = request.query_params.get("time", "")
         if time_str:
             t = time_str.strip()
             try:
@@ -429,129 +378,134 @@ class TrainDeparturesView(APIView):
                 else:
                     nt = t.zfill(4)
                     hh, mm, ss = int(nt[:2]), int(nt[2:4]), 0
-                threshold_seconds = hh * 3600 + mm * 60 + ss
             except Exception:
-                return Response({"detail": "Invalid time format"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "Invalid time format"}, status=400)
         else:
             now = datetime.datetime.now()
-            threshold_seconds = now.hour * 3600 + now.minute * 60 + now.second
+            hh, mm, ss = now.hour, now.minute, now.second
 
-        # ── optional type filter ──────────────────────────────────────────────
-        type_filter = request.query_params.get("type", "").lower() or None
+        threshold_secs     = hh * 3600 + mm * 60 + ss
+        threshold_sort_str = f"{hh:02d}:{mm:02d}:{ss:02d}"   # matches sort_time format
+
+        # ── optional filters ───────────────────────────────────────────────────
+        type_filter     = request.query_params.get("type", "").lower() or None
+        headcode_filter = request.query_params.get("headcode", "").strip()
+        operator_filter = request.query_params.get("operator", "").strip()
+
         if type_filter and type_filter not in ("stopping", "passing"):
-            return Response(
-                {"detail": "type must be 'stopping' or 'passing'"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "type must be 'stopping' or 'passing'"}, status=400)
 
-        # ── base DB query ─────────────────────────────────────────────────────
+        weekday = date_val.weekday()  # 0=Monday … 6=Sunday
+
+        # ── DB query ───────────────────────────────────────────────────────────
+
+        # Station match
         loc_q = Q()
         if crs:
             loc_q |= Q(stop__crs__iexact=crs)
         if tiploc:
             loc_q |= Q(tiploc_code__iexact=tiploc) | Q(stop__tiploc__iexact=tiploc)
 
+        # Timetable date validity
         date_q = (
-            (Q(timetable__schedule_start_date__lte=date_val) | Q(timetable__schedule_start_date__isnull=True))
-            & (Q(timetable__schedule_end_date__gte=date_val)  | Q(timetable__schedule_end_date__isnull=True))
+            Q(timetable__schedule_start_date__lte=date_val) | Q(timetable__schedule_start_date__isnull=True)
+        ) & (
+            Q(timetable__schedule_end_date__gte=date_val)   | Q(timetable__schedule_end_date__isnull=True)
         )
 
-        base_qs = (
+        # sort_time threshold — safe because sort_time is always "HH:MM:SS"
+        time_q = Q(sort_time__gte=threshold_sort_str)
+
+        # Optional headcode / operator / ZZ
+        extra_q = Q()
+        if headcode_filter:
+            extra_q &= Q(timetable__headcode__iexact=headcode_filter)
+        if operator_filter:
+            extra_q &= (
+                Q(timetable__operator__name__icontains=operator_filter) |
+                Q(timetable__operator__code__iexact=operator_filter)
+            )
+        if not show_zz:
+            extra_q &= ~Q(timetable__headcode__istartswith="ZZ")
+            extra_q &= ~Q(timetable__operator__code__istartswith="ZZ")
+
+        qs = (
             ScheduleLocation.objects
-            .filter(loc_q & date_q)
+            .filter(loc_q & date_q & time_q & extra_q)
             .select_related("stop", "timetable", "timetable__operator")
-            .only(*self._CANDIDATE_ONLY)
+            .only(*self._SELECT)
+            .order_by("sort_time")   # safe - always HH:MM:SS
         )
 
-        # ── DeparturesFilter (headcode, operator, day, origin, destination) ───
-        filtered_qs = DeparturesFilter(request.GET, queryset=base_qs).qs
-        candidates  = filtered_qs.iterator(chunk_size=200)
-
-        weekday = date_val.weekday()
-
-        # ── Python-side filter ────────────────────────────────────────────────
-        valid: list[tuple[int, ScheduleLocation, dict]] = []
-        timetable_ids: set[int] = set()
+        # ── Python filter: day mask + type ─────────────────────────────────────
+        # Day mask must be done in Python — the bitmask string format is not
+        # safe to filter in SQL due to variable length / padding inconsistencies.
         station_info: Optional[dict] = None
+        valid = []
 
-        for loc in candidates:
+        for loc in qs.iterator(chunk_size=500):
             tt = loc.timetable
 
-            # ① Day-mask
+            # Day mask check
             if tt:
-                mask = (tt.schedule_days_runs or "").strip().zfill(7)[:7]
-                if mask and mask[weekday] != "1":
+                mask = (tt.schedule_days_runs or "").strip()
+                mask = (mask + "0000000")[:7]   # normalise to exactly 7 chars
+                if mask[weekday] != "1":
                     continue
 
-            # ② ZZ filter
+            # ZZ belt-and-braces (also in DB filter but cheap to re-check)
             if not show_zz and tt:
                 hc  = (tt.headcode or "").upper()
                 opc = (tt.operator.code or "").upper() if tt.operator else ""
                 if hc.startswith("ZZ") or opc.startswith("ZZ"):
                     continue
 
-            # ③ Build time info (needed for both type filter and response)
+            # Type filter
             ti = _time_info(loc)
-
-            # ④ type filter
             if type_filter and ti["type"] != type_filter:
-                continue
-
-            # ⑤ Time threshold (use sort_time which already picks dep > arr > pass)
-            secs = _to_seconds_from_raw(
-                loc.departure_time or loc.arrival_time or loc.pass_time
-            )
-            if secs is None or secs < threshold_seconds:
                 continue
 
             if station_info is None and loc.stop:
                 station_info = _stop_info(loc.stop, request)
 
-            valid.append((secs, loc, ti))
-            if loc.timetable_id:
-                timetable_ids.add(loc.timetable_id)
+            valid.append((loc, ti))
+            if len(valid) >= 10:
+                break   # DB is already sorted by sort_time so first 10 is correct
 
-            if len(valid) >= 50:
-                break
+        # ── origin / destination lookup ────────────────────────────────────────
+        timetable_ids = {loc.timetable_id for loc, _ in valid if loc.timetable_id}
 
-        # ── sort and cap ──────────────────────────────────────────────────────
-        valid.sort(key=lambda x: x[0])
-        valid = valid[:10]
-
-        timetable_ids = {loc.timetable_id for _, loc, _ti in valid if loc.timetable_id}
-
-        # ── origin / destination ──────────────────────────────────────────────
         origin_map:      dict[int, Optional[dict]] = {}
         destination_map: dict[int, Optional[dict]] = {}
 
         if timetable_ids:
-            all_service_locs = (
+            all_locs = (
                 ScheduleLocation.objects
                 .filter(timetable_id__in=timetable_ids)
                 .select_related("stop")
-                .only("timetable_id", "position", "stop__name", "stop__crs",
-                      "stop__tiploc", "stop__lat", "stop__lon")
+                .only(
+                    "timetable_id", "position",
+                    "stop__name", "stop__crs", "stop__tiploc", "stop__lat", "stop__lon",
+                )
                 .order_by("timetable_id", "position")
             )
-            for tt_id, grp in groupby(all_service_locs, key=lambda l: l.timetable_id):
+            for tt_id, grp in groupby(all_locs, key=lambda l: l.timetable_id):
                 locs_list = list(grp)
                 origin_map[tt_id]      = _stop_info(locs_list[0].stop, request)
                 destination_map[tt_id] = _stop_info(locs_list[-1].stop, request)
 
-        # ── build response ────────────────────────────────────────────────────
+        # ── build response ─────────────────────────────────────────────────────
         results = []
-        for secs, loc, ti in valid:
+        for loc, ti in valid:
             tt    = loc.timetable
             tt_id = loc.timetable_id
-            op    = None
-            if tt and tt.operator:
-                op = tt.operator.name or tt.operator.code
+            op    = (tt.operator.name or tt.operator.code) if (tt and tt.operator) else None
 
             results.append({
                 "time":               ti,
                 "platform":           loc.platform,
-                "origin":             origin_map.get(tt_id) if origin_map.get(tt_id) else 'Unknown',
-                "destination":        destination_map.get(tt_id) if destination_map.get(tt_id) else 'Unknown',
+                "origin":             origin_map.get(tt_id) or "Unknown",
+                "destination":        destination_map.get(tt_id) or "Unknown",
                 "cif_train_uid":      tt.CIF_train_uid if tt else None,
                 "headcode":           tt.headcode      if tt else None,
                 "operator":           op,
@@ -561,11 +515,10 @@ class TrainDeparturesView(APIView):
 
         return Response({
             "date":       date_val.isoformat(),
-            "time_after": threshold_seconds,
+            "time_after": threshold_secs,
             "station":    station_info,
             "results":    results,
         })
-
 
 # ---------------------------------------------------------------------------
 # ServiceLocationsView
@@ -627,6 +580,198 @@ class ServiceLocationsView(APIView):
             "locations":          results,
         })
 
+class BusServiceView(APIView):
+    """
+    Return full trip details for a bustimes trip ID.
+    Chains three bustimes API calls:
+      1. /api/trips/{id}/           — stops/times/route
+      2. /api/vehiclejourneys/?trip={id}&datetime={start}  — vehicle assignment
+      3. /api/vehicles/?id={vehicle_id}  — full vehicle details
+
+    Query parameters
+    ────────────────
+      trip    (required)  bustimes trip ID  e.g. 595082572
+    """
+
+    BUSTIMES_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (compatible; TransportStatistics/1.0)",
+        "Accept": "application/json",
+    }
+
+    def _get(self, url: str, params: dict = None) -> dict:
+        """Make a GET request to bustimes API, raise on failure."""
+        resp = requests.get(url, params=params, headers=self.BUSTIMES_HEADERS, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get(self, request):
+        trip_id = request.query_params.get("trip", "").strip()
+        if not trip_id:
+            return Response({"detail": "Provide trip"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ── 1. Fetch trip ──────────────────────────────────────────────────
+        try:
+            trip = self._get(f"https://bustimes.org/api/trips/{trip_id}/")
+            print(f"[BusService] Trip fetched OK: id={trip.get('id')} stops={len(trip.get('times') or [])}")
+        except requests.RequestException as e:
+            print(f"[BusService] Trip fetch FAILED: {e}")
+            return Response({"detail": f"Failed to fetch trip: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        vehicle_info  = None
+        vehicle_extra = None
+        times = trip.get("times") or []
+
+        # ── 2. Find start time ─────────────────────────────────────────────
+        start_time_str = None
+        for t in times:
+            start_time_str = t.get("aimed_departure_time") or t.get("aimed_arrival_time")
+            if start_time_str:
+                break
+
+        print(f"[BusService] Start time from first stop: {start_time_str!r}")
+
+        if start_time_str:
+            try:
+                # Use ?date= param if provided, otherwise fall back to today
+                date_str = request.query_params.get("date", "").strip() or datetime.date.today().isoformat()
+                dt_param = f"{date_str}T{start_time_str}:00Z"
+                print(f"[BusService] Fetching vehicle journeys: trip={trip_id} datetime={dt_param}")
+
+                journey_data = self._get(
+                    "https://bustimes.org/api/vehiclejourneys/",
+                    params={"trip": trip_id, "datetime": dt_param},
+                )
+                print(f"[BusService] Vehicle journeys response: count={journey_data.get('count')} results={len(journey_data.get('results') or [])}")
+                print(f"[BusService] Full journey response: {journey_data}")
+
+                results = journey_data.get("results") or []
+                if not results:
+                    print("[BusService] WARNING: No vehicle journey results — vehicle will be null")
+                else:
+                    vehicle_info = results[0].get("vehicle")
+                    print(f"[BusService] Vehicle info from journey: {vehicle_info}")
+
+                    if not vehicle_info:
+                        print("[BusService] WARNING: Journey result has no 'vehicle' field")
+                    elif not vehicle_info.get("id"):
+                        print(f"[BusService] WARNING: Vehicle has no id: {vehicle_info}")
+                    else:
+                        vid = vehicle_info["id"]
+                        print(f"[BusService] Fetching vehicle details: id={vid}")
+                        vehicle_data = self._get(
+                            "https://bustimes.org/api/vehicles/",
+                            params={"id": vid},
+                        )
+                        print(f"[BusService] Vehicle details response: count={vehicle_data.get('count')} results={len(vehicle_data.get('results') or [])}")
+                        print(f"[BusService] Full vehicle response: {vehicle_data}")
+
+                        v_results = vehicle_data.get("results") or []
+                        if v_results:
+                            vehicle_extra = v_results[0]
+                            print(f"[BusService] Vehicle extra OK: fleet={vehicle_extra.get('fleet_code')} reg={vehicle_extra.get('reg')}")
+                        else:
+                            print(f"[BusService] WARNING: Vehicle API returned no results for id={vid}")
+
+            except requests.RequestException as e:
+                print(f"[BusService] Vehicle lookup FAILED with exception: {type(e).__name__}: {e}")
+                logger.warning("Vehicle journey lookup failed for trip %s: %s", trip_id, e)
+
+        # ── Build normalised locations list ────────────────────────────────
+        # Matches the shape expected by the log-trip frontend (stop + time block)
+        locations = []
+        for entry in times:
+            stop = entry.get("stop") or {}
+            loc  = stop.get("location") or [None, None]
+
+            arr = entry.get("aimed_arrival_time")
+            dep = entry.get("aimed_departure_time")
+
+            # Display string mirrors the train service API format
+            if arr and dep and arr != dep:
+                display = f"{arr} - {dep} | arr-dep"
+            elif dep:
+                display = f"{dep} | dep"
+            elif arr:
+                display = f"{arr} | arr"
+            else:
+                display = "-"
+
+            locations.append({
+                "stop": {
+                    "name":      stop.get("name"),
+                    "atco_code": stop.get("atco_code"),
+                    "lat":       loc[1] if len(loc) > 1 else None,
+                    "lon":       loc[0] if len(loc) > 0 else None,
+                    "crs":       None,
+                    "tiploc":    None,
+                },
+                "time": {
+                    "arrival":   arr,
+                    "departure": dep,
+                    "pass":      None,
+                    "display":   display,
+                    "sort_time": dep or arr,
+                    "type":      "stopping",
+                },
+                "platform":      None,
+                "timing_status": entry.get("timing_status"),
+                "pick_up":       entry.get("pick_up", True),
+                "set_down":      entry.get("set_down", True),
+                # Raw track geometry for the map (list of [lon, lat] pairs)
+                "track":         entry.get("track"),
+            })
+
+        # ── Build vehicle block ────────────────────────────────────────────
+        vehicle = None
+        if vehicle_extra:
+            print("Vehicle extra:", vehicle_extra)
+            vt      = vehicle_extra.get("vehicle_type") or {}
+            livery  = vehicle_extra.get("livery") or {}
+            vehicle = {
+                "id":           vehicle_extra.get("id"),
+                "fleet_number": vehicle_extra.get("fleet_code") or vehicle_extra.get("fleet_number"),
+                "reg":          vehicle_extra.get("reg"),
+                "type":         vt.get("name"),
+                "style":        vt.get("style"),
+                "double_decker": vt.get("double_decker"),
+                "electric":     vt.get("electric"),
+                "livery_name":  livery.get("name"),
+                "livery_left":  livery.get("left"),
+                "livery_right": livery.get("right"),
+                "special_features": vehicle_extra.get("special_features") or [],
+            }
+        elif vehicle_info:
+            print("Vehicle info:", vehicle_info)
+            # Fallback — only basic info from the journey endpoint
+            vehicle = {
+                "id":           vehicle_info.get("id"),
+                "fleet_number": vehicle_info.get("fleet_code"),
+                "reg":          vehicle_info.get("reg"),
+            }
+
+        # ── Operator block ─────────────────────────────────────────────────
+        op_raw   = trip.get("operator") or {}
+        service  = trip.get("service") or {}
+        operator = {
+            "name": op_raw.get("name"),
+            "noc":  op_raw.get("noc"),
+            "slug": op_raw.get("slug"),
+        }
+
+        return Response({
+            "trip_id":   trip.get("id"),
+            "headcode":  service.get("line_name"),
+            "headsign":  trip.get("headsign"),
+            "mode":      service.get("mode", "bus"),
+            "operator":  operator,
+            "vehicle":   vehicle,
+            "locations": locations,
+        })
+
+
+class BusServiceViewSet(ViewSet):
+    def list(self, request):
+        return BusServiceView().get(request)
 
 class ServiceLocationsViewSet(ViewSet):
     def list(self, request):

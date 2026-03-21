@@ -33,6 +33,7 @@ class ScheduleLocation(models.Model):
     location_type = models.CharField(max_length=8, null=True, blank=True)
     tiploc_code = models.CharField(max_length=64, null=True, blank=True)
     stop = models.ForeignKey(Stop, null=True, blank=True, on_delete=models.SET_NULL, related_name='schedule_locations')
+    sort_time = models.TimeField(null=True, blank=True)
     departure_time = models.CharField(max_length=16, null=True, blank=True)
     arrival_time = models.CharField(max_length=16, null=True, blank=True)
     pass_time = models.CharField(max_length=16, null=True, blank=True)

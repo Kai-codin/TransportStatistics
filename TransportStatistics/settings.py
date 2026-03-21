@@ -11,12 +11,14 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-import dj_database_url
 from dotenv import load_dotenv
-load_dotenv()
-import pymysql
-pymysql.install_as_MySQLdb()
 
+import dj_database_url
+import pymysql
+import os
+
+pymysql.install_as_MySQLdb()
+load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,7 +32,8 @@ SECRET_KEY = 'django-insecure-l+q+qn&@=w!g&xqhym7@@@1o=-e=r&*yrt&*vs0)znz30l)8(i
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
 
 
 # Application definition

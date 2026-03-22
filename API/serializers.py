@@ -13,4 +13,4 @@ class StopSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Stop
-        fields = ('id', 'name', 'atco_code', 'naptan_code', 'tiploc', 'crs', 'stop_type', 'active', 'lat', 'lon', 'lines', 'indicator', 'icon')
+        fields = ('id', 'name', 'common_name', 'long_name', 'atco_code', 'naptan_code', 'tiploc', 'crs', 'stop_type', 'active', 'lat', 'lon', 'lines', 'indicator', 'icon')

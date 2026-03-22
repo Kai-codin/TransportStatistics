@@ -17,6 +17,8 @@
 .ts-toggle-row{display:flex;gap:14px;padding:10px 14px 6px;flex-wrap:wrap}
 .ts-toggle{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;opacity:0.9}
 .ts-toggle input{cursor:pointer}
+/* marker for stop icon fallback when style lacks glyphs */
+.ts-stop-icon-marker{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:transparent;color:#fff;font-size:10px;font-weight:700;line-height:1;border:0;padding:0;pointer-events:none;text-shadow:0 0 2px rgba(0,0,0,0.8);}
 </style>
 
 <div class="ts-map-wrapper">
@@ -177,6 +179,7 @@
   // ── HTML builders ──────────────────────────────────────────────────────────
 
   function headerHTML(p) {
+    console.log(p);
     return `
       <div class="ts-popup-header">
         <div class="ts-popup-title-row">
@@ -263,7 +266,7 @@
           data-origin-crs="${(r.origin && r.origin.crs) || ''}"
           data-destination="${dest}"
           data-destination-crs="${(r.destination && r.destination.crs) || ''}"
-          data-stop="${_activeProps ? (_activeProps.name||'') : ''}"
+          data-stop="${_activeProps ? (_activeProps.long_name|| _activeProps.name|| '') : ''}"
           data-stop-crs="${_activeProps ? (_activeProps.crs||'') : ''}"
           data-stop-atco="${_activeProps ? (_activeProps.atco_code||'') : ''}"
           data-vehicle="${vehicle}"
@@ -432,6 +435,42 @@
     let _controller = null, _loadedBbox = null, _debounce = null;
 
     let _lastFeatures = [];
+    // DOM markers for stops with an `icon` property (fallback when style has no glyphs)
+    let _stopIconMarkers = new Map(); // pk -> Maplibre Marker
+
+    function clearIconMarkers() {
+      for (const m of _stopIconMarkers.values()) try { m.remove(); } catch(_) {}
+      _stopIconMarkers.clear();
+    }
+
+    function updateIconMarkers(features) {
+      // features: array of GeoJSON features
+      const keep = new Set();
+      for (const f of features) {
+        try {
+          const props = f.properties || {};
+          if (!props.icon) continue;
+          const id = String(props.id || `${props.atco_code}:${props.crs}`);
+          keep.add(id);
+          if (_stopIconMarkers.has(id)) continue; // already present
+          const el = document.createElement('div');
+          el.className = 'ts-stop-icon-marker';
+          el.textContent = String(props.icon).slice(0,2);
+          const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([parseFloat(f.geometry.coordinates[0]), parseFloat(f.geometry.coordinates[1])])
+            .addTo(map);
+          _stopIconMarkers.set(id, marker);
+        } catch (e) { console.debug('icon marker err', e); }
+      }
+      // remove any markers not in 'keep'
+      for (const key of Array.from(_stopIconMarkers.keys())) {
+        const k = String(key);
+        if (!keep.has(k)) {
+          try { _stopIconMarkers.get(key).remove(); } catch(_) {}
+          _stopIconMarkers.delete(key);
+        }
+      }
+    }
 
     const setSource = features => {
       _lastFeatures = features;
@@ -442,6 +481,8 @@
           type: 'FeatureCollection',
           features: tooMany ? [] : features,
         });
+        // update DOM markers for icons when not too many
+        if (tooMany) clearIconMarkers(); else updateIconMarkers(features);
       } catch(_) {}
     };
 
@@ -480,11 +521,17 @@
               type:'Feature',
               geometry:{ type:'Point', coordinates:[parseFloat(s.lon), parseFloat(s.lat)] },
               properties:{
-                id: s.id, name: s.name||'', crs: s.crs||'',
+                id: s.id, 
+                name: s.long_name||s.name||'', 
+                crs: s.crs||'',
                 atco_code: s.atco_code||'',
-                tiploc: s.tiploc||'', platform: s.platform||'',
+                tiploc: s.tiploc||'', 
+                platform: s.platform||'',
                 stop_type_code: (s.stop_type&&s.stop_type.code)||'',
                 stop_type_name: (s.stop_type&&s.stop_type.name)||'',
+                icon: s.icon || '',
+                indicator: s.indicator || '',
+                lines: s.lines || '',
               }
             });
           }
@@ -517,7 +564,7 @@
         if (next === STYLE_URL) return;
         STYLE_URL = next;
         // setStyle wipes all sources/layers — re-add them once the new style loads
-        map.once('styledata', function() {
+            map.once('styledata', function() {
           if (!map.getSource('stops')) {
             map.addSource('stops', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
             map.addLayer({ id:'unclustered-point', type:'circle', source:'stops',
@@ -532,9 +579,12 @@
                   'GAT','#c2410c','AIR','#ea580c',
                   'TXR','#ca8a04','STR','#eab308',
                   '#6b7280'],
-                'circle-radius':6, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+                // slightly larger circle when an `icon` property exists so the text fits
+                'circle-radius': ['case', ['has', 'icon'], 10, 6],
+                'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
               }
             });
+            // style may not include glyphs for text; we'll render icons as DOM markers instead
           }
           // restore cached stops on the new style
           if (_lastFeatures.length) setSource(_lastFeatures);
@@ -558,9 +608,12 @@
             'GAT','#c2410c','AIR','#ea580c',
             'TXR','#ca8a04','STR','#eab308',
             '#6b7280'],
-          'circle-radius':6, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+          // slightly larger circle when an `icon` property exists so the text fits
+          'circle-radius': ['case', ['has', 'icon'], 10, 6], 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
         }
       });
+      // We render icon text via DOM markers (updateIconMarkers) rather than a text symbol layer,
+      // because the current style may not declare a `glyphs` property.
 
       map.on('click','unclustered-point', e => {
         const props = e.features[0].properties || {};

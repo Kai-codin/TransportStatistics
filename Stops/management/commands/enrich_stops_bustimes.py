@@ -11,6 +11,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--commit', action='store_true', help='Persist changes')
+        parser.add_argument('--atco', '-a', type=str, default=None, help='Only process this ATCO code')
         parser.add_argument('--limit', '-n', type=int, default=0, help='Limit processed stops (0 = all)')
         parser.add_argument('--sleep', type=float, default=0.05, help='Seconds to sleep between requests (rate limit)')
 
@@ -19,7 +20,10 @@ class Command(BaseCommand):
         limit = options.get('limit') or 0
         sleep = options.get('sleep')
 
+        atco_arg = options.get('atco')
         qs = Stop.objects.filter(atco_code__isnull=False).exclude(atco_code__exact='')
+        if atco_arg:
+            qs = qs.filter(atco_code__iexact=atco_arg.strip())
         total = qs.count()
         self.stdout.write(f'Found {total} stops with atco_code')
 
@@ -37,10 +41,10 @@ class Command(BaseCommand):
             if not atco:
                 continue
 
-            url = f'https://bustimes.org/api/stops/'
-            params = {'atco_code': atco}
+            # Prefer the path-based endpoint e.g. https://bustimes.org/api/stops/{atco}
+            url = f'https://bustimes.org/api/stops/{atco}'
             try:
-                resp = session.get(url, params=params, timeout=10)
+                resp = session.get(url, timeout=10)
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as e:

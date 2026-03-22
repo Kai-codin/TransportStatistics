@@ -1,0 +1,48 @@
+Collecting MySQL variables...
+
+== Key Variables ==
+innodb_buffer_pool_instances: 4
+innodb_buffer_pool_size: 1073741824
+join_buffer_size: 262144
+key_buffer_size: 8388608
+max_connections: 151
+max_heap_table_size: 16777216
+read_buffer_size: 131072
+read_rnd_buffer_size: 262144
+sort_buffer_size: 262144
+tmp_table_size: 16777216
+
+== InnoDB Buffer Pool Status ==
+Innodb_buffer_pool_dump_status: Dumping of buffer pool not started
+Innodb_buffer_pool_load_status: Buffer pool(s) load completed at 260321 17:56:11
+Innodb_buffer_pool_resize_status: 
+Innodb_buffer_pool_resize_status_code: 0
+Innodb_buffer_pool_resize_status_progress: 0
+Innodb_buffer_pool_pages_data: 20452
+Innodb_buffer_pool_bytes_data: 335085568
+Innodb_buffer_pool_pages_dirty: 1189
+Innodb_buffer_pool_bytes_dirty: 19480576
+Innodb_buffer_pool_pages_flushed: 84491
+Innodb_buffer_pool_pages_free: 45079
+Innodb_buffer_pool_pages_misc: 5
+Innodb_buffer_pool_pages_total: 65536
+Innodb_buffer_pool_read_ahead_rnd: 0
+Innodb_buffer_pool_read_ahead: 1809
+Innodb_buffer_pool_read_ahead_evicted: 0
+Innodb_buffer_pool_read_requests: 331805377
+Innodb_buffer_pool_reads: 14427
+Innodb_buffer_pool_wait_free: 0
+Innodb_buffer_pool_write_requests: 5803050
+
+== Processlist (first 50) ==
+ID=5 USER=event_scheduler HOST=localhost DB=None CMD=Daemon TIME=16216 STATE=Waiting on empty queue INFO=None
+ID=435 USER=root HOST=100.64.0.3:18928 DB=railway CMD=Sleep TIME=8604 STATE= INFO=None
+ID=437 USER=root HOST=100.64.0.6:41254 DB=railway CMD=Sleep TIME=0 STATE= INFO=None
+ID=524 USER=root HOST=100.64.0.12:24924 DB=railway CMD=Sleep TIME=6720 STATE= INFO=None
+ID=629 USER=root HOST=100.64.0.12:13042 DB=railway CMD=Sleep TIME=139 STATE= INFO=None
+ID=630 USER=root HOST=100.64.0.8:31858 DB=railway CMD=Query TIME=0 STATE=init INFO=SHOW FULL PROCESSLIST
+
+Diagnostic tips:
+- Check `innodb_buffer_pool_size` relative to system RAM; large values (hundreds of MB) are normal on DB servers but heavy on dev machines.
+- Reduce `innodb_buffer_pool_size` or `max_connections` in MySQL config (my.cnf) for low-RAM hosts.
+- Use `SHOW ENGINE INNODB STATUS` for more details on memory/locks.

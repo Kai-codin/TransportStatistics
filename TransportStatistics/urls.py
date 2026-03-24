@@ -21,17 +21,25 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from main import views_auth
-from Trips.views import log_trip, profile, trip_detail
+from Trips.views import log_trip, profile, trip_detail, trip_date_map, view_profile, edit_trip
+from Social import views
 
 urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
+    path("friends/", views.friends_page, name="friends"),
+    path("friends/add/<int:user_id>/", views.add_friend, name="add_friend"),
+    path("friends/accept/<int:user_id>/", views.accept_friend, name="accept_friend"),
+    path("friends/decline/<int:user_id>/", views.decline_friend, name="decline_friend"),
+    path('profile/<int:user_id>/', view_profile, name='view_profile'),
     path('legal/', TemplateView.as_view(template_name='legal.html'), name='legal'),
     path('profile/', profile, name='profile'),
+    path('trips/map/<str:date>/', trip_date_map, name='trips_map'),
     path('trips/<int:pk>/', trip_detail, name='trip_detail'),
+    path('trips/<int:pk>/edit/', edit_trip, name='edit_trip'),
     path('manage/', TemplateView.as_view(template_name='manage.html'), name='manage'),
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('accounts/register/', views_auth.register, name='register'),
-    path('accounts/logout/', TemplateView.as_view(template_name='logged_out.html'), name='logout'),
+    path('accounts/logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('admin/', admin.site.urls),
     path('api/', include('API.urls')),
     path('log-trip/', log_trip, name='log_trip'),

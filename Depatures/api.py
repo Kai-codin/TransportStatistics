@@ -293,8 +293,11 @@ class BusDeparturesView(APIView):
             trip_href  = sched_link.get("href", "") if sched_link else ""
             trip_url   = f"https://bustimes.org{trip_href}" if trip_href else None
 
-            # trip_id is the end string of /trips/577592344
+            # trip_id is the end string of /trips/577592344 if its a TFL services they use /vehicles/tfl/LX75ZFS 
             trip_id = trip_href.split("/trips/")[-1] if "/trips/" in trip_href else None
+
+            if trip_id == None and "/vehicles/tfl/" in trip_href:
+                trip_id = trip_href.split("/vehicles/tfl/")[-1]
  
             # normalise time to HH:MM
             scheduled = scheduled.strip()

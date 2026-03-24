@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Access Denied - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+    .ts-error {
+        text-align: center;
+        padding: 3rem 1rem;
+    }
+
+    .ts-btn-primary, .ts-btn-secondary {
+        padding: 6px 12px !important;
+        margin-left: 5px;
+        font-size: 16px;
+    }
+
+    .ts-error-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    .ts-error-sub {
+        color: #666;
+        margin-bottom: 1.5rem;
+    }
+
+    .ts-error-actions a {
+        margin: 0 6px;
+    }
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <!-- Header -->
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Access Denied</div>
+            </div>
+
+            <!-- Body -->
+            <div class="ts-profile-body">
+
+                <div class="ts-card">
+                    <div class="ts-error">
+                        <div class="ts-error-title">
+                            You don’t have permission
+                        </div>
+
+                        <div class="ts-error-sub">
+                            {{ message|default:"You do not have permission to view this page." }}
+                        </div>
+
+                        <div class="ts-error-actions">
+                            <a href="/" class="ts-btn-primary">Return Home</a>
+
+                            {% if request.user.is_authenticated %}
+                                <a href="/profile/" class="ts-btn-secondary">Your Profile</a>
+                            {% else %}
+                                <a href="/accounts/login/" class="ts-btn-secondary">Log in</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

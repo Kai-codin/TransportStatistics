@@ -1,10 +1,10 @@
 {% comment %}
-  Transit Stop Map — Django Include
+  Transit Stop Map - Django Include
   Usage:
     {% include "includes/ts-map.html" with theme="light" %}
     {% include "includes/ts-map.html" with theme="dark" %}
   Props:
-    theme — "light" (default) or "dark"
+    theme - "light" (default) or "dark"
 {% endcomment %}
 
 {% load static %}
@@ -245,11 +245,12 @@
   function departureRowsHTML(results, qt, hasExpected) {
     return results.slice(0, 15).map(r => {
       const sched   = (r.time && (r.time.departure || r.time.arrival || '')) || '';
+      const pass    = (r.time.pass);
       const exp     = (r.time && r.time.expected_departure) || '';
       const late    = sched && exp && exp !== sched;
       const dt      = qt || new Date();
-      const rawHead = r.headcode || '—';
-      const rawDest = (r.destination && r.destination.name) || '—';
+      const rawHead = r.headcode || '-';
+      const rawDest = (r.destination && r.destination.name) || '-';
       const vehicle = r.vehicle || '';
       const repl    = applyHeadcodeReplacement(rawHead, rawDest);
       const head    = repl.head;
@@ -259,8 +260,8 @@
       return `<tr${repl.isReplacement ? ' class="ts-row-replacement"' : ''}>
         <td class="td-headcode">${rtt ? `<a href="${rtt}" target="_blank" rel="noopener" class="ts-headcode-link">${head}</a>` : `<span class="ts-headcode-replacement">${head}</span>`}</td>
         <td class="td-dest" title="${dest}">${dest}${vehicle ? `<div class="td-vehicle">${vehicle}</div>` : ''}</td>
-        <td class="td-time">${String(sched).slice(0,5) || '—'}</td>
-        ${hasExpected ? `<td class="td-expected${late?' late':''}">${late ? String(exp).slice(0,5) : '—'}</td>` : ''}
+        <td class="td-time">${String(sched).slice(0,5) ||  `<span class="ts-passing"><small>Pass </small>${String(pass).slice(0,5)}</span>` || '-'}</td>
+        ${hasExpected ? `<td class="td-expected${late?' late':''}">${late ? String(exp).slice(0,5) : '-'}</td>` : ''}
         <td><button class="ts-log-btn"
           data-headcode="${rawHead}"
           data-trip-id="${r.trip_id || ''}"
@@ -384,7 +385,7 @@
 
     openSheet(sheetHTML_loading(props, qt));
 
-    // rail uses crs, bus/tram/ferry use atco_code — show empty if neither present
+    // rail uses crs, bus/tram/ferry use atco_code - show empty if neither present
     const isBus  = BUS_TYPE_CODES.has(props.stop_type_code);
     const refKey = isBus ? props.atco_code : props.crs;
 
@@ -394,7 +395,7 @@
     }
 
     const idParam = isBus ? `atco_code=${refKey}` : `crs=${refKey}`;
-    // only send date/time for past or future — omit entirely for "now" so the
+    // only send date/time for past or future - omit entirely for "now" so the
     // API (and bustimes upstream) uses its own live clock and serves live data
     const timeParams = qt ? `&date=${toDate(dt)}&time=${toTime(dt)}` : '';
     const extraParams = `&show_zz=${_showZZ ? 'true' : 'false'}` + `&show_passing=${_showPassing ? 'true' : 'false'}`;
@@ -585,18 +586,18 @@
       } catch(_) {}
     };
 
-    // called on zoomend — re-evaluates cached features.
+    // called on zoomend - re-evaluates cached features.
     // If still too many (zoomed out), show hint.
     // If we zoomed in enough that a fresh narrower fetch would fix it, clear
     // _loadedBbox so checkAndLoad triggers a new request.
     function recheckDensity() {
       if (!_lastFeatures.length) return;
       if (_lastFeatures.length > STOP_LIMIT) {
-        // too many — clear loaded bbox so checkAndLoad will re-fetch for the
+        // too many - clear loaded bbox so checkAndLoad will re-fetch for the
         // tighter viewport, which may return fewer stops
         _loadedBbox = null;
       } else {
-        // within limit — just redisplay what we have
+        // within limit - just redisplay what we have
         setSource(_lastFeatures);
       }
     }
@@ -662,7 +663,7 @@
         const next = styleFor(theme);
         if (next === STYLE_URL) return;
         STYLE_URL = next;
-        // setStyle wipes all sources/layers — re-add them once the new style loads
+        // setStyle wipes all sources/layers - re-add them once the new style loads
             map.once('styledata', function() {
           if (!map.getSource('stops')) {
             map.addSource('stops', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
@@ -720,7 +721,7 @@
         // If the stop has an ATCO code, call the internal enrichment API
         // which will fetch bustimes.org and persist updates for that stop.
         // After the enrichment request completes (or fails) we open the sheet.
-        // Do not reset _sheetQueryTime here — reuse the last selected
+        // Do not reset _sheetQueryTime here - reuse the last selected
         // datetime when opening another stop. If no selection exists,
         // loadDepartures will consult saved value.
         if (props.atco_code) {
@@ -732,7 +733,7 @@
         }
       });
 
-      // tap empty map — close sheet
+      // tap empty map - close sheet
       map.on('click', e => {
         const hits = map.queryRenderedFeatures(e.point,{layers:['unclustered-point']});
         if (!hits.length) closeSheet();

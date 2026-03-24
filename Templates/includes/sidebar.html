@@ -46,6 +46,20 @@
         </span>
         Profile
       </a>
+
+      <a href="{% url 'friends' %}" class="ts-nav-item {% if request.resolver_match.url_name == 'friends' %}active{% endif %}">
+        <span class="ts-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M2.5 13.5c0-2.485 2.462-4.5 5.5-4.5s5.5 2.015 5.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <svg style="margin-left: -5px;" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M2.5 13.5c0-2.485 2.462-4.5 5.5-4.5s5.5 2.015 5.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </span>
+        Friends
+      </a>
     </div>
 
     {% if request.user.is_staff %}

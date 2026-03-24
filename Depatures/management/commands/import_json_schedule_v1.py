@@ -103,6 +103,7 @@ TIMETABLE_COLS = [
     "schedule_start_date", "schedule_end_date", "train_status",
     "headcode", "CIF_headcode", "train_service_code",
     "power_type", "max_speed", "train_class",
+    "created_at", "modified_at", 
 ]
 
 LOC_COLS = [
@@ -228,6 +229,15 @@ class OperatorCache:
                 op.code: op.pk for op in Operator.objects.all()
             }
 
+    
+    def size(self) -> int:
+        if self._use_redis:
+            try:
+                return len(_redis_client.keys(f"{self._prefix}*"))
+            except Exception:
+                return -1
+        return len(self._cache)
+
     def get_pk(self, atoc_code: Optional[str]) -> Optional[int]:
         if not atoc_code:
             return None
@@ -276,6 +286,14 @@ class OperatorCache:
 
 
 class StopCache:
+    def size(self) -> int:
+        if self._use_redis:
+            try:
+                return len(_redis_client.keys(f"{self._prefix}*"))
+            except Exception:
+                return -1
+        return len(self._cache)
+
     def __init__(self):
         # If Redis is available, use it to avoid holding all stop PKs in RAM.
         self._use_redis = _redis_usable and _redis_client is not None
@@ -404,6 +422,7 @@ def _loc_table() -> str:
 
 
 def _row_values(r: dict) -> tuple:
+    now = datetime.datetime.now()
     return (
         r["CIF_train_uid"],
         r["operator_id"],
@@ -417,6 +436,8 @@ def _row_values(r: dict) -> tuple:
         r["power_type"],
         r["max_speed"],
         r["train_class"],
+        now,   # created_at
+        now,   # modified_at
     )
 
 
@@ -521,7 +542,6 @@ def _expand_record(uid: str, best: dict, op_cache: OperatorCache) -> dict:
         "train_class":         seg.get("CIF_train_class"),
         "schedule_locations":  seg.get("schedule_location") or [],
     }
-
 
 def _build_location_rows(
     record: dict, timetable_pk: int, stop_cache: StopCache
@@ -652,9 +672,9 @@ class Command(BaseCommand):
         t0         = time.time()
         stop_cache = StopCache()
         op_cache   = OperatorCache()
-        p(f"  {len(stop_cache._cache):,} stops  |  "
-          f"{len(op_cache._cache):,} operators  |  "
-          f"{time.time() - t0:.1f}s")
+        p(f"  {stop_cache.size():,} stops  |  "
+            f"{op_cache.size():,} operators  |  "
+            f"{time.time() - t0:.1f}s")
 
         # ── Pass 1: STP selection ─────────────────────────────────────────────
         raw_records: Dict[str, dict] = {}
@@ -716,6 +736,7 @@ class Command(BaseCommand):
         REPORT_EVERY  = max(1, total_batches // 20)  # ~20 progress lines total
 
         for batch_num, batch_start in enumerate(range(0, len(uid_list), batch_size), 1):
+            print(f"\nBatch {batch_num}/{total_batches} ...", flush=True)
             batch_uids = uid_list[batch_start : batch_start + batch_size]
             records    = [
                 _expand_record(uid, raw_records[uid], op_cache)

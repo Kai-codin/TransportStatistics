@@ -1,19 +1,96 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.dateparse import parse_time, parse_date
+from django.contrib.auth import get_user_model
+from Social.models import UserProfile, Friend
+from Social.forms import ProfileForm
 
 from .forms import TripLogForm
 from .models import TripLog
 
 from itertools import groupby
 
-@login_required
+import json
+
 def trip_detail(request, pk):
-    trip = get_object_or_404(TripLog, pk=pk, user=request.user)
-    return render(request, 'trip_detail.html', {'trip': trip})
+    # Allow viewing based on the trip owner's privacy settings.
+    trip = get_object_or_404(TripLog, pk=pk)
+    owner = trip.user
+
+    # Owner always can view
+    if request.user == owner:
+        return render(request, 'trip_detail.html', {'trip': trip})
+
+    # Load owner's profile (ensure exists)
+    try:
+        profile = owner.profile
+    except Exception:
+        from Social.models import UserProfile
+        profile, _ = UserProfile.objects.get_or_create(user=owner)
+
+    # Public: anyone can view (including anonymous)
+    if profile.privacy == profile.PRIVACY_PUBLIC:
+        return render(request, 'trip_detail.html', {'trip': trip})
+
+    # Friends only: allow if the requester is an accepted friend
+    if profile.privacy == profile.PRIVACY_FRIENDS:
+        # If requester is anonymous, deny
+        if not request.user.is_authenticated:
+            return render(request, '403.html', {'message': 'This trip is friends-only. Please log in to request access.'}, status=403)
+        is_friend = Friend.objects.filter(user=owner, friend=request.user, status='accepted').exists() or Friend.objects.filter(user=request.user, friend=owner, status='accepted').exists()
+        if is_friend:
+            return render(request, 'trip_detail.html', {'trip': trip})
+        return render(request, '403.html', {'message': 'This trip is friends-only. You are not permitted to view this trip.'}, status=403)
+
+    # Private: only owner can view (we already checked owner above)
+    return render(request, '403.html', {'message': 'This trip is private.'}, status=403)
+
+@login_required
+def trip_date_map(request, date):
+    if date == 'all':
+        trips = TripLog.objects.filter(user=request.user)
+        service_date = None  # Map will show all dates, so no single date to highlight
+    else:
+        try:
+            service_date = parse_date(date)
+        except ValueError:
+            return render(request, 'trips_map.html', {'error': 'Invalid date format. Use YYYY-MM-DD.'})
+
+        trips = TripLog.objects.filter(
+            user=request.user, service_date=service_date
+        ).order_by('scheduled_departure')
+
+    trips_data = [
+        {
+            'id': t.pk,
+            'headcode': t.headcode,
+            'origin': t.origin_name,
+            'destination': t.destination_name,
+            'transport_type': t.transport_type,
+            'route_geometry': t.route_geometry,  # already [[lon,lat],...]
+        }
+        for t in trips
+        if t.route_geometry
+    ]
+
+    return render(request, 'trips_map.html', {
+        'trips': trips,
+        'trips_json': json.dumps(trips_data),
+        'service_date': service_date,
+    })
 
 @login_required
 def profile(request):
+    # Handle profile privacy form
+    profile_obj, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == 'POST' and 'privacy' in request.POST:
+        pf = ProfileForm(request.POST, instance=profile_obj)
+        if pf.is_valid():
+            pf.save()
+            return redirect('profile')
+    else:
+        pf = ProfileForm(instance=profile_obj)
+
     trips = TripLog.objects.filter(user=request.user).order_by('-service_date', '-scheduled_departure', '-logged_at')
 
     # Group by date
@@ -26,6 +103,48 @@ def profile(request):
         'days':        days,
         'total_trips': trips.count(),
         'total_days':  len(days),
+        'profile_form': pf,
+        'viewing_user': None,
+        'restricted': False,
+    })
+
+
+def view_profile(request, user_id):
+    User = get_user_model()
+    view_user = get_object_or_404(User, id=user_id)
+    profile_obj, _ = UserProfile.objects.get_or_create(user=view_user)
+
+    # enforce privacy
+    restricted = False
+    if request.user != view_user:
+        if profile_obj.privacy == UserProfile.PRIVACY_PRIVATE:
+            restricted = True
+        elif profile_obj.privacy == UserProfile.PRIVACY_FRIENDS:
+            # check if requester is a friend of view_user (either direction accepted)
+            is_friend = Friend.objects.filter(user=view_user, friend=request.user, status='accepted').exists() or Friend.objects.filter(user=request.user, friend=view_user, status='accepted').exists()
+            if not is_friend:
+                restricted = True
+
+    # Only load trips if the requester is allowed to view them
+    if restricted:
+        trips = TripLog.objects.none()
+        days = []
+    else:
+        trips = TripLog.objects.filter(user=view_user).order_by('-service_date', '-scheduled_departure', '-logged_at')
+
+        # Group by date
+        days = []
+        from itertools import groupby
+        for date, group in groupby(trips, key=lambda t: t.service_date):
+            trip_list = list(group)
+            days.append({'date': date, 'trips': trip_list})
+
+    return render(request, 'profile.html', {
+        'days': days,
+        'total_trips': trips.count(),
+        'total_days': len(days),
+        'viewing_user': view_user,
+        'restricted': restricted,
     })
 
 @login_required
@@ -101,4 +220,25 @@ def log_trip(request):
         'transport_type': transport_type,
         'is_bus':         is_bus,
         'is_rail':        not is_bus,
+    })
+
+
+@login_required
+def edit_trip(request, pk):
+    """Edit a previously logged trip. Only the user who logged the trip may edit it."""
+    trip = get_object_or_404(TripLog, pk=pk)
+    if request.user != trip.user:
+        return render(request, '403.html', {'message': 'You are not permitted to edit this trip.'}, status=403)
+
+    if request.method == 'POST':
+        form = TripLogForm(request.POST, instance=trip)
+        if form.is_valid():
+            form.save()
+            return redirect('trip_detail', pk=trip.pk)
+    else:
+        form = TripLogForm(instance=trip)
+
+    return render(request, 'edit_trip.html', {
+        'form': form,
+        'trip': trip,
     })

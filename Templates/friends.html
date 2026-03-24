@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}My Trips - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+    .ts-form {
+        max-width: 100%;
+    }
+
+    .ts-btn-primary, .ts-btn-secondary {
+        padding: 6px 12px !important;
+        margin-left: 5px;
+        font-size: 16px;
+    }
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <!-- ── header ──────────────────────────────────────────────── -->
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Friends</div>
+            </div>
+
+            <!-- ── body ────────────────────────────────────────────────── -->
+            <div class="ts-profile-body">
+
+                <!-- SEARCH CARD -->
+                <div class="ts-card">
+                    <div class="ts-section-title">Find Friends</div>
+
+                    <form method="post" action="" class="ts-form ts-form-search" novalidate>
+                        {% csrf_token %}
+
+                        <div class="ts-search-row">
+                            <input type="text" id="id_username" name="username" placeholder="Search by username..."
+                                class="ts-form-input{% if form.username.errors %} ts-form-input--error{% endif %}"
+                                value="{{ form.username.value|default:'' }}" autocomplete="username" required />
+
+                            <button type="submit" class="ts-btn-primary ts-btn-search">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                    <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {% if form.username.errors %}
+                        <div class="ts-form-field-error">{{ form.username.errors|join:", " }}</div>
+                        {% endif %}
+                    </form>
+                </div>
+
+                <!-- RESULTS -->
+                {% if incoming_pending %}
+                <div class="ts-section">
+                    <div class="ts-section-title">Pending Requests</div>
+
+                    <div class="ts-user-list">
+                        {% for fr in incoming_pending %}
+                        <div class="ts-user-card">
+                            <div class="ts-user-left">
+                                <div class="ts-user-avatar">{{ fr.user.username|slice:":1"|upper }}</div>
+                                <div>
+                                    <div class="ts-user-name">@{{ fr.user.username }}</div>
+                                </div>
+                            </div>
+                            <div class="ts-user-actions">
+                                <a href="{% url 'accept_friend' fr.user.id %}" class="ts-btn-primary">Accept</a>
+                                <a href="{% url 'decline_friend' fr.user.id %}" class="ts-btn-secondary">Decline</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% endif %}
+
+                {% if friends_list %}
+                <div class="ts-section">
+                    <div class="ts-section-title">Your Friends</div>
+
+                    <div class="ts-user-list">
+                        {% for fr in friends_list %}
+                        <div class="ts-user-card">
+                            <div class="ts-user-left">
+                                <div class="ts-user-avatar">{{ fr.friend.username|slice:":1"|upper }}</div>
+                                <div>
+                                    <div class="ts-user-name">@{{ fr.friend.username }}</div>
+                                </div>
+                            </div>
+                            <div class="ts-user-actions">
+                                <a href="{% url 'view_profile' fr.friend.id %}" class="ts-btn-secondary">View Profile</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% endif %}
+
+                {% if results %}
+                <div class="ts-section">
+                    <div class="ts-section-title">Results</div>
+
+                    <div class="ts-user-list">
+                        {% for user in results %}
+                        <div class="ts-user-card">
+                            <div class="ts-user-left">
+                                <div class="ts-user-avatar">
+                                    {{ user.username|slice:":1"|upper }}
+                                </div>
+
+                                <div>
+                                    <div class="ts-user-name">@{{ user.username }}</div>
+                                </div>
+                            </div>
+
+                            <div class="ts-user-actions">
+                                {% if user.id in existing_friend_ids %}
+                                    {% if user.id in outgoing_pending_ids %}
+                                        <span class="ts-badge">Pending</span>
+                                    {% else %}
+                                        <span class="ts-badge">Friends</span>
+                                    {% endif %}
+                                {% else %}
+                                    <a href="{% url 'add_friend' user.id %}" class="ts-btn-secondary">Add</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% else %}
+                <div class="ts-empty">
+                    <div class="ts-empty-icon">👥</div>
+                    <div class="ts-empty-title">Find your friends</div>
+                    <div class="ts-empty-sub">Search for users to add them</div>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+</div>
+</main>
+</div>
+{% endblock %}

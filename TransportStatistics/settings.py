@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'main',
     'API',
     'Depatures',
+    'Social',
     'Stops',
     'Trips',
     'Web',

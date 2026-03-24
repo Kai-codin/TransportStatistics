@@ -152,6 +152,14 @@
 
           <div class="ts-detail-meta" style="margin-top:auto;padding-top:8px">
             Logged {{ trip.logged_at|date:"j F Y" }} at {{ trip.logged_at|time:"H:i" }}
+            {% if request.user.is_authenticated %}
+              {% if not viewing_user or viewing_user.id == request.user.id %}
+                <div style="margin-top:6px;display:flex;justify-content:flex-end">
+                  <a class="ts-btn-primary" style="width: 50%; padding: 5px 10px; margin-right: 5px;" href="{% url 'edit_trip' trip.pk %}">Edit</a>
+                  <a class="ts-btn-primary" style="background-color: var(--ts-danger); width: 50%; padding: 5px 10px;" href="">Delete</a>
+                </div>
+              {% endif %}
+            {% endif %}
           </div>
 
         </div>
@@ -174,7 +182,7 @@
   const routeGeometry = {{ trip.route_geometry|default:"null"|safe }};
   const mode          = '{{ trip.transport_type }}';
 
-  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
   const styleFor = t => STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json';
   let _theme = (() => { try { return localStorage.getItem('ts_theme') || 'light'; } catch { return 'light'; } })();
 

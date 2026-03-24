@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Trips on {{ service_date }}{% endblock %}
+{% block extra_head %}
+<link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
+{% endblock %}
+{% block body_class %}ts-app-page{% endblock %}
+{% block content %}
+<div class="ts-app">
+  {% include "includes/sidebar.html" %}
+  <main class="ts-main">
+    <div class="ts-detail-layout">
+      <div class="ts-detail-map-area">
+        <div id="ts-detail-map"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const tripsData = {{ trips_json|safe }};
+
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
+  const styleFor = t => STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json';
+  let _theme = (() => { try { return localStorage.getItem('ts_theme') || 'light'; } catch { return 'light'; } })();
+
+  // Helpers: deterministic hash -> HSL -> hex color
+  function hashString(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h) + str.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h);
+  }
+
+  function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => {
+      const k = (n + h / 30) % 12;
+      const color = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+      return Math.round(255 * color).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+  }
+
+  function routeColor(trip, idx) {
+    const seed = String(trip.id || trip.headcode || idx);
+    let hue = hashString(seed) % 360;
+    // spread hues by index to reduce collisions
+    hue = (hue + idx * 97) % 360;
+    const saturation = 62; // pleasant, not too muted
+    const lightness = 48;  // not too light, not too dark
+    return hslToHex(hue, saturation, lightness);
+  }
+
+  const map = new maplibregl.Map({
+    container: 'ts-detail-map',
+    style:     styleFor(_theme),
+    center:    [-1.5, 52.5],
+    zoom:      6,
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+
+
+  map.on('load', () => {
+    // Collect all coords across all trips for bounds fitting
+    const allCoords = [];
+
+    tripsData.forEach((trip, i) => {
+      const coords = trip.route_geometry;
+      if (!coords || coords.length < 2) return;
+
+      const colour = routeColor(trip, i);
+      const suffix = `_${i}`;  // unique suffix per trip
+
+      // ── route line ──────────────────────────────────────────
+      map.addSource('route' + suffix, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { headcode: trip.headcode, origin: trip.origin, destination: trip.destination },
+        }
+      });
+      map.addLayer({
+        id: 'route' + suffix, type: 'line', source: 'route' + suffix,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint:  { 'line-color': colour, 'line-width': 4, 'line-opacity': 0.9 }
+      });
+
+      // ── origin dot ──────────────────────────────────────────
+      const first = coords[0];
+      map.addSource('origin' + suffix, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: first }, properties: {} }
+      });
+      map.addLayer({
+        id: 'origin' + suffix, type: 'circle', source: 'origin' + suffix,
+        paint: {
+          'circle-radius': 8, 'circle-color': colour,
+          'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff'
+        }
+      });
+
+      // ── destination dot ─────────────────────────────────────
+      const last = coords[coords.length - 1];
+      map.addSource('dest' + suffix, {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: last }, properties: {} }
+      });
+      map.addLayer({
+        id: 'dest' + suffix, type: 'circle', source: 'dest' + suffix,
+        paint: {
+          'circle-radius': 8, 'circle-color': '#ffffff',
+          'circle-stroke-width': 2.5, 'circle-stroke-color': colour
+        }
+      });
+
+      coords.forEach(c => allCoords.push(c));
+    });
+
+    // ── fit map to all routes ───────────────────────────────
+    if (allCoords.length > 0) {
+      const lons = allCoords.map(c => c[0]);
+      const lats = allCoords.map(c => c[1]);
+      map.fitBounds(
+        [[Math.min(...lons) - 0.05, Math.min(...lats) - 0.05],
+         [Math.max(...lons) + 0.05, Math.max(...lats) + 0.05]],
+        { padding: 48, duration: 500 }
+      );
+    }
+  });
+
+  // ── theme switching ─────────────────────────────────────
+  document.addEventListener('ts:themechange', e => {
+    const theme = e.detail?.theme || _theme;
+    _theme = theme;
+    map.setStyle(styleFor(theme));
+  });
+
+})();
+</script>
+{% endblock %}

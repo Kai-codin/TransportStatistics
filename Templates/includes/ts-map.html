@@ -179,13 +179,17 @@
   // ── HTML builders ──────────────────────────────────────────────────────────
 
   function headerHTML(p) {
-    console.log(p);
+    const lines = p.lines ? p.lines.split(',').map(s => s.trim()).filter(Boolean) : [];
+
     return `
       <div class="ts-popup-header">
         <div class="ts-popup-title-row">
           <div>
             <div class="ts-popup-name">${p.name || 'Stop'}</div>
             ${p.stop_type_name ? `<div class="ts-popup-type">${p.stop_type_name}</div>` : ''}
+            <div class="ts-popup-pill">
+              ${lines.map(line => `<span class="ts-popup-line">${line}</span>`).join('')}
+            </div>
           </div>
           <button class="ts-sheet-close" aria-label="Close">✕</button>
         </div>
@@ -398,6 +402,42 @@
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => {
         openSheet(sheetHTML_loaded(props, (data.results || []), qt));
+        // After the departures API has returned, call the internal
+        // enrich endpoint to fetch bustimes.org and persist any changes
+        // for this stop. Only do this when an ATCO code is available.
+        if (props.atco_code) {
+          fetch(`/api/stops/enrich/?atco=${encodeURIComponent(props.atco_code)}`)
+            .then(r => r.ok ? r.json() : Promise.reject(r.status))
+            .then(res => {
+              try { console.log('enrich result', res); } catch(_) {}
+              const stopData = (res && res.stop) || {};
+              const updated = !!(res && (res.updated || (res.updates && Object.keys(res.updates).length)));
+              const changedFromProps = (
+                (stopData.long_name && stopData.long_name !== (props.long_name || props.name || '')) ||
+                (stopData.common_name && stopData.common_name !== (props.common_name || '')) ||
+                (stopData.icon && stopData.icon !== (props.icon || '')) ||
+                (stopData.lines && stopData.lines !== (props.lines || ''))
+              );
+
+              // If we have an updater function from initMap, call it so it can
+              // access _lastFeatures and markers; otherwise fall back to a
+              // best-effort local update of popup text.
+              if (window.updateStopFromEnrich && (updated || changedFromProps)) {
+                try { window.updateStopFromEnrich(props, stopData, updated, (data && data.results) || [], qt); } catch(e) { console.warn('updateStopFromEnrich failed', e); }
+              } else if (updated || changedFromProps) {
+                if (stopData.common_name) props.common_name = stopData.common_name;
+                if (stopData.long_name) props.long_name = stopData.long_name;
+                if (stopData.icon) props.icon = stopData.icon;
+                if (stopData.lines) props.lines = stopData.lines;
+                props.name = props.common_name || props.long_name || props.name || '';
+                try {
+                  const popupName = sheetInner.querySelector('.ts-popup-name');
+                  if (popupName) popupName.textContent = stopData.long_name || props.name || 'Stop';
+                } catch(_) {}
+              }
+            })
+            .catch(err => { try { console.warn('enrich failed', err); } catch(_) {} });
+        }
       })
       .catch(() => {
         openSheet(sheetHTML_error(props, qt));
@@ -452,7 +492,17 @@
           if (!props.icon) continue;
           const id = String(props.id || `${props.atco_code}:${props.crs}`);
           keep.add(id);
-          if (_stopIconMarkers.has(id)) continue; // already present
+          if (_stopIconMarkers.has(id)) {
+            // update existing marker text/position if changed
+            try {
+              const marker = _stopIconMarkers.get(id);
+              const el = marker.getElement();
+              const txt = String(props.icon).slice(0,2);
+              if (el && el.textContent !== txt) el.textContent = txt;
+              marker.setLngLat([parseFloat(f.geometry.coordinates[0]), parseFloat(f.geometry.coordinates[1])]);
+            } catch(e) { console.debug('update existing marker err', e); }
+            continue;
+          }
           const el = document.createElement('div');
           el.className = 'ts-stop-icon-marker';
           el.textContent = String(props.icon).slice(0,2);
@@ -471,6 +521,55 @@
         }
       }
     }
+
+    // Called from outside (loadDepartures) when an enrichment result arrives.
+    // Has access to _lastFeatures and _stopIconMarkers in this scope.
+    window.updateStopFromEnrich = function(props, stopData, updated, depResults, qt) {
+      try {
+        if (stopData.common_name) props.common_name = stopData.common_name;
+        if (stopData.long_name) props.long_name = stopData.long_name;
+        if (stopData.icon) props.icon = stopData.icon;
+        if (stopData.lines) props.lines = stopData.lines;
+        props.name = props.long_name || props.name || props.common_name || '';
+
+        // Update popup title if open
+        try {
+          const popupName = sheetInner.querySelector('.ts-popup-name');
+          if (popupName) popupName.textContent = stopData.long_name || props.name || 'Stop';
+        } catch(_) {}
+
+        // Update cached features so the map layer and DOM icon markers refresh
+        const targetId = String(props.id || `${props.atco_code}:${props.crs}`);
+        for (let i = 0; i < _lastFeatures.length; i++) {
+          const f = _lastFeatures[i];
+          const p = f.properties || {};
+          const fid = String(p.id || `${p.atco_code}:${p.crs}`);
+          if (fid === targetId) {
+            if (stopData.common_name !== undefined) p.common_name = stopData.common_name;
+            if (stopData.long_name !== undefined) p.long_name = stopData.long_name;
+            if (stopData.icon !== undefined) p.icon = stopData.icon;
+            if (stopData.lines !== undefined) p.lines = stopData.lines;
+            p.name = props.name;
+            f.properties = p;
+          }
+        }
+        setSource(_lastFeatures);
+
+        // update existing DOM marker text if present
+        const markerId = String(props.id || `${props.atco_code}:${props.crs}`);
+        if (_stopIconMarkers.has(markerId)) {
+          try {
+            const marker = _stopIconMarkers.get(markerId);
+            const el = marker.getElement();
+            const txt = String(props.icon || '').slice(0,2);
+            if (el && el.textContent !== txt) el.textContent = txt;
+          } catch(_) {}
+        }
+
+        // re-render the sheet with updated props so the header shows latest text
+        try { openSheet(sheetHTML_loaded(props, (depResults || []), qt)); } catch(_) {}
+      } catch (e) { console.warn('updateStopFromEnrich error', e); }
+    };
 
     const setSource = features => {
       _lastFeatures = features;
@@ -618,10 +717,19 @@
       map.on('click','unclustered-point', e => {
         const props = e.features[0].properties || {};
         if (onStopClick) { onStopClick(props); return; }
+        // If the stop has an ATCO code, call the internal enrichment API
+        // which will fetch bustimes.org and persist updates for that stop.
+        // After the enrichment request completes (or fails) we open the sheet.
         // Do not reset _sheetQueryTime here — reuse the last selected
         // datetime when opening another stop. If no selection exists,
         // loadDepartures will consult saved value.
-        loadDepartures(props);
+        if (props.atco_code) {
+          fetch(`/api/stops/enrich/?atco=${encodeURIComponent(props.atco_code)}`)
+            .then(() => loadDepartures(props))
+            .catch(() => loadDepartures(props));
+        } else {
+          loadDepartures(props);
+        }
       });
 
       // tap empty map — close sheet

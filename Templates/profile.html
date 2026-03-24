@@ -63,11 +63,6 @@
                     </div>
                     <div class="ts-trip-meta">
                       {{ trip.operator }}
-                      {% if trip.transport_type != 'rail' and trip.bus_type %}
-                        &nbsp;·&nbsp; {{ trip.bus_type }}
-                      {% elif trip.train_type %}
-                        &nbsp;·&nbsp; {{ trip.train_type }}
-                      {% endif %}
                     </div>
                   </div>
 
@@ -78,15 +73,33 @@
 
                   <!-- vehicle / livery -->
                   {% if trip.is_bus and trip.bus_fleet_number %}
-                  <div class="ts-trip-vehicle">
-                    {% if trip.bus_livery %}
-                    <div class="ts-trip-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
-                    {% endif %}
-                    <span class="ts-trip-fleet">{{ trip.bus_fleet_number }} - {{ trip.bus_registration }}</span>
+                  <div class="ts-trip-vehicle-wrapper">
+                    <div class="ts-trip-vehicle">
+                      {% if trip.bus_livery %}
+                      <div class="ts-trip-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
+                      {% endif %}
+                      <span class="ts-trip-fleet">{{ trip.bus_fleet_number }} - {{ trip.bus_registration }}</span>
+                    </div>
+                    <div class="ts-trip-meta ts-trip-meta-vehicle">
+                      {% if trip.transport_type != 'rail' and trip.bus_type %}
+                        {{ trip.bus_type }}
+                      {% elif trip.train_type %}
+                        {{ trip.train_type }}
+                      {% endif %}
+                    </div>
                   </div>
                   {% elif trip.is_rail and trip.train_fleet_number %}
-                  <div class="ts-trip-vehicle">
-                    <span class="ts-trip-fleet">{{ trip.train_fleet_number }}</span>
+                  <div class="ts-trip-vehicle-wrapper">
+                    <div class="ts-trip-vehicle">
+                      <span class="ts-trip-fleet">{{ trip.train_fleet_number }}</span>
+                    </div>
+                    <div class="ts-trip-meta ts-trip-meta-vehicle">
+                      {% if trip.transport_type != 'rail' and trip.bus_type %}
+                        {{ trip.bus_type }}
+                      {% elif trip.train_type %}
+                        {{ trip.train_type }}
+                      {% endif %}
+                    </div>
                   </div>
                   {% endif %}
 

@@ -6,6 +6,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .serializers import StopSerializer
 from Stops.models import Stop
 
+import requests
+from django.db import transaction
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
 
 class StopPagination(LimitOffsetPagination):
     default_limit = 100
@@ -115,3 +121,84 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         return qs
+
+
+@api_view(['GET', 'POST'])
+def enrich_stop(request):
+    print('enrich_stop called with method', request.method)
+    """Fetch bustimes.org for a single stop (by ATCO) and persist updates.
+
+    Accepts either GET ?atco=... or POST { atco: '...' }.
+    Returns the serialized Stop and any applied updates.
+    """
+    atco = None
+    if request.method == 'POST':
+        atco = request.data.get('atco') or request.data.get('atco_code')
+    if not atco:
+        atco = request.query_params.get('atco')
+
+    if not atco:
+        return Response({'detail': 'Missing atco parameter'}, status=status.HTTP_400_BAD_REQUEST)
+
+    atco = atco.strip()
+    try:
+        stop = Stop.objects.get(atco_code__iexact=atco)
+    except Stop.DoesNotExist:
+        return Response({'detail': 'Stop not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    url = f'https://bustimes.org/api/stops/{atco}'
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'TransportStatistics/1.0'})
+    try:
+        resp = session.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return Response({'detail': f'Failed to fetch bustimes: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    # Determine item
+    item = None
+    if isinstance(data, dict) and 'results' in data:
+        results = data.get('results') or []
+        if results:
+            item = results[0]
+    elif isinstance(data, list) and data:
+        item = data[0]
+    elif isinstance(data, dict):
+        item = data
+
+    updates = {}
+    if item:
+        ln = item.get('line_names') or item.get('lines') or None
+        if isinstance(ln, list):
+            ln_val = ','.join([str(x) for x in ln if x])
+        elif isinstance(ln, str):
+            ln_val = ln
+        else:
+            ln_val = None
+        if ln_val and (stop.lines or '') != ln_val:
+            updates['lines'] = ln_val
+
+        icon = item.get('icon')
+        if icon and (stop.icon or '') != icon:
+            updates['icon'] = icon
+
+        name_val = item.get('name')
+        if name_val and (stop.common_name or '') != name_val:
+            updates['common_name'] = name_val
+
+        long_name = item.get('long_name')
+        if long_name and (stop.long_name or '') != long_name:
+            updates['long_name'] = long_name
+
+    if updates:
+        for k, v in updates.items():
+            setattr(stop, k, v)
+        try:
+            with transaction.atomic():
+                stop.save()
+        except Exception as e:
+            return Response({'detail': f'Failed to save: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    serializer = StopSerializer(stop)
+    return Response({'stop': serializer.data, 'updates': updates, 'updated': bool(updates)}, status=status.HTTP_200_OK)

@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import StopViewSet
+from .views import StopViewSet, enrich_stop
 from Depatures.api import ServiceLocationsViewSet, TrainDeparturesViewSet, BusDeparturesViewSet, BusServiceViewSet
 
 router = DefaultRouter()
@@ -11,5 +11,8 @@ router.register(r'bus-departures', BusDeparturesViewSet, basename='bus-departure
 router.register(r'bus-service', BusServiceViewSet, basename='bus-service')
 
 urlpatterns = [
+    # Place the explicit enrich route before the router to avoid it being
+    # interpreted as a stop lookup by the DefaultRouter's generated patterns.
+    path('stops/enrich/', enrich_stop, name='stop-enrich'),
     path('', include(router.urls)),
 ]

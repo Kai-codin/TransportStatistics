@@ -1,90 +1,446 @@
 {% extends "base.html" %}
 {% load static %}
-
 {% block title %}Profile Settings — Transport Statistics{% endblock %}
-
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+  .ts-settings-wrap {
+    max-width: 680px;
+    margin: 36px auto;
+    padding: 0 20px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ── page heading ── */
+  .ts-settings-heading {
+    margin-bottom: 28px;
+  }
+  .ts-settings-heading h1 {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--ts-text-1);
+    line-height: 1.15;
+  }
+  .ts-settings-heading p {
+    font-size: 13.5px;
+    color: var(--ts-text-3);
+    margin-top: 4px;
+    margin-bottom: 0;
+  }
+
+  /* ── section cards ── */
+  .ts-settings-card {
+    background: var(--ts-surface);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r-lg);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  .ts-settings-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px 13px;
+    border-bottom: 1.5px solid var(--ts-border-soft);
+    background: var(--ts-surface-2);
+  }
+
+  .ts-settings-card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--ts-r-sm);
+    background: var(--ts-accent-light);
+    border: 1.5px solid rgba(52,208,100,0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+
+  .ts-settings-card-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ts-text-3);
+  }
+
+  .ts-settings-card-body {
+    padding: 20px;
+  }
+
+  /* ── privacy form row ── */
+  .ts-privacy-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .ts-privacy-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ts-text-2);
+    min-width: 52px;
+  }
+
+  /* style the select to match the design system */
+  .ts-select {
+    margin-left: auto;
+    font-family: var(--ts-font);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ts-text-1);
+    background: var(--ts-surface-2);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r-sm);
+    padding: 7px 32px 7px 11px;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a7a5e' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    min-width: 160px;
+  }
+  .ts-select:focus {
+    border-color: var(--ts-accent);
+    box-shadow: var(--ts-glow);
+  }
+  .ts-select option {
+    background: var(--ts-surface-2);
+  }
+
+  .ts-privacy-row .ts-privacy-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  /* ── upload area ── */
+  .ts-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .ts-file-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* hide native file input, show styled label */
+  .ts-file-input-wrapper input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .ts-file-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ts-text-2);
+    background: var(--ts-surface-2);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r-sm);
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .ts-file-label:hover {
+    border-color: var(--ts-accent);
+    color: var(--ts-accent);
+  }
+
+  .ts-file-name {
+    font-size: 12.5px;
+    color: var(--ts-text-3);
+    font-style: italic;
+  }
+
+  /* ── import jobs table ── */
+  .ts-import-table-wrap {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1.5px solid var(--ts-border-soft);
+  }
+
+  .ts-import-table-heading {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ts-text-3);
+    margin-bottom: 10px;
+  }
+
+  /* status pill */
+  .ts-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .ts-status-pill::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ts-status-pill.completed {
+    background: var(--ts-accent-light);
+    color: var(--ts-accent);
+    border: 1px solid rgba(52,208,100,0.2);
+  }
+  .ts-status-pill.completed::before { background: var(--ts-accent); }
+  .ts-status-pill.running {
+    background: rgba(251,191,36,0.1);
+    color: var(--ts-warning);
+    border: 1px solid rgba(251,191,36,0.2);
+  }
+  .ts-status-pill.running::before { background: var(--ts-warning); }
+  .ts-status-pill.queued {
+    background: var(--ts-surface-2);
+    color: var(--ts-text-3);
+    border: 1px solid var(--ts-border);
+  }
+  .ts-status-pill.queued::before { background: var(--ts-text-3); }
+  .ts-status-pill.uploaded {
+    background: rgba(14,165,233,0.08);
+    color: #38bdf8;
+    border: 1px solid rgba(14,165,233,0.2);
+  }
+  .ts-status-pill.uploaded::before { background: #38bdf8; }
+
+  /* stat cells */
+  .ts-num {
+    font-family: var(--ts-mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ts-text-1);
+  }
+
+  .ts-num-muted {
+    font-family: var(--ts-mono);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ts-text-3);
+  }
+
+  .ts-job-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* divider */
+  .ts-settings-card-body + .ts-settings-card-body {
+    border-top: 1.5px solid var(--ts-border-soft);
+  }
+
+  @media (max-width: 600px) {
+    .ts-privacy-row { flex-direction: column; align-items: flex-start; }
+    .ts-privacy-row .ts-privacy-actions { margin-left: 0; }
+    .ts-upload-row { flex-direction: column; align-items: flex-start; }
+  }
+</style>
 {% endblock %}
-
 {% block body_class %}ts-app-page{% endblock %}
-
 {% block content %}
 <div class="ts-app">
   {% include "includes/sidebar.html" %}
   <main class="ts-main">
-    <div style="max-width:720px;margin:28px auto;padding:0 16px">
-      <div class="ts-card">
-        <div class="ts-section-title">Profile settings</div>
-        <form method="post">
-          {% csrf_token %}
-          <label>Privacy</label>
-          {{ profile_form.privacy }}
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="ts-btn-primary" type="submit">Save</button>
-            <a class="ts-btn-secondary" href="{% url 'profile' %}">Back to profile</a>
-          </div>
-        </form>
+    <div class="ts-settings-wrap">
 
-        <div style="margin-top:18px"> 
-          <div style="font-weight:600;margin-bottom:8px">Import services.json</div>
+      <div class="ts-settings-heading">
+        <h1>Settings</h1>
+        <p>Manage your profile preferences and data imports.</p>
+      </div>
+
+      {# ── Privacy card ── #}
+      <div class="ts-settings-card">
+        <div class="ts-settings-card-header">
+          <div class="ts-settings-card-icon">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="7" width="10" height="8" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+              <circle cx="8" cy="11" r="1.2" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="ts-settings-card-title">Privacy</span>
+        </div>
+        <div class="ts-settings-card-body">
+          <form method="post">
+            {% csrf_token %}
+            <div class="ts-privacy-row">
+              <span class="ts-privacy-label">Visibility</span>
+              {% if profile_form %}
+                {{ profile_form.privacy }}
+              {% else %}
+                <select name="privacy" class="ts-select">
+                  <option>Friends only</option>
+                  <option>Public</option>
+                  <option>Private</option>
+                </select>
+              {% endif %}
+              <div class="ts-privacy-actions">
+                <button class="ts-btn-primary" type="submit" style="font-size:13.5px;padding:7px 16px">Save</button>
+                <a class="ts-btn-secondary" href="{% url 'profile' %}" style="display:inline-flex;align-items:center;padding:7px 14px;font-size:13.5px">Back to profile</a>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {# ── Import card ── #}
+      <div class="ts-settings-card">
+        <div class="ts-settings-card-header">
+          <div class="ts-settings-card-icon">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 1v8M5 6l3 3 3-3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <span class="ts-settings-card-title">Import services.json</span>
+        </div>
+        <div class="ts-settings-card-body">
           <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
-            {% if upload_form %}
-              {{ upload_form.services_file }}
-              {{ upload_form.dupe_policy }}
-            {% else %}
-              <input type="file" name="services_file" />
-            {% endif %}
-            <div style="margin-top:12px;display:flex;gap:8px">
-              <button class="ts-btn-primary" type="submit">Upload and scan</button>
+            <div class="ts-upload-row">
+              <div class="ts-file-input-wrapper">
+                <label class="ts-file-label">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 5l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Choose file
+                  {% if upload_form %}
+                    {{ upload_form.services_file }}
+                  {% else %}
+                    <input type="file" name="services_file" />
+                  {% endif %}
+                </label>
+              </div>
+              <span class="ts-file-name" id="ts-file-display">No file selected</span>
+              
+              {% if upload_form %}
+                {{ upload_form.dupe_policy }}
+              {% else %}
+                <select name="dupe_policy" class="ts-select" style="min-width:200px ">
+                  <option value="skip">Skip duplicates (default)</option>
+                  <option value="import_all">Import all</option>
+                </select>
+              {% endif %}
+
+              <button class="ts-btn-primary" type="submit" style="font-size:13.5px;padding:7px 16px;margin-left: auto;">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 5l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Upload and scan
+              </button>
             </div>
           </form>
 
+          {# ── Recent import jobs ── #}
           {% if import_jobs %}
-            <div style="margin-top:16px">
-              <div style="font-weight:600;margin-bottom:6px">Recent import jobs</div>
-              <table style="width:100%;border-collapse:collapse">
+          <div class="ts-import-table-wrap">
+            <div class="ts-import-table-heading">Recent import jobs</div>
+            <div class="ts-table-container">
+              <table class="ts-table">
                 <thead>
                   <tr>
-                    <th>ID</th><th>Status</th><th>Total</th><th>Inserted</th><th>Duplicates</th><th>Actions</th>
+                    <th>#</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                    <th>Inserted</th>
+                    <th>Duplicates</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                {% for job in import_jobs %}
-                  <tr style="border-top:1px solid #eee">
-                    <td>{{ job.id }}</td>
-                    <td>{{ job.get_status_display }}</td>
-                    <td>{{ job.total }}</td>
-                    <td>{{ job.inserted }}</td>
-                    <td>{{ job.duplicates }}</td>
+                  {% for job in import_jobs %}
+                  <tr>
+                    <td style="font-family:var(--ts-mono);font-size:12px;color:var(--ts-text-3)">{{ job.id }}</td>
+                    <td>
+                      <span class="ts-status-pill {{ job.status }}">
+                        {{ job.get_status_display }}
+                      </span>
+                    </td>
+                    <td><span class="ts-num">{{ job.total }}</span></td>
+                    <td><span class="ts-num" style="color:var(--ts-accent)">{{ job.inserted }}</span></td>
+                    <td>
+                      {% if job.duplicates %}
+                        <span class="ts-num-muted">{{ job.duplicates }}</span>
+                      {% else %}
+                        <span class="ts-cell-empty">—</span>
+                      {% endif %}
+                    </td>
                     <td>
                       {% if job.status == 'uploaded' or job.status == 'queued' %}
-                        <form method="post" style="display:inline">
-                          {% csrf_token %}
-                          <input type="hidden" name="job_id" value="{{ job.id }}" />
-                          <input type="hidden" name="policy" value="skip" />
-                          <button class="ts-btn-secondary" name="start_import" value="1">Start (skip dupes)</button>
-                        </form>
-                        <form method="post" style="display:inline">
-                          {% csrf_token %}
-                          <input type="hidden" name="job_id" value="{{ job.id }}" />
-                          <input type="hidden" name="policy" value="import_all" />
-                          <button class="ts-btn-primary" name="start_import" value="1">Start (import all)</button>
-                        </form>
+                        <div class="ts-job-actions">
+                          <form method="post" style="display:contents">
+                            {% csrf_token %}
+                            <input type="hidden" name="job_id" value="{{ job.id }}" />
+                            <input type="hidden" name="policy" value="skip" />
+                            <button class="ts-btn-secondary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Skip dupes</button>
+                          </form>
+                          <form method="post" style="display:contents">
+                            {% csrf_token %}
+                            <input type="hidden" name="job_id" value="{{ job.id }}" />
+                            <input type="hidden" name="policy" value="import_all" />
+                            <button class="ts-btn-primary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Import all</button>
+                          </form>
+                        </div>
                       {% else %}
-                        <a class="ts-btn-secondary" href="#">View</a>
+                        <a class="ts-btn-secondary" href="#" style="font-size:12px;padding:4px 11px">View</a>
                       {% endif %}
                     </td>
                   </tr>
-                {% endfor %}
+                  {% endfor %}
                 </tbody>
               </table>
             </div>
+          </div>
           {% endif %}
+
         </div>
       </div>
+
     </div>
   </main>
 </div>
+
+<script>
+  // Update file name display when a file is chosen
+  document.querySelectorAll('input[type="file"]').forEach(input => {
+    input.addEventListener('change', () => {
+      const display = document.getElementById('ts-file-display');
+      if (display) {
+        display.textContent = input.files[0]?.name || 'No file selected';
+        display.style.fontStyle = input.files[0] ? 'normal' : 'italic';
+        display.style.color = input.files[0] ? 'var(--ts-text-2)' : '';
+      }
+    });
+  });
+
+  // Style any raw selects that come from Django forms
+  document.querySelectorAll('select:not(.ts-select)').forEach(sel => {
+    sel.classList.add('ts-select');
+  });
+</script>
 {% endblock %}

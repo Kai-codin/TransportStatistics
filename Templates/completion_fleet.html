@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Completion - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+    /* ── table layout ───────────────────────────── */
+.ts-not-ridden {
+  background: #444;
+  color: #ccc;
+}
+
+.ts-table {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ts-table-head,
+.ts-table-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.2fr 2fr 1fr;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.ts-table-head {
+  font-size: 13px;
+  color: var(--ts-text-3);
+  border-bottom: 1px solid var(--ts-border);
+}
+
+.ts-table-row {
+  border-bottom: 1px solid var(--ts-border);
+  transition: background 0.15s;
+}
+
+.ts-table-row:hover {
+  background: var(--ts-bg-2);
+}
+
+/* ── livery ───────────────────────────── */
+.ts-livery {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ts-livery-box {
+  width: 36px;
+  height: 24px;
+  border: 1px solid var(--ts-border);
+}
+
+.ts-livery-default {
+  background: #444;
+}
+
+.ts-livery-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ── right aligned ───────────────────────── */
+.ts-right {
+  text-align: right;
+}
+
+/* ── journeys ───────────────────────────── */
+.ts-journey-count {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.ts-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.ts-ridden {
+  background: #1f7a4d;
+  color: #d1fae5;
+}
+
+/* ── empty state ───────────────────────── */
+.ts-empty {
+  padding: 20px;
+  color: var(--ts-text-3);
+}
+
+/* ── scroll container ───────────────────── */
+.ts-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── force table to be wider than mobile ── */
+.ts-table {
+  min-width: 720px; /* key line */
+}
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <!-- ── header ──────────────────────────────────────────────── -->
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">{{ operator_name }} Fleet Completion</div>
+            </div>
+
+            <!-- ── body ────────────────────────────────────────────────── -->
+            <div class="ts-profile-body">
+              <div class="ts-table-wrap">
+                <div class="ts-table">
+                    <div class="ts-table-head">
+                        <div>Livery</div>
+                        <div>Fleet</div>
+                        <div>Reg / Unit</div>
+                        <div>Type</div>
+                        <div class="ts-right">Journeys</div>
+                    </div>
+
+                    {% for v in vehicles %}
+                    <div class="ts-table-row">
+
+                        <!-- LIVERY -->
+                        <div class="ts-livery">
+                            {% if v.bus_livery %}
+                            <div class="ts-livery-box" style="background: {{ v.bus_livery }}"></div>
+                            {% else %}
+                            <div class="ts-livery-box ts-livery-default"></div>
+                            {% endif %}
+
+                            <div>
+                                {% if v.bus_livery_name %}
+                                <div class="ts-livery-name">{{ v.bus_livery_name }}</div>
+                                {% else %}
+                                <div class="ts-livery-name">-</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- FLEET -->
+                        <div>
+                            {{ v.fleet_number|default:"—" }}
+                        </div>
+
+                        <!-- REG / UNIT -->
+                        <div>
+                            {{ v.vehicle_id_final }}
+                        </div>
+
+                        <!-- TYPE -->
+                        <div>
+                            {% if v.transport_type == "rail" %}
+                            {{ v.vehicle_type|default:"Unknown class" }}
+                            {% else %}
+                            {{ v.vehicle_type|default:"Unknown type" }}
+                            {% endif %}
+                        </div>
+
+                        <!-- JOURNEYS -->
+                        <div class="ts-right">
+                            <span class="ts-journey-count">{{ v.count }}</span>
+
+                            {% if v.ridden %}
+                                <span class="ts-badge ts-ridden">ridden</span>
+                            {% else %}
+                                <span class="ts-badge ts-not-ridden">not ridden</span>
+                            {% endif %}
+                        </div>
+
+                    </div>
+                    {% empty %}
+                    <div class="ts-empty">
+                        No trips logged — log some journeys to see your fleet stats.
+                    </div>
+                    {% endfor %}
+                </div>
+              </div>
+            </div>
+    </main>
+
+</div>
+{% endblock %}

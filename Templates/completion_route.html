@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Completion - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+    /* ── table layout ───────────────────────────── */
+.ts-not-ridden {
+  background: #444;
+  color: #ccc;
+}
+
+.ts-table {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ts-table-head,
+.ts-table-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 140px; /* route | description | journeys */
+  align-items: center;
+  padding: 18px 20px; /* more breathing room */
+  gap: 16px; /* spacing between columns */
+}
+
+.ts-table-head {
+  font-size: 13px;
+  color: var(--ts-text-3);
+  border-bottom: 1px solid var(--ts-border);
+}
+
+.ts-table-row {
+  border-bottom: 1px solid var(--ts-border);
+  transition: background 0.15s;
+  min-height: 64px; /* consistent row height */
+}
+
+.ts-table-row:hover {
+  background: var(--ts-bg-2);
+}
+
+/* ── livery ───────────────────────────── */
+.ts-livery {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ts-livery-box {
+  width: 36px;
+  height: 24px;
+  border: 1px solid var(--ts-border);
+}
+
+.ts-livery-default {
+  background: #444;
+}
+
+.ts-livery-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ── right aligned ───────────────────────── */
+.ts-right {
+  text-align: right;
+}
+
+/* ── journeys ───────────────────────────── */
+.ts-journey-count {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.ts-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.ts-ridden {
+  background: #1f7a4d;
+  color: #d1fae5;
+}
+
+/* ── empty state ───────────────────────── */
+.ts-empty {
+  padding: 20px;
+  color: var(--ts-text-3);
+}
+
+
+/* ── scroll container ───────────────────── */
+.ts-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── force table to be wider than mobile ── */
+.ts-table {
+  min-width: 720px; /* key line */
+}
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <!-- ── header ──────────────────────────────────────────────── -->
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">{{ operator_name }} Route Completion</div>
+            </div>
+
+            <!-- ── body ────────────────────────────────────────────────── -->
+            <div class="ts-profile-body">
+              <div class="ts-table-wrap">
+                <div class="ts-table">
+                    <div class="ts-table-head">
+                        <div style="max-width: 80px;">Route</div>
+                        <div>Description</div>
+                        <div class="ts-right">Journeys</div>
+                    </div>
+
+                    {% for r in routes %}
+                    <div class="ts-table-row">
+
+                        <!-- ROUTE -->
+                        <div style="max-width: 80px;">
+                            <strong>{{ r.line_name }}</strong>
+                        </div>
+
+                        <!-- DESCRIPTION -->
+                        <div>
+                            {{ r.description|default:"—" }}
+                        </div>
+
+                        <!-- JOURNEYS -->
+                        <div class="ts-right">
+                            <span class="ts-journey-count">{{ r.count }}</span>
+
+                            {% if r.ridden %}
+                                <span class="ts-badge ts-ridden">ridden</span>
+                            {% else %}
+                                <span class="ts-badge ts-not-ridden">not ridden</span>
+                            {% endif %}
+                        </div>
+
+                    </div>
+                    {% empty %}
+                    <div class="ts-empty">
+                        No routes found — log some journeys!
+                    </div>
+                    {% endfor %}
+                </div>
+              </div>
+            </div>
+    </main>
+
+</div>
+{% endblock %}

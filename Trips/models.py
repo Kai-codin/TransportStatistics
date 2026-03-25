@@ -95,7 +95,6 @@ class TripLog(models.Model):
     def is_rail(self):
         return self.transport_type == self.TRANSPORT_RAIL
 
-
 class ImportJob(models.Model):
     STATUS_UPLOADED = 'uploaded'
     STATUS_QUEUED = 'queued'

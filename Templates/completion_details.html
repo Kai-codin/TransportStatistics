@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ operator_name }} Details{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+
+/* ── layout ───────────────────────── */
+.ts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.ts-card {
+  background: var(--ts-bg-1);
+  border: 1px solid var(--ts-border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.ts-card-title {
+  font-size: 13px;
+  color: var(--ts-text-3);
+  margin-bottom: 6px;
+}
+
+.ts-card-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* ── lists ───────────────────────── */
+.ts-section {
+  margin-top: 24px;
+}
+
+.ts-section h3 {
+  margin-bottom: 10px;
+}
+
+.ts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ts-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--ts-bg-2);
+  font-size: 13px;
+}
+
+
+/* ── pills improvement ───────────────── */
+.ts-pill {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  background: rgba(31, 122, 77, 0.15);
+  color: var(--ts-text-1);
+}
+
+/* ── livery box ─────────────────── */
+.ts-livery {
+  display: flex;
+  background-color: transparent;
+  align-items: center;
+  gap: 8px;
+  color: var(--ts-text-1)
+}
+
+.ts-livery-box {
+  width: 36px;
+  height: 24px;
+  border: 1px solid var(--ts-border);
+}
+
+/* ── highlights ───────────────────────── */
+.ts-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.ts-highlight {
+  background: var(--ts-bg-2);
+  border: 1px solid var(--ts-border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.ts-highlight-title {
+  font-size: 12px;
+  color: var(--ts-text-3);
+}
+
+.ts-highlight-value {
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.ts-highlight-sub {
+  font-size: 12px;
+  color: var(--ts-text-3);
+}
+
+/* ── section separation ───────────────── */
+.ts-section {
+  margin-top: 28px;
+}
+
+.ts-section h3 {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+{% include "includes/sidebar.html" %}
+
+<main class="ts-main">
+<div class="ts-profile-layout">
+
+<div class="ts-profile-header">
+    <div class="ts-profile-title">{{ operator_name }} Overview</div>
+</div>
+
+<div class="ts-profile-body">
+
+    <!-- ── STATS ───────────────────────── -->
+    <div class="ts-grid">
+        <div class="ts-card">
+            <div class="ts-card-title">Vehicles ridden</div>
+            <div class="ts-card-value">{{ vehicle_count }}</div>
+        </div>
+
+        <div class="ts-card">
+            <div class="ts-card-title">Routes ridden</div>
+            <div class="ts-card-value">{{ route_count }}</div>
+        </div>
+
+        <div class="ts-card">
+            <div class="ts-card-title">Total journeys</div>
+            <div class="ts-card-value">{{ total_trips }}</div>
+        </div>
+    </div>
+
+    <!-- ── MOST USED ROUTE ─────────────── -->
+    {% if most_used_route %}
+    <div class="ts-section">
+        <div class="ts-highlight-grid">
+            {% if most_used_route %}
+            <div class="ts-highlight">
+                <div class="ts-highlight-title">Top route</div>
+                <div class="ts-highlight-value">
+                    {{ most_used_route.headcode }}
+                </div>
+                <div class="ts-highlight-sub">
+                    {{ most_used_route.count }} journeys
+                </div>
+            </div>
+            {% endif %}
+
+            {% if most_used_type %}
+            <div class="ts-highlight">
+                <div class="ts-highlight-title">Top vehicle</div>
+                <div class="ts-highlight-value">
+                    {{ most_used_type.vtype }}
+                </div>
+                <div class="ts-highlight-sub">
+                    {{ most_used_type.count }} journeys
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── LIVERIES ───────────────────── -->
+    <div class="ts-section">
+        <h3>Liveries</h3>
+        <div class="ts-list">
+            {% for l in liveries %}
+            <div class="ts-pill ts-livery">
+                <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
+                {{ l.bus_livery_name }} ({{ l.count }})
+            </div>
+            {% empty %}
+            <div class="ts-pill">No data</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ── VEHICLE TYPES ─────────────── -->
+    <div class="ts-section">
+        <h3>Vehicle types</h3>
+        <div class="ts-list">
+            {% for t in types %}
+            <div class="ts-pill">
+                {{ t.vtype }} ({{ t.count }})
+            </div>
+            {% empty %}
+            <div class="ts-pill">No data</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ── VEHICLE TYPES ─────────────── -->
+    <div class="ts-section">
+        <h3>Routes</h3>
+        <div class="ts-list">
+            {% for r in route_list %}
+            <div class="ts-pill">
+                {{ r.headcode }} ({{ r.count }})
+            </div>
+            {% empty %}
+            <div class="ts-pill">No data</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+</div>
+</main>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Completion - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <!-- ── header ──────────────────────────────────────────────── -->
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Completion</div>
+            </div>
+
+            <!-- ── body ────────────────────────────────────────────────── -->
+            <div class="ts-profile-body">
+                {% for operator in operators %}
+                    <div class="ts-card">
+                        <div class="ts-section-title"><h2>{{ operator }}</h2></div>
+                        <div class="ts-btn-row">
+                            <a class="ts-btn-secondary" href="{% url 'fleet_completion' operator %}">Fleet Completion</a>
+                            <a class="ts-btn-secondary" href="{% url 'route_completion' operator %}">Route Completion</a>
+                            <a class="ts-btn-secondary" href="{% url 'operator_details' operator %}">Details</a>
+                        </div> 
+                    </div>
+                {% empty %}
+                    <div class="ts-card">
+                        <div class="ts-section-title">No operators yet</div>
+                        <div>Log some trips to see your completion stats!</div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+  </main>
+
+</div>
+{% endblock %}

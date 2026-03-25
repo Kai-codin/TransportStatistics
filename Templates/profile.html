@@ -86,10 +86,16 @@
                   {% endif %}
 
                   <!-- vehicle / livery -->
-                  {% if trip.is_bus and trip.bus_fleet_number %}
+                  {% if trip.is_bus %}
                   <div class="ts-trip-vehicle-wrapper">
                     <div class="ts-trip-vehicle">
+                      {% if trip.bus_fleet_number and trip.bus_registration %}
                       <span class="ts-trip-fleet">{{ trip.bus_fleet_number }} - {{ trip.bus_registration }}</span>
+                      {% elif trip.bus_fleet_number %}
+                      <span class="ts-trip-fleet">{{ trip.bus_fleet_number }}</span>
+                      {% elif trip.bus_registration %}
+                      <span class="ts-trip-fleet">{{ trip.bus_registration }}</span>
+                      {% endif %}
                       {% if trip.bus_livery %}
                       <div class="ts-trip-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
                       {% endif %}

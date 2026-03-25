@@ -21,7 +21,7 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from main import views_auth
-from Trips.views import log_trip, profile, trip_detail, trip_date_map, view_profile, edit_trip
+from Trips.views import log_trip, profile, trip_detail, trip_date_map, view_profile, edit_trip, profile_settings
 from Social import views
 
 urlpatterns = [
@@ -36,6 +36,7 @@ urlpatterns = [
     path('trips/map/<str:date>/', trip_date_map, name='trips_map'),
     path('trips/<int:pk>/', trip_detail, name='trip_detail'),
     path('trips/<int:pk>/edit/', edit_trip, name='edit_trip'),
+    path('profile/settings/', profile_settings, name='profile_settings'),
     path('manage/', TemplateView.as_view(template_name='manage.html'), name='manage'),
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('accounts/register/', views_auth.register, name='register'),

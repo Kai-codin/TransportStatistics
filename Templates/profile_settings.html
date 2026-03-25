@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Profile Settings — Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+  {% include "includes/sidebar.html" %}
+  <main class="ts-main">
+    <div style="max-width:720px;margin:28px auto;padding:0 16px">
+      <div class="ts-card">
+        <div class="ts-section-title">Profile settings</div>
+        <form method="post">
+          {% csrf_token %}
+          <label>Privacy</label>
+          {{ profile_form.privacy }}
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="ts-btn-primary" type="submit">Save</button>
+            <a class="ts-btn-secondary" href="{% url 'profile' %}">Back to profile</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

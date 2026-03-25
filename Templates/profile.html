@@ -46,20 +46,6 @@
           </div>
         {% endif %}
 
-        {% if not viewing_user or viewing_user.id == request.user.id %}
-          <div class="ts-card">
-            <div class="ts-section-title">Profile settings</div>
-            <form method="post" action="">
-              {% csrf_token %}
-              <label>Privacy</label>
-              {{ profile_form.privacy }}
-              <div style="margin-top:10px">
-                <button class="ts-btn-primary" type="submit">Save</button>
-              </div>
-            </form>
-          </div>
-        {% endif %}
-
         {% if days %}
           {% for day in days %}
           <div class="ts-day-group">

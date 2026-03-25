@@ -13,7 +13,7 @@ class TripLogForm(forms.ModelForm):
             # journey
             'origin_name', 'origin_crs',
             'destination_name', 'destination_crs',
-            'scheduled_departure', 'actual_departure',
+            'scheduled_departure',
 
             # boarded stop
             'boarded_stop_name', 'boarded_stop_crs', 'boarded_stop_atco',

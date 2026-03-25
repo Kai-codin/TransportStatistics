@@ -81,16 +81,6 @@ def trip_date_map(request, date):
 
 @login_required
 def profile(request):
-    # Handle profile privacy form
-    profile_obj, _ = UserProfile.objects.get_or_create(user=request.user)
-    if request.method == 'POST' and 'privacy' in request.POST:
-        pf = ProfileForm(request.POST, instance=profile_obj)
-        if pf.is_valid():
-            pf.save()
-            return redirect('profile')
-    else:
-        pf = ProfileForm(instance=profile_obj)
-
     trips = TripLog.objects.filter(user=request.user).order_by('-service_date', '-scheduled_departure', '-logged_at')
 
     # Group by date
@@ -103,9 +93,25 @@ def profile(request):
         'days':        days,
         'total_trips': trips.count(),
         'total_days':  len(days),
-        'profile_form': pf,
+        
         'viewing_user': None,
         'restricted': False,
+    })
+
+
+@login_required
+def profile_settings(request):
+    profile_obj, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        pf = ProfileForm(request.POST, instance=profile_obj)
+        if pf.is_valid():
+            pf.save()
+            return redirect('profile')
+    else:
+        pf = ProfileForm(instance=profile_obj)
+
+    return render(request, 'profile_settings.html', {
+        'profile_form': pf,
     })
 
 

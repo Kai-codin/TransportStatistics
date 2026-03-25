@@ -245,7 +245,76 @@ class BusDeparturesView(APIView):
                 {"detail": f"Failed to fetch bustimes.org: {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
- 
+
+        # ── TfL two-pass merge ────────────────────────────────────────────────
+        # The plain (no date/time) TfL response has cols: service | To | Expected
+        # and only /vehicles/tfl/ links — no scheduled times.
+        # The dated response has cols: service | To | Scheduled  and /trips/ links
+        # but no expected times.
+        # We fetch both and merge by normalised vehicle plate so each result
+        # has both scheduled and expected.
+        #
+        # Vehicle normalisation: strip all spaces and uppercase.
+        #   plain call  → "LV25VOU"        (already bare)
+        #   dated call  → "MHV85 - BV66 VKF" → we take the LAST token after " - "
+        #                 then strip spaces → "BV66VKF"
+
+        def _normalise_plate(raw: str) -> str:
+            """Return uppercased plate with spaces removed.  Handles 'fleet - PLATE' format."""
+            if not raw:
+                return ""
+            part = raw.split(" - ")[-1]   # take plate half if fleet prefix present
+            return part.replace(" ", "").upper()
+
+        def _parse_tfl_expected(html_text: str) -> dict:
+            """Parse expected-only TfL response → {normalised_plate: expected_time}"""
+            s = BeautifulSoup(html_text, "html.parser")
+            tb = s.find("tbody")
+            mapping = {}
+            if not tb:
+                return mapping
+            for row in tb.find_all("tr"):
+                if row.find("th"):
+                    continue
+                cells = row.find_all(["td", "th"])
+                if len(cells) < 3:
+                    continue
+                vdiv = cells[1].find("div", class_="vehicle")
+                plate = _normalise_plate(vdiv.get_text(strip=True)) if vdiv else ""
+                if not plate:
+                    continue
+                exp_link = cells[2].find("a")
+                exp_time = (exp_link.get_text(strip=True) if exp_link else cells[2].get_text(strip=True)).strip()
+                if plate and exp_time:
+                    mapping[plate] = exp_time
+            return mapping
+
+        # expected_by_plate is only populated for TfL stops
+        expected_by_plate: dict = {}
+
+        is_tfl_stop = not params and "/vehicles/tfl/" in resp.text
+        if is_tfl_stop:
+            # Build expected lookup from the plain response BEFORE re-fetching
+            expected_by_plate = _parse_tfl_expected(resp.text)
+            tfl_params = {
+                "date": date_val.isoformat(),
+                "time": time_display,
+            }
+            try:
+                tfl_resp = requests.get(
+                    upstream_url,
+                    params=tfl_params,
+                    headers=HEADERS,
+                    timeout=10,
+                )
+                tfl_resp.raise_for_status()
+                print(f"TfL re-fetch {tfl_resp.url} with status {tfl_resp.status_code}")
+                resp = tfl_resp   # swap to dated response for scheduled times + trip IDs
+            except requests.RequestException as exc:
+                # Non-fatal — fall through, parse original, no scheduled times available
+                print(f"TfL re-fetch failed, using original response: {exc}")
+                expected_by_plate = {}   # reset; original response only has expected
+
         # ── parse HTML ────────────────────────────────────────────────────────
         soup  = BeautifulSoup(resp.text, "html.parser")
         tbody = soup.find("tbody")
@@ -256,6 +325,13 @@ class BusDeparturesView(APIView):
                 "station": {"atco_code": atco_code},
                 "results": [],
             })
+
+        # ── detect layout from header ─────────────────────────────────────────
+        # expected-only:  service | To | Expected        (TfL plain, re-fetch failed)
+        # standard:       service | To | Scheduled       (TfL dated, or non-TfL with/without Expected col)
+        header_row   = tbody.find("tr")
+        header_texts = [th.get_text(strip=True).lower() for th in header_row.find_all("th")] if header_row else []
+        tfl_expected_only = "expected" in header_texts and "scheduled" not in header_texts
  
         rows    = tbody.find_all("tr")
         results = []
@@ -263,11 +339,10 @@ class BusDeparturesView(APIView):
         for row in rows:
             cells = row.find_all(["td", "th"])
  
-            # skip header rows (contain <th> elements)
+            # skip header rows
             if row.find("th"):
                 continue
  
-            # need at least 3 cells: service | destination | scheduled
             if len(cells) < 3:
                 continue
  
@@ -281,45 +356,61 @@ class BusDeparturesView(APIView):
             # ── destination + vehicle ──────────────────────────────────────
             dest_cell   = cells[1]
             vehicle_div = dest_cell.find("div", class_="vehicle")
-            vehicle     = vehicle_div.get_text(strip=True) if vehicle_div else None
+            vehicle_raw = vehicle_div.get_text(strip=True) if vehicle_div else None
             if vehicle_div:
-                vehicle_div.decompose()   # remove so remaining text is just destination
+                vehicle_div.decompose()
             destination = dest_cell.get_text(strip=True)
- 
-            # ── scheduled time + trip link ─────────────────────────────────
-            sched_cell = cells[2]
-            sched_link = sched_cell.find("a")
-            scheduled  = sched_link.get_text(strip=True) if sched_link else sched_cell.get_text(strip=True)
-            trip_href  = sched_link.get("href", "") if sched_link else ""
-            trip_url   = f"https://bustimes.org{trip_href}" if trip_href else None
 
-            # trip_id is the end string of /trips/577592344 if its a TFL services they use /vehicles/tfl/LX75ZFS 
-            trip_id = trip_href.split("/trips/")[-1] if "/trips/" in trip_href else None
+            # Normalise plate for lookup (handles both plain and dated formats)
+            plate_key = _normalise_plate(vehicle_raw) if vehicle_raw else ""
 
-            if trip_id == None and "/vehicles/tfl/" in trip_href:
-                trip_id = trip_href.split("/vehicles/tfl/")[-1]
- 
-            # normalise time to HH:MM
-            scheduled = scheduled.strip()
- 
-            # ── expected time (4th cell, present when live data available) ─
-            expected = None
-            if len(cells) >= 4:
-                exp_cell = cells[3]
-                exp_link = exp_cell.find("a")
-                exp_text = (exp_link.get_text(strip=True) if exp_link else exp_cell.get_text(strip=True)).strip()
-                if exp_text:
-                    expected = exp_text
+            # ── expected-only layout (TfL plain response, re-fetch failed) ─
+            if tfl_expected_only:
+                exp_cell  = cells[2]
+                exp_link  = exp_cell.find("a")
+                exp_text  = (exp_link.get_text(strip=True) if exp_link else exp_cell.get_text(strip=True)).strip()
+                exp_href  = exp_link.get("href", "") if exp_link else ""
+
+                scheduled = None
+                expected  = exp_text or None
+                trip_href = exp_href
+                trip_url  = f"https://bustimes.org{trip_href}" if trip_href else None
+                trip_id   = trip_href.split("/vehicles/tfl/")[-1] if "/vehicles/tfl/" in trip_href else None
+
+            # ── standard layout: col 2 = Scheduled, optional col 3 = Expected
+            else:
+                sched_cell = cells[2]
+                sched_link = sched_cell.find("a")
+                scheduled  = (sched_link.get_text(strip=True) if sched_link else sched_cell.get_text(strip=True)).strip()
+                trip_href  = sched_link.get("href", "") if sched_link else ""
+                trip_url   = f"https://bustimes.org{trip_href}" if trip_href else None
+
+                trip_id = trip_href.split("/trips/")[-1] if "/trips/" in trip_href else None
+                if trip_id is None and "/vehicles/tfl/" in trip_href:
+                    trip_id = trip_href.split("/vehicles/tfl/")[-1]
+
+                # Try col 3 first, then fall back to expected_by_plate lookup
+                expected = None
+                if len(cells) >= 4:
+                    exp_cell = cells[3]
+                    exp_link = exp_cell.find("a")
+                    exp_text = (exp_link.get_text(strip=True) if exp_link else exp_cell.get_text(strip=True)).strip()
+                    if exp_text:
+                        expected = exp_text
+
+                # TfL dated response has no expected col — look up by plate
+                if expected is None and plate_key and plate_key in expected_by_plate:
+                    expected = expected_by_plate[plate_key]
  
             # ── assemble result in same shape as DeparturesView ────────────
             results.append({
                 "headcode":    headcode,
                 "service_url": service_url,
-                "rtt_link":    trip_url,          # frontend uses rtt_link for the headcode hyperlink
-                "trip_id":     trip_id,              # not available from bustimes table
-                "operator":    None,              # not available from bustimes table
+                "rtt_link":    trip_url,
+                "trip_id":     trip_id,
+                "operator":    None,
                 "platform":    None,
-                "vehicle":     vehicle,
+                "vehicle":     plate_key or None,
                 "destination": {"name": destination, "crs": None},
                 "origin":      None,
                 "time": {

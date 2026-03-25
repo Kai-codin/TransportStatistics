@@ -5,8 +5,16 @@ from django.contrib.auth import get_user_model
 from Social.models import UserProfile, Friend
 from Social.forms import ProfileForm
 
-from .forms import TripLogForm
-from .models import TripLog
+from .forms import TripLogForm, UploadServicesForm
+from .models import TripLog, ImportJob
+
+from django.conf import settings
+from django.db import transaction
+import os
+import datetime
+import threading
+import json
+from . import tasks
 
 from itertools import groupby
 
@@ -102,16 +110,128 @@ def profile(request):
 @login_required
 def profile_settings(request):
     profile_obj, _ = UserProfile.objects.get_or_create(user=request.user)
+    # profile form (ensure `pf` always exists to avoid UnboundLocalError)
+    pf = ProfileForm(instance=profile_obj)
+    upload_form = UploadServicesForm()
+    jobs = ImportJob.objects.filter(user=request.user).order_by('-created_at')[:20]
+
     if request.method == 'POST':
-        pf = ProfileForm(request.POST, instance=profile_obj)
-        if pf.is_valid():
-            pf.save()
-            return redirect('profile')
-    else:
-        pf = ProfileForm(instance=profile_obj)
+
+        # Profile form save
+        if 'privacy' in request.POST or 'display_name' in request.POST:
+            pf = ProfileForm(request.POST, instance=profile_obj)
+            if pf.is_valid():
+                pf.save()
+                return redirect('profile')
+            else:
+                # fall through to render with errors
+                pass
+
+        # Upload a services.json file
+        if 'services_file' in request.FILES:
+            upload_form = UploadServicesForm(request.POST, request.FILES)
+            if upload_form.is_valid():
+                services_file = upload_form.cleaned_data['services_file']
+                dupe_policy = upload_form.cleaned_data.get('dupe_policy') or 'skip'
+
+                imports_dir = os.path.join(settings.BASE_DIR, 'imports')
+                os.makedirs(imports_dir, exist_ok=True)
+                timestamp = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+                filename = f"{request.user.username}-{timestamp}-services.json"
+                dest_path = os.path.join(imports_dir, filename)
+
+                # Save uploaded file to disk
+                with open(dest_path, 'wb') as out_f:
+                    for chunk in services_file.chunks():
+                        out_f.write(chunk)
+
+                # Create ImportJob
+                job = ImportJob.objects.create(
+                    user=request.user,
+                    filepath=dest_path,
+                    status=ImportJob.STATUS_UPLOADED,
+                    dupe_policy=dupe_policy,
+                )
+
+                # Quick scan: try to parse the file and build a small preview
+                preview = []
+                duplicates = 0
+                total = 0
+                try:
+                    with open(dest_path, 'r', encoding='utf8') as fh:
+                        data = json.load(fh)
+                    if isinstance(data, list):
+                        total = len(data)
+                        for svc in data[:50]:
+                            stops = svc.get('stops', [])
+                            if not stops:
+                                continue
+                            origin = stops[0].get('stop_name') or stops[0].get('name') or ''
+                            destination = stops[-1].get('stop_name') or stops[-1].get('name') or ''
+                            departure = stops[0].get('departure_time') or ''
+
+                            service_date = None
+                            scheduled_time = None
+                            if 'T' in departure:
+                                try:
+                                    date_part, time_part = departure.split('T', 1)
+                                    service_date = parse_date(date_part)
+                                    scheduled_time = parse_time(time_part)
+                                except Exception:
+                                    service_date = None
+                                    scheduled_time = None
+
+                            is_dup = False
+                            if service_date and scheduled_time:
+                                is_dup = TripLog.objects.filter(
+                                    user=request.user,
+                                    origin_name=origin,
+                                    destination_name=destination,
+                                    service_date=service_date,
+                                    scheduled_departure=scheduled_time,
+                                ).exists()
+                            if is_dup:
+                                duplicates += 1
+                            preview.append({
+                                'origin': origin,
+                                'destination': destination,
+                                'date': str(service_date),
+                                'time': str(scheduled_time),
+                                'duplicate': is_dup,
+                            })
+
+                except Exception as e:
+                    job.status = ImportJob.STATUS_FAILED
+                    job.result_log = {'error': f'Quick scan failed: {str(e)}'}
+                    job.save()
+                else:
+                    job.total = total
+                    job.duplicates = duplicates
+                    job.result_log = {'preview': preview[:20]}
+                    job.save()
+
+                # refresh job list
+                jobs = ImportJob.objects.filter(user=request.user).order_by('-created_at')[:20]
+
+        # Start import background job
+        if request.POST.get('start_import'):
+            job_id = request.POST.get('job_id')
+            policy = request.POST.get('policy') or 'skip'
+            job = get_object_or_404(ImportJob, pk=job_id, user=request.user)
+            job.dupe_policy = policy
+            job.status = ImportJob.STATUS_QUEUED
+            job.save()
+
+            # spawn background thread
+            t = threading.Thread(target=tasks.run_import_job, args=(job.pk,), kwargs={'policy': policy}, daemon=True)
+            t.start()
+
+            return redirect('profile_settings')
 
     return render(request, 'profile_settings.html', {
         'profile_form': pf,
+        'upload_form': upload_form,
+        'import_jobs': jobs,
     })
 
 

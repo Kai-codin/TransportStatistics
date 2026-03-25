@@ -38,7 +38,7 @@ class TripLog(models.Model):
     destination_tiploc  = models.CharField(max_length=20,  blank=True)
 
     scheduled_departure = models.TimeField(null=True, blank=True)
-    actual_departure    = models.TimeField(null=True, blank=True)
+    scheduled_arrival   = models.TimeField(null=True, blank=True)
 
     # stop the user was viewing when they tapped Log
     boarded_stop_name   = models.CharField(max_length=200, blank=True)
@@ -49,6 +49,12 @@ class TripLog(models.Model):
     # Store as [[lon,lat],[lon,lat],...] — use JSONField so no PostGIS needed
     route_geometry = models.JSONField(null=True, blank=True,
         help_text='GeoJSON LineString coordinate array [[lon,lat],...]')
+
+    full_route_geometry = models.JSONField(null=True, blank=True,
+        help_text='GeoJSON LineString coordinate array [[lon,lat],...] for the full route (not just the boarded stop onwards)')
+
+    full_locations = models.JSONField(null=True, blank=True,
+        help_text='Array of all locations passed through, with timestamps and stop info, e.g. [{"name": "Stop A", "crs": "AAA", "tiploc": "AAA", "arrival": "15:04", "departure": "15:05"}, ...]')
 
     # ── rail vehicle ──────────────────────────────────────────────────────────
     train_fleet_number  = models.CharField(max_length=20,  blank=True)
@@ -88,3 +94,44 @@ class TripLog(models.Model):
     @property
     def is_rail(self):
         return self.transport_type == self.TRANSPORT_RAIL
+
+
+class ImportJob(models.Model):
+    STATUS_UPLOADED = 'uploaded'
+    STATUS_QUEUED = 'queued'
+    STATUS_RUNNING = 'running'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+
+    STATUS_CHOICES = [
+        (STATUS_UPLOADED, 'Uploaded'),
+        (STATUS_QUEUED, 'Queued'),
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_COMPLETED, 'Completed'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='import_jobs')
+    filepath = models.CharField(max_length=800)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_UPLOADED)
+
+    # counters
+    total = models.IntegerField(default=0)
+    inserted = models.IntegerField(default=0)
+    duplicates = models.IntegerField(default=0)
+    failed_count = models.IntegerField(default=0)
+
+    # store any small JSON summary / preview / errors
+    result_log = models.JSONField(null=True, blank=True)
+
+    # optional policy chosen by user when starting the import ('skip'|'import_all'|'overwrite')
+    dupe_policy = models.CharField(max_length=20, blank=True, default='skip')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"ImportJob {self.pk} by {self.user.username} ({self.status})"

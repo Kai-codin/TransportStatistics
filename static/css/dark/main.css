@@ -868,6 +868,12 @@ html, body { height: 100%; font-family: var(--ts-font); background: var(--ts-bg)
   line-height: 1.5;
 }
 
+.ts-trip-fleet {
+  margin-left: auto;
+  flex-shrink: 0;
+  text-align: right;
+}
+
 .ts-form-field {
   display: flex;
   flex-direction: column;

@@ -25,6 +25,64 @@
             <a class="ts-btn-secondary" href="{% url 'profile' %}">Back to profile</a>
           </div>
         </form>
+
+        <div style="margin-top:18px"> 
+          <div style="font-weight:600;margin-bottom:8px">Import services.json</div>
+          <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {% if upload_form %}
+              {{ upload_form.services_file }}
+              {{ upload_form.dupe_policy }}
+            {% else %}
+              <input type="file" name="services_file" />
+            {% endif %}
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="ts-btn-primary" type="submit">Upload and scan</button>
+            </div>
+          </form>
+
+          {% if import_jobs %}
+            <div style="margin-top:16px">
+              <div style="font-weight:600;margin-bottom:6px">Recent import jobs</div>
+              <table style="width:100%;border-collapse:collapse">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Status</th><th>Total</th><th>Inserted</th><th>Duplicates</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                {% for job in import_jobs %}
+                  <tr style="border-top:1px solid #eee">
+                    <td>{{ job.id }}</td>
+                    <td>{{ job.get_status_display }}</td>
+                    <td>{{ job.total }}</td>
+                    <td>{{ job.inserted }}</td>
+                    <td>{{ job.duplicates }}</td>
+                    <td>
+                      {% if job.status == 'uploaded' or job.status == 'queued' %}
+                        <form method="post" style="display:inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="job_id" value="{{ job.id }}" />
+                          <input type="hidden" name="policy" value="skip" />
+                          <button class="ts-btn-secondary" name="start_import" value="1">Start (skip dupes)</button>
+                        </form>
+                        <form method="post" style="display:inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="job_id" value="{{ job.id }}" />
+                          <input type="hidden" name="policy" value="import_all" />
+                          <button class="ts-btn-primary" name="start_import" value="1">Start (import all)</button>
+                        </form>
+                      {% else %}
+                        <a class="ts-btn-secondary" href="#">View</a>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </main>

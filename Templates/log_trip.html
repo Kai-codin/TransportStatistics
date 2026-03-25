@@ -926,6 +926,7 @@ textarea.ts-panel-input {
       destination_crs:     _toStop.loc.stop.crs      || '',
       destination_tiploc:  _toStop.loc.stop.tiploc   || '',
       scheduled_departure: (_fromStop.loc.time.departure || _fromStop.loc.time.arrival || '').slice(0, 5),
+      scheduled_arrival:   (_toStop && (_toStop.loc.time.arrival || _toStop.loc.time.departure) || '').slice(0,5),
       boarded_stop_name:   _fromStop.loc.stop.name,
       boarded_stop_crs:    _fromStop.loc.stop.crs    || '',
       boarded_stop_atco:   _fromStop.loc.stop.atco_code || '',
@@ -938,6 +939,15 @@ textarea.ts-panel-input {
       bus_livery_name:     document.getElementById('lf-livery-name').value,
       notes:               document.getElementById('lf-notes').value,
       route_geometry:      JSON.stringify(segCoords),
+      full_route_geometry: JSON.stringify(_locations.map(l => [l.stop.lon, l.stop.lat])),
+      full_locations: JSON.stringify(_locations.map(l => ({
+        name: l.stop?.name || '',
+        crs:  l.stop?.crs  || '',
+        tiploc: l.stop?.tiploc || '',
+        atco: l.stop?.atco_code || '',
+        arrival: l.time?.arrival || '',
+        departure: l.time?.departure || ''
+      })))
     });
 
     const form = document.createElement('form');

@@ -1,5 +1,16 @@
 from django import forms
 from .models import TripLog
+from django import forms
+
+
+class UploadServicesForm(forms.Form):
+    services_file = forms.FileField(required=True, label='services.json')
+    DUPE_CHOICES = [
+        ('skip', 'Skip duplicates (default)'),
+        ('import_all', 'Import all (allow duplicates)'),
+        ('overwrite', 'Overwrite existing'),
+    ]
+    dupe_policy = forms.ChoiceField(choices=DUPE_CHOICES, required=False, initial='skip')
 
 
 class TripLogForm(forms.ModelForm):
@@ -13,7 +24,7 @@ class TripLogForm(forms.ModelForm):
             # journey
             'origin_name', 'origin_crs',
             'destination_name', 'destination_crs',
-            'scheduled_departure',
+            'scheduled_departure', 'scheduled_arrival',
 
             # boarded stop
             'boarded_stop_name', 'boarded_stop_crs', 'boarded_stop_atco',
@@ -29,17 +40,20 @@ class TripLogForm(forms.ModelForm):
             'notes',
 
             # geometry
-            'route_geometry',
+            'route_geometry', 'full_route_geometry', 'full_locations',
         ]
 
         widgets = {
             'service_date':         forms.DateInput(attrs={'type': 'date'}),
             'scheduled_departure':  forms.TimeInput(attrs={'type': 'time'}),
+            'scheduled_arrival':    forms.TimeInput(attrs={'type': 'time'}),
             'actual_departure':     forms.TimeInput(attrs={'type': 'time'}),
             'transport_type':       forms.Select(),
 
             'notes': forms.Textarea(attrs={'rows': 3}),
             'route_geometry': forms.HiddenInput(),
+            'full_route_geometry': forms.HiddenInput(),
+            'full_locations': forms.HiddenInput(),
 
             # hidden pre-fill fields
             'origin_crs':        forms.HiddenInput(),

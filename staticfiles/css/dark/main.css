@@ -784,14 +784,32 @@ html, body { height: 100%; font-family: var(--ts-font); background: var(--ts-bg)
 }
 
 .ts-btn-secondary {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--ts-font);
+  font-size: 16px;
   font-weight: 600;
-  padding: 6px 12px;
-  border-radius: var(--ts-r-sm);
-  border: 1.5px solid var(--ts-border);
   color: var(--ts-text-2);
+  background: var(--ts-surface-2);
+  border: 1.5px solid var(--ts-border);
+  border-radius: var(--ts-r-sm);
+  padding: 9px 16px;
+  cursor: pointer;
   text-decoration: none;
-  transition: all 0.15s;
+  transition: all 0.15s var(--ts-ease);
+  letter-spacing: -0.01em;
+  display: inline-flex; 
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.ts-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .ts-btn-secondary:hover {

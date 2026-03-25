@@ -36,7 +36,6 @@ INSTALLED_APPS = [
     'Social',
     'Stops',
     'Trips',
-    'Web',
 ]
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000

@@ -26,11 +26,13 @@
                 {% for operator in operators %}
                     <div class="ts-card">
                         <div class="ts-section-title"><h2>{{ operator }}</h2></div>
+                        {% if operator %}
                         <div class="ts-btn-row">
                             <a class="ts-btn-secondary" href="{% url 'fleet_completion' operator %}">Fleet Completion</a>
                             <a class="ts-btn-secondary" href="{% url 'route_completion' operator %}">Route Completion</a>
                             <a class="ts-btn-secondary" href="{% url 'operator_details' operator %}">Details</a>
-                        </div> 
+                        </div>
+                        {% endif %}
                     </div>
                 {% empty %}
                     <div class="ts-card">

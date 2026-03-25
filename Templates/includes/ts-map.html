@@ -287,7 +287,8 @@
     return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
       <div class="ts-popup-body">
         <div class="ts-popup-spinner"><span class="ts-spinner"></span>Fetching departures…</div>
-      </div></div>`;
+      </div>
+      </div>`;
   }
 
   function sheetHTML_loaded(p, results, qt) {
@@ -303,7 +304,17 @@
       : `<div class="ts-no-departures">No departures found for this time.</div>`;
 
     return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
-      <div class="ts-popup-body">${body}</div></div>`;
+      <div class="ts-popup-body">${body}
+        <div class="ts-popup-actions">
+          <button id="ts-departures-action" data-action="custom-service"
+            data-stop-atco="${p ? (p.atco_code||'') : ''}"
+            data-origin="${p ? (p.long_name || p.name || '') : ''}"
+            data-date="${qt ? toDate(qt) : toDate(new Date())}"
+            data-transport-type="${p ? (BUS_TYPE_CODES.has(p.stop_type_code)?'bus':'rail') : 'rail'}"
+            style="width:100%;text-align:center;padding:5px 20px;font-size:14px;display:block;margin:5px 0;"
+            class="ts-btn-primary">Log custom trip</button>
+        </div>
+      </div></div>`;
   }
 
   function sheetHTML_error(p, qt) {
@@ -370,6 +381,32 @@
         window.location.href = '/log-trip/?' + p.toString();
       });
     });
+
+    // departures action button (below the departures table) — navigate to log-trip as a custom trip
+    const depBtn = sheetInner.querySelector('#ts-departures-action');
+    if (depBtn) {
+      depBtn.addEventListener('click', () => {
+        try {
+          const dt = _sheetQueryTime || new Date();
+          const params = new URLSearchParams();
+          params.set('headcode', '');
+          params.set('date', toDate(dt));
+          params.set('trip_id', '');
+          params.set('scheduled_time', '');
+          const stopName = _activeProps ? (_activeProps.long_name || _activeProps.name || '') : (depBtn.dataset.origin || '');
+          params.set('stop', stopName);
+          params.set('stop_crs', _activeProps ? (_activeProps.crs || '') : '');
+          params.set('stop_atco', _activeProps ? (_activeProps.atco_code || '') : (depBtn.dataset.stopAtco || ''));
+          params.set('vehicle', '');
+          params.set('operator', '');
+          const ttype = depBtn.dataset.transportType || (_activeProps ? (BUS_TYPE_CODES.has(_activeProps.stop_type_code)?'bus':'rail') : 'rail');
+          params.set('transport_type', ttype);
+          // indicate this should open the custom-trip flow
+          params.set('custom', '1');
+          window.location.href = '/log-trip/?' + params.toString();
+        } catch (e) { console.debug('departures action click', e); }
+      });
+    }
   }
 
   // ── fetch departures ───────────────────────────────────────────────────────

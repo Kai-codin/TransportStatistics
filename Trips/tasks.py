@@ -13,28 +13,33 @@ def _trim_headcode(val):
 
 
 def _normalize_coords(coords):
-    # Accept list [lon,lat] or [lat,lon] or dict {'lat':..,'lon':..}
+    """
+    Always return coordinates in [lon, lat] format (GeoJSON standard)
+    """
+
     if coords is None:
         return None
+
+    # dict input
     if isinstance(coords, dict):
         lat = coords.get('lat') or coords.get('latitude') or coords.get('y')
         lon = coords.get('lon') or coords.get('lng') or coords.get('longitude') or coords.get('x')
+
         try:
             return [float(lon), float(lat)]
         except Exception:
             return None
+
+    # list/tuple input
     if isinstance(coords, (list, tuple)) and len(coords) >= 2:
         try:
-            a = float(coords[0])
-            b = float(coords[1])
-            # if a looks like latitude (-90..90) assume [lat, lon]
-            if -90 <= a <= 90 and -180 <= b <= 180:
-                return [b, a]
-            return [a, b]
+            lon = float(coords[0])
+            lat = float(coords[1])
+            return [lon, lat]  # ✅ DO NOT swap
         except Exception:
             return None
-    return None
 
+    return None
 
 def run_import_job(job_id, policy='skip'):
     """Background import worker for an ImportJob.

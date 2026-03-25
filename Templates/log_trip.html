@@ -387,6 +387,10 @@ textarea.ts-panel-input {
                 </select>
               </div>
             </div>
+            <div class="ts-panel-field" id="ts-route-number-field" style="margin-top:8px;">
+              <label class="ts-panel-label" for="lf-route-number">Route number</label>
+              <input type="text" id="lf-route-number" name="route_number" class="ts-panel-input mono" placeholder="e.g. X12 or 1A" />
+            </div>
           </div>
 
           <div class="ts-panel-divider"></div>
@@ -491,6 +495,7 @@ textarea.ts-panel-input {
   const prefVehicle   = params.get('vehicle')       || '';
   const prefOperator  = params.get('operator')      || '';
   const prefDate      = params.get('date')          || '';
+  const isCustom      = params.get('custom')        === '1';
   // Start-stop parameters passed from the map popup when the user clicked 'Log'
   const initialBoarded = {
     name: params.get('stop') || '',
@@ -514,6 +519,8 @@ textarea.ts-panel-input {
   // ── initial panel state ────────────────────────────────────────────────────
   document.getElementById('lf-operator').value = prefOperator;
   document.getElementById('lf-type').value     = transportType;
+  // Prefill route number if provided in URL params
+  try { document.getElementById('lf-route-number').value = params.get('route') || ''; } catch(e) {}
 
   if (prefVehicle && prefVehicle.includes(' - ')) {
     const [fleet, reg] = prefVehicle.split(' - ', 2);
@@ -535,6 +542,27 @@ textarea.ts-panel-input {
   const panelSub    = document.getElementById('ts-panel-sub');
   const instruction = document.getElementById('ts-map-instruction');
 
+  // Fetch stop coords from the API by ATCO or CRS and return {lat, lon} or null
+  function fetchStopCoords({ atco, crs }) {
+    let query = '';
+    if (atco) query = `?atco_code=${encodeURIComponent(atco)}`;
+    else if (crs) query = `?crs=${encodeURIComponent(crs)}`;
+    else return Promise.resolve(null);
+
+    return fetch(`/api/stops/${query}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        // support both {results:[...]} and plain list responses
+        const item = (data && data.results && data.results[0]) || (Array.isArray(data) && data[0]) || data;
+        if (!item) return null;
+        const lat = item.lat || item.latitude || (item.stop && item.stop.lat);
+        const lon = item.lon || item.longitude || (item.stop && item.stop.lon);
+        if (lat && lon) return { lat: parseFloat(lat), lon: parseFloat(lon), name: item.name || (item.stop && item.stop.name) };
+        return null;
+      })
+      .catch(() => null);
+  }
+
   function showInstruction(html) {
     instruction.innerHTML = html;
     instruction.classList.add('visible');
@@ -547,6 +575,11 @@ textarea.ts-panel-input {
   // Build stitched road geometry for a slice of _locations (buses)
   // or straight stop-to-stop coords (trains)
   function buildSegmentCoords(fromIdx, toIdx) {
+    const n = (_locations && _locations.length) || 0;
+    if (n === 0) return [];
+    // clamp indices to valid range
+    fromIdx = Math.max(0, Math.min(fromIdx, n - 1));
+    toIdx = Math.max(0, Math.min(toIdx, n - 1));
     if (!isBusMode()) {
       return _locations.slice(fromIdx, toIdx + 1).map(l => [l.stop.lon, l.stop.lat]);
     }
@@ -675,7 +708,54 @@ textarea.ts-panel-input {
     });
     _map.addControl(new maplibregl.NavigationControl(), 'top-right');
     _map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
-    _map.on('load', fetchService);
+    _map.on('load', () => {
+      if (isCustom) {
+        let serviceCard = document.getElementById('ts-service-card');
+        serviceCard.style.display = 'none';
+        tryAutoSelectStart();
+        // Ensure a selected-stops source/layer exists for highlighting synthetic picks
+        try {
+          if (!_map.getSource('ts-stops-selected')) {
+            _map.addSource('ts-stops-selected', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          }
+          if (!_map.getLayer('ts-stops-selected')) {
+            _map.addLayer({ id: 'ts-stops-selected', type: 'circle', source: 'ts-stops-selected',
+              paint: { 'circle-radius': 8, 'circle-color': ['match', ['get', 'role'], 'from', '#15803d', 'to', '#1d4ed8', '#888'], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' }
+            });
+          }
+        } catch (e) { console.debug('create selected layer', e); }
+
+        // allow clicking anywhere on the map to choose the finish (or start) stop
+        _map.on('click', function(e) {
+          // ignore clicks when there is a feature under the pointer that is a stop layer
+          try {
+            const features = _map.queryRenderedFeatures(e.point);
+            const hasStopFeature = features && features.length && features.some(f => (f.layer && (f.layer.id === 'ts-stops-stopping' || f.layer.id === 'ts-stops-passing')));
+            // allow even when clicking an existing stop feature - we'll use coords
+          } catch(_) {}
+          const lng = e.lngLat.lng; const lat = e.lngLat.lat;
+          const synthetic = {
+            stop: { name: `Custom ${lat.toFixed(5)},${lng.toFixed(5)}`, crs: '', tiploc: '', lat: lat, lon: lng, atco_code: '' },
+            time: { departure: '', arrival: '', display: '-' }
+          };
+          if (!_fromStop) {
+            _fromStop = { index: -1, loc: synthetic };
+            showInstruction('Now click your <strong>To</strong> station');
+          } else if (!_toStop) {
+            _toStop = { index: -1, loc: synthetic };
+            instruction.classList.remove('visible');
+          } else {
+            // replace the from stop with the new click and clear to-stop
+            _fromStop = { index: -1, loc: synthetic };
+            _toStop = null;
+            showInstruction('Now click your <strong>To</strong> station');
+          }
+          updateSelectedUI(); updateSelectedLayer(); updateRouteHighlight(); updateSaveBtn();
+        });
+      } else {
+        fetchService();
+      }
+    });
 
     document.addEventListener('ts:themechange', e => {
       const theme = e.detail?.theme || _theme;
@@ -803,6 +883,21 @@ textarea.ts-panel-input {
     };
     _fromStop = { index: -1, loc: syntheticStop };
     updateSelectedUI(); updateSaveBtn();
+    // If we were given an ATCO or CRS, attempt to resolve coords from the API
+    fetchStopCoords({ atco: initialBoarded.atco || '', crs: initialBoarded.crs || '' })
+      .then(coords => {
+        if (coords) {
+          _fromStop.loc.stop.lat = coords.lat;
+          _fromStop.loc.stop.lon = coords.lon;
+          // update visuals that rely on coordinates
+          updateSelectedLayer(); updateRouteHighlight(); updateSaveBtn();
+          // Optionally update the displayed name if API returned a canonical one
+          if (coords.name) {
+            _fromStop.loc.stop.name = coords.name;
+            updateSelectedUI();
+          }
+        }
+      });
     showInstruction('Now click your <strong>To</strong> station');
   }
 
@@ -893,14 +988,34 @@ textarea.ts-panel-input {
     if (_map.getSource('ts-route-highlight')) _map.removeSource('ts-route-highlight');
     if (!_fromStop || !_toStop) return;
 
-    const segCoords = (_fromStop.index >= 0)
-      ? buildSegmentCoords(_fromStop.index, _toStop.index)
-      : (_toStop && _toStop.index >= 0 ? buildSegmentCoords(0, _toStop.index) : []);
-    _map.addSource('ts-route-highlight', { type:'geojson',
-      data:{ type:'Feature', geometry:{ type:'LineString', coordinates: segCoords } } });
-    _map.addLayer({ id:'ts-route-highlight', type:'line', source:'ts-route-highlight',
-      paint:{ 'line-color':'#1d4ed8', 'line-width':4, 'line-opacity':0.9 }
-    }, 'ts-stops-stopping');
+    let segCoords = [];
+    if (_fromStop && _toStop) {
+      if ((_fromStop.index >= 0) && (_toStop.index >= 0)) {
+        segCoords = buildSegmentCoords(_fromStop.index, _toStop.index);
+      } else if ((_fromStop.index >= 0) && (_toStop.index < 0)) {
+        segCoords = buildSegmentCoords(_fromStop.index, _fromStop.index).slice();
+        segCoords.push([_toStop.loc.stop.lon, _toStop.loc.stop.lat]);
+      } else if ((_fromStop.index < 0) && (_toStop.index >= 0)) {
+        segCoords = buildSegmentCoords(0, _toStop.index);
+        segCoords.unshift([_fromStop.loc.stop.lon, _fromStop.loc.stop.lat]);
+      } else {
+        // both synthetic: straight line between points
+        segCoords = [[_fromStop.loc.stop.lon, _fromStop.loc.stop.lat], [_toStop.loc.stop.lon, _toStop.loc.stop.lat]];
+      }
+    }
+    const routeSrc = { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: segCoords } } };
+    try {
+      _map.addSource('ts-route-highlight', routeSrc);
+    } catch (e) { /* source may already exist */ }
+    const routeLayer = { id:'ts-route-highlight', type:'line', source:'ts-route-highlight', paint:{ 'line-color':'#1d4ed8', 'line-width':4, 'line-opacity':0.9 } };
+    // insert before stopping stops if that layer exists, otherwise append
+    const before = _map.getLayer('ts-stops-stopping') ? 'ts-stops-stopping' : undefined;
+    try {
+      if (before) _map.addLayer(routeLayer, before);
+      else _map.addLayer(routeLayer);
+    } catch (e) {
+      try { _map.addLayer(routeLayer); } catch (_) { console.debug('add route layer failed', e); }
+    }
   }
 
   // ── save btn ───────────────────────────────────────────────────────────────
@@ -912,7 +1027,45 @@ textarea.ts-panel-input {
   document.getElementById('ts-save-btn').addEventListener('click', () => {
     if (!_fromStop || !_toStop) return;
 
-    const segCoords = buildSegmentCoords(_fromStop.index, _toStop.index);
+    // Compute route segment coordinates with fallbacks for synthetic/custom stops
+    function computeSegCoords(fromStop, toStop) {
+      // Prefer building from _locations when indices are valid
+      if (fromStop && toStop && (fromStop.index >= 0) && (toStop.index >= 0) && _locations.length) {
+        return buildSegmentCoords(fromStop.index, toStop.index);
+      }
+
+      // One or both synthetic: try to use provided lat/lon values
+      const fromHasCoords = fromStop && fromStop.loc && (fromStop.loc.stop.lat != null) && (fromStop.loc.stop.lon != null);
+      const toHasCoords   = toStop   && toStop.loc   && (toStop.loc.stop.lat   != null) && (toStop.loc.stop.lon   != null);
+
+      if (fromHasCoords && toHasCoords) {
+        return [[fromStop.loc.stop.lon, fromStop.loc.stop.lat], [toStop.loc.stop.lon, toStop.loc.stop.lat]];
+      }
+
+      if (fromHasCoords && !toHasCoords) {
+        // if toStop is a real stop in _locations, stitch from fromStop.index to toStop.index if possible
+        if (toStop && toStop.index >= 0 && _locations.length) {
+          const seg = buildSegmentCoords(Math.max(0, fromStop.index), toStop.index);
+          seg.unshift([fromStop.loc.stop.lon, fromStop.loc.stop.lat]);
+          return seg;
+        }
+        return [[fromStop.loc.stop.lon, fromStop.loc.stop.lat]];
+      }
+
+      if (!fromHasCoords && toHasCoords) {
+        if (fromStop && fromStop.index >= 0 && _locations.length) {
+          const seg = buildSegmentCoords(fromStop.index, Math.min(_locations.length - 1, toStop.index));
+          seg.push([toStop.loc.stop.lon, toStop.loc.stop.lat]);
+          return seg;
+        }
+        return [[toStop.loc.stop.lon, toStop.loc.stop.lat]];
+      }
+
+      // Last resort: empty geometry
+      return [];
+    }
+
+    const segCoords = computeSegCoords(_fromStop, _toStop);
 
     const payload = new URLSearchParams({
       headcode:            headcode,
@@ -930,6 +1083,16 @@ textarea.ts-panel-input {
       boarded_stop_name:   _fromStop.loc.stop.name,
       boarded_stop_crs:    _fromStop.loc.stop.crs    || '',
       boarded_stop_atco:   _fromStop.loc.stop.atco_code || '',
+      boarded_stop_lat:    (_fromStop.loc.stop.lat != null) ? _fromStop.loc.stop.lat : '',
+      boarded_stop_lon:    (_fromStop.loc.stop.lon != null) ? _fromStop.loc.stop.lon : '',
+      origin_name:         _fromStop.loc.stop.name,
+      origin_crs:          _fromStop.loc.stop.crs    || '',
+      origin_lat:          (_fromStop.loc.stop.lat != null) ? _fromStop.loc.stop.lat : '',
+      origin_lon:          (_fromStop.loc.stop.lon != null) ? _fromStop.loc.stop.lon : '',
+      destination_name:    _toStop.loc.stop.name,
+      destination_crs:     _toStop.loc.stop.crs      || '',
+      destination_lat:     (_toStop && (_toStop.loc.stop.lat != null)) ? _toStop.loc.stop.lat : '',
+      destination_lon:     (_toStop && (_toStop.loc.stop.lon != null)) ? _toStop.loc.stop.lon : '',
       train_fleet_number:  document.getElementById('lf-train-fleet').value,
       train_type:          document.getElementById('lf-train-type').value,
       bus_fleet_number:    document.getElementById('lf-bus-fleet').value,
@@ -938,8 +1101,9 @@ textarea.ts-panel-input {
       bus_livery:          document.getElementById('lf-livery-hex').value,
       bus_livery_name:     document.getElementById('lf-livery-name').value,
       notes:               document.getElementById('lf-notes').value,
+      route_number:        document.getElementById('lf-route-number') ? document.getElementById('lf-route-number').value : '',
       route_geometry:      JSON.stringify(segCoords),
-      full_route_geometry: JSON.stringify(_locations.map(l => [l.stop.lon, l.stop.lat])),
+      full_route_geometry: JSON.stringify(_locations && _locations.length ? _locations.map(l => [l.stop.lon, l.stop.lat]) : segCoords),
       full_locations: JSON.stringify(_locations.map(l => ({
         name: l.stop?.name || '',
         crs:  l.stop?.crs  || '',

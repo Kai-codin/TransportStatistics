@@ -90,8 +90,15 @@ def decline_friend(request, user_id):
 
 @login_required
 def completion_home(request):
-    trips = TripLog.objects.filter(user=request.user, operator__isnull=False).values_list('operator', flat=True)
-    operators = sorted(set(trips))
+    trips = (
+        TripLog.objects
+        .filter(user=request.user)
+        .exclude(operator__isnull=True)
+        .exclude(operator__exact='')
+        .values_list('operator', flat=True)
+    )
+    # normalize and drop any empty/whitespace-only operator names
+    operators = sorted({op.strip() for op in trips if (op and op.strip())})
     
     return render(request, 'completion.html', {'operators': operators})
 

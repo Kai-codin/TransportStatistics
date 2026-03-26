@@ -133,6 +133,8 @@ def _time_info(loc) -> dict:
     stop_type = "passing" if (pas and not arr and not dep) else "stopping"
 
     return {
+        "from_date": loc.timetable.schedule_start_date.isoformat() if loc.timetable and loc.timetable.schedule_start_date else None,
+        "to_date": loc.timetable.schedule_end_date.isoformat() if loc.timetable and loc.timetable.schedule_end_date else None,
         "arrival":   arr,
         "departure": dep,
         "pass":      pas,

@@ -469,6 +469,9 @@ class TrainDeparturesView(APIView):
         show_zz = request.query_params.get("show_zz", "").lower() in ("1", "true", "yes")
         show_arrivals = request.query_params.get("show_arrivals", "").lower() in ("1", "true", "yes")
 
+        if show_zz:
+            show_passing = True
+
         # ── optional filters (MOVE THIS UP — was breaking cache) ──
         type_filter     = request.query_params.get("type", "").lower() or None
         headcode_filter = request.query_params.get("headcode", "").strip()
@@ -601,7 +604,7 @@ class TrainDeparturesView(APIView):
 
             ti = _time_info(loc)
 
-            if not show_passing and not show_arrivals and not ti.get("departure"):
+            if not show_passing and not show_zz and not show_arrivals and not ti.get("departure"):
                 continue
 
             # Type filter

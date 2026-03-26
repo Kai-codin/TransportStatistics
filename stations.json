@@ -4634,7 +4634,7 @@
     "long": -2.066925
   },
   {
-    "stationName": "Lichfield Trent Valley",
+    "stationName": "Lichfield Trent Valley Low Level",
     "crsCode": "LTV",
     "tiplocCode": "LCHTTVL",
     "lat": 52.6868262,
@@ -4648,7 +4648,7 @@
     "long": 0.0
   },
   {
-    "stationName": "Lichfield T V High Level",
+    "stationName": "Lichfield Trent Valley High Level",
     "crsCode": "LIF",
     "tiplocCode": "LCHTTVH",
     "lat": 52.686653,

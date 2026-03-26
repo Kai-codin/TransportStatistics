@@ -11,10 +11,8 @@ MySQL-safe rewrite. Key differences from the original:
 
   MYSQL LOCK FIXES
   ────────────────
-  • Timetable inserts use raw  INSERT IGNORE INTO … VALUES …  instead of
-    Django's bulk_create(ignore_conflicts=True).  Django's implementation on
-    MySQL acquires unnecessary gap locks; INSERT IGNORE does not.
-  • Updates use  ON DUPLICATE KEY UPDATE  — one round-trip, no SELECT first.
+  • All timetable writes use raw INSERT … ON DUPLICATE KEY UPDATE — one
+    round-trip, no ORM get() that can raise MultipleObjectsReturned.
   • Each timetable batch and its child ScheduleLocation rows are committed in
     separate, short transactions so InnoDB never holds a lock for long.
   • innodb_lock_wait_timeout is raised to 120 s on the connection at startup
@@ -71,13 +69,13 @@ def p(msg: str) -> None:
 
 
 # ── Tuning knobs ─────────────────────────────────────────────────────────────
-STP_PRIORITY         = {"C": 0, "N": 1, "O": 2, "P": 3}
 TIMETABLE_BATCH_SIZE = 200   # timetable rows per DB flush
 LOC_BATCH_SIZE       = 500   # ScheduleLocation rows per INSERT statement
 MAX_RETRIES          = 5     # retry attempts for lock errors
 RETRY_BASE_DELAY     = 0.25  # seconds; doubles each retry
 MYSQL_LOCK_ERRORS    = {1205, 1213}  # lock wait timeout, deadlock
 
+# Columns written to the Timetable table (must match model fields exactly).
 TIMETABLE_COLS = [
     "CIF_train_uid", "operator_id", "schedule_days_runs",
     "schedule_start_date", "schedule_end_date", "train_status",
@@ -85,6 +83,7 @@ TIMETABLE_COLS = [
     "power_type", "max_speed", "train_class",
 ]
 
+# Columns written to the ScheduleLocation table.
 LOC_COLS = [
     "timetable_id", "location_type", "tiploc_code", "stop_id",
     "sort_time", "departure_time", "arrival_time", "pass_time",
@@ -132,28 +131,6 @@ def _int_or_none(value) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-# ── STP selection ─────────────────────────────────────────────────────────────
-
-def _pick_best_record(existing: dict, candidate: dict, today: datetime.date) -> dict:
-    def is_valid_today(r: dict) -> bool:
-        start, end = r["_start"], r["_end"]
-        return not (start and today < start) and not (end and today > end)
-
-    ex_valid  = is_valid_today(existing)
-    can_valid = is_valid_today(candidate)
-    if can_valid != ex_valid:
-        return candidate if can_valid else existing
-
-    ex_stp  = STP_PRIORITY.get(existing["_stp"],  99)
-    can_stp = STP_PRIORITY.get(candidate["_stp"], 99)
-    if can_stp != ex_stp:
-        return candidate if can_stp < ex_stp else existing
-
-    ex_start  = existing["_start"]  or datetime.date.min
-    can_start = candidate["_start"] or datetime.date.min
-    return candidate if can_start >= ex_start else existing
 
 
 # ── Time helpers ──────────────────────────────────────────────────────────────
@@ -270,7 +247,7 @@ def _with_retry(fn, *args, **kwargs):
             delay = min(delay * 2, 30)
 
 
-# ── Raw-SQL writers ───────────────────────────────────────────────────────────
+# ── Table name helpers ────────────────────────────────────────────────────────
 
 def _tt_table() -> str:
     return Timetable._meta.db_table
@@ -279,6 +256,8 @@ def _tt_table() -> str:
 def _loc_table() -> str:
     return ScheduleLocation._meta.db_table
 
+
+# ── Raw-SQL writers ───────────────────────────────────────────────────────────
 
 def _row_values(r: dict) -> tuple:
     return (
@@ -297,47 +276,41 @@ def _row_values(r: dict) -> tuple:
     )
 
 
-def _insert_timetable_rows(rows: List[dict]) -> None:
-    """Insert all timetable rows, allowing duplicate UIDs."""
+def _write_timetable_rows(rows: List[dict], upsert: bool) -> None:
+    """
+    INSERT … ON DUPLICATE KEY UPDATE when upsert=True (--update mode),
+    plain INSERT IGNORE otherwise.
+
+    Both paths use raw SQL to avoid the ORM's update_or_create, which
+    raises MultipleObjectsReturned when the lookup columns aren't unique.
+    Neither path ever calls SELECT first, so no gap locks are acquired.
+    """
     if not rows:
         return
-    objs = [
-        Timetable(
-            CIF_train_uid=r["CIF_train_uid"],
-            operator_id=r["operator_id"],
-            schedule_days_runs=r["schedule_days_runs"],
-            schedule_start_date=r["schedule_start_date"],
-            schedule_end_date=r["schedule_end_date"],
-            train_status=r["train_status"],
-            headcode=r["headcode"],
-            CIF_headcode=r["CIF_headcode"],
-            train_service_code=r["train_service_code"],
-            power_type=r["power_type"],
-            max_speed=r["max_speed"],
-            train_class=r["train_class"]
-        ) for r in rows
-    ]
-    Timetable.objects.bulk_create(objs)
 
-
-def _upsert_timetable_rows(rows: List[dict]) -> None:
-    """ON DUPLICATE KEY UPDATE — one round-trip upsert."""
-    if not rows:
-        return
+    col_sql    = ", ".join(f"`{c}`" for c in TIMETABLE_COLS)
+    ph         = ", ".join(["%s"] * len(TIMETABLE_COLS))
     update_cols = [c for c in TIMETABLE_COLS if c != "CIF_train_uid"]
-    col_sql     = ", ".join(f"`{c}`" for c in TIMETABLE_COLS)
-    ph          = ", ".join(["%s"] * len(TIMETABLE_COLS))
-    update_sql  = ", ".join(f"`{c}`=VALUES(`{c}`)" for c in update_cols)
-    sql = (
-        f"INSERT INTO `{_tt_table()}` ({col_sql}) VALUES ({ph}) "
-        f"ON DUPLICATE KEY UPDATE {update_sql}"
-    )
+
+    if upsert:
+        update_sql = ", ".join(f"`{c}`=VALUES(`{c}`)" for c in update_cols)
+        sql = (
+            f"INSERT INTO `{_tt_table()}` ({col_sql}) VALUES ({ph}) "
+            f"ON DUPLICATE KEY UPDATE {update_sql}"
+        )
+    else:
+        sql = f"INSERT IGNORE INTO `{_tt_table()}` ({col_sql}) VALUES ({ph})"
+
     with transaction.atomic():
         with connection.cursor() as cur:
             cur.executemany(sql, [_row_values(r) for r in rows])
 
 
-def _fetch_uid_to_pk(uids: List[str]) -> Dict[str, int]:
+def _fetch_uid_to_pks(uids: List[str]) -> Dict[str, List[int]]:
+    """
+    Return every PK for each UID (a UID may legitimately have several rows
+    when different date ranges exist for the same train).
+    """
     if not uids:
         return {}
     ph  = ", ".join(["%s"] * len(uids))
@@ -345,9 +318,12 @@ def _fetch_uid_to_pk(uids: List[str]) -> Dict[str, int]:
         f"SELECT `CIF_train_uid`, `id` FROM `{_tt_table()}` "
         f"WHERE `CIF_train_uid` IN ({ph})"
     )
+    result: Dict[str, List[int]] = {}
     with connection.cursor() as cur:
         cur.execute(sql, uids)
-        return {row[0]: row[1] for row in cur.fetchall()}
+        for uid, pk in cur.fetchall():
+            result.setdefault(uid, []).append(pk)
+    return result
 
 
 def _fetch_pks_with_locations(pks: List[int]) -> set:
@@ -389,8 +365,7 @@ def _insert_location_rows(loc_rows: List[tuple]) -> None:
 
 # ── Record helpers ────────────────────────────────────────────────────────────
 
-def _expand_record(uid: str, best: dict, op_cache: OperatorCache) -> dict:
-    rec = best["_rec"]
+def _expand_record(uid: str, rec: dict, op_cache: OperatorCache) -> dict:
     seg = rec.get("schedule_segment") or {}
     return {
         "CIF_train_uid":       uid,
@@ -533,8 +508,6 @@ class Command(BaseCommand):
         if do_replace and not dry_run:
             self._truncate_tables()
 
-        today = datetime.date.today()
-
         # ── Cache warm-up ─────────────────────────────────────────────────────
         p("\nWarming caches ...")
         t0         = time.time()
@@ -544,9 +517,11 @@ class Command(BaseCommand):
           f"{len(op_cache._cache):,} operators  |  "
           f"{time.time() - t0:.1f}s")
 
-
-        # ── Pass 1: Collect ALL records ─────────────────────────────────────
-        raw_records: Dict[str, list] = {}
+        # ── Pass 1: Read all records ──────────────────────────────────────────
+        # Each element is (uid, raw_record_dict).  We keep every record for
+        # every UID because a single UID can legitimately have multiple rows
+        # (different date ranges / STP indicators).
+        all_records: List[Tuple[str, dict]] = []
         total_lines = 0
         no_uid      = 0
 
@@ -561,54 +536,46 @@ class Command(BaseCommand):
                     no_uid += 1
                     continue
 
-                # Store all records for each UID
-                raw_records.setdefault(uid, []).append(rec)
+                all_records.append((uid, rec))
 
                 if total_lines % 50_000 == 0:
                     elapsed = time.time() - t_read
-                    p(f"  {total_lines:,} lines  {sum(len(v) for v in raw_records.values()):,} records  "
+                    p(f"  {total_lines:,} lines  {len(all_records):,} records  "
                       f"{total_lines / elapsed:,.0f} lines/s")
 
         elapsed_read = time.time() - t_read
-        total_records = sum(len(v) for v in raw_records.values())
+        unique_uids  = len({uid for uid, _ in all_records})
         p(f"\nRead complete: {total_lines:,} lines in {elapsed_read:.1f}s  "
-          f"({total_lines / elapsed_read:,.0f} lines/s")
-        p(f"  {len(raw_records):,} unique UIDs  "
-          f"|  {total_records:,} total records")
+          f"({total_lines / elapsed_read:,.0f} lines/s)")
+        p(f"  {unique_uids:,} unique UIDs  |  {len(all_records):,} total records")
         if no_uid:
             p(f"  WARNING: {no_uid:,} records had no CIF_train_uid and were skipped")
 
-        # ── Pass 2: flush ─────────────────────────────────────────────────----
-        p(f"\nFlushing to DB ...")
+        # ── Pass 2: Flush to DB ───────────────────────────────────────────────
+        p("\nFlushing to DB ...")
         created_tt = updated_tt = created_loc = skipped_tt = 0
-        # Flatten all records for batching
-        uid_list      = list(raw_records.keys())
-        all_records = []
-        for uid, recs in raw_records.items():
-            for rec in recs:
-                all_records.append((uid, rec))
-
-        total_batches = (len(all_records) + batch_size - 1) // batch_size
+        total       = len(all_records)
+        total_batches = (total + batch_size - 1) // batch_size
         t_flush       = time.time()
         REPORT_EVERY  = max(1, total_batches // 20)  # ~20 progress lines total
 
-        for batch_num, batch_start in enumerate(range(0, len(all_records), batch_size), 1):
-            batch_uids = uid_list[batch_start : batch_start + batch_size]
+        for batch_num, batch_start in enumerate(range(0, total, batch_size), 1):
             batch = all_records[batch_start : batch_start + batch_size]
-            records = [
-                _expand_record(uid, {"_rec": rec}, op_cache)
-                for uid, rec in batch
-            ]
+
+            # Expand raw source dicts into the flat dicts _write_timetable_rows
+            # and _build_location_rows expect.
+            records = [_expand_record(uid, rec, op_cache) for uid, rec in batch]
 
             try:
                 c, u, s, loc = self._flush_batch(
                     records, dry_run, stop_cache, do_update
                 )
             except Exception as exc:
-                done = batch_start + len(batch_uids)
+                first_uid = batch[0][0] if batch else "?"
+                done      = batch_start + len(batch)
                 p(f"\nERROR at batch {batch_num}/{total_batches} "
                   f"(records {batch_start + 1}–{done}, "
-                  f"first UID={batch_uids[0]!r})")
+                  f"first UID={first_uid!r})")
                 p(f"  {type(exc).__name__}: {exc}")
                 traceback.print_exc()
                 raise
@@ -619,25 +586,25 @@ class Command(BaseCommand):
             created_loc += loc
 
             if batch_num % REPORT_EVERY == 0 or batch_num == total_batches:
-                done    = min(batch_start + batch_size, len(uid_list))
+                done    = min(batch_start + batch_size, total)
                 elapsed = time.time() - t_flush
                 rate    = done / elapsed if elapsed else 0
-                eta_min = (len(uid_list) - done) / rate / 60 if rate else 0
-                p(f"  {done:,}/{len(uid_list):,} ({100 * done / len(uid_list):.0f}%)  "
+                eta_min = (total - done) / rate / 60 if rate else 0
+                p(f"  {done:,}/{total:,} ({100 * done / total:.0f}%)  "
                   f"+{created_tt:,} new  {created_loc:,} locs  "
                   f"ETA {eta_min:.0f} min")
 
         elapsed_total = time.time() - t_flush
         p(f"\n{'=' * 60}")
         p(f"Done in {elapsed_total:.1f}s  "
-          f"({len(uid_list) / elapsed_total:,.0f} UIDs/s)")
+          f"({total / elapsed_total:,.0f} records/s)")
         p(f"  Created   : {created_tt:,}")
         p(f"  Updated   : {updated_tt:,}")
         p(f"  Skipped   : {skipped_tt:,}")
         p(f"  Locations : {created_loc:,}")
         p("=" * 60)
         self.stdout.write(self.style.SUCCESS(
-            f"Done — lines: {total_lines:,} | UIDs: {len(raw_records):,} | "
+            f"Done — lines: {total_lines:,} | UIDs: {unique_uids:,} | "
             f"created: {created_tt:,} | updated: {updated_tt:,} | "
             f"skipped: {skipped_tt:,} | locations: {created_loc:,}"
         ))
@@ -666,11 +633,10 @@ class Command(BaseCommand):
         do_update: bool,
     ) -> Tuple[int, int, int, int]:
         """
-        Write one batch to the DB.
+        Write one batch of expanded records to the DB.
         Returns (created_tt, updated_tt, skipped_tt, created_loc).
         """
-        uids = [r["CIF_train_uid"] for r in records]
-
+        # Pre-warm the stop cache for every TIPLOC in this batch.
         stop_cache.warm_batch([
             str(raw_tip).strip().upper()
             for r in records
@@ -683,48 +649,45 @@ class Command(BaseCommand):
             loc_count = sum(len(r["schedule_locations"]) for r in records)
             return len(records), 0, 0, loc_count
 
-        # ── 1. Write timetable rows ───────────────────────────────────────────
-        if do_update:
-            _with_retry(_upsert_timetable_rows, records)
-        else:
-            _with_retry(_insert_timetable_rows, records)
+        # ── 1. Write timetable rows (INSERT IGNORE or ON DUPLICATE KEY UPDATE)
+        _with_retry(_write_timetable_rows, records, do_update)
 
-        # ── 2. Resolve PKs ────────────────────────────────────────────────────
-        uid_to_pk = _with_retry(_fetch_uid_to_pk, uids)
+        # ── 2. Resolve UID → PK(s) ────────────────────────────────────────────
+        # A UID can map to multiple PKs (different date ranges), so we build a
+        # uid → [pk, …] mapping and flatten where needed.
+        uids       = list({r["CIF_train_uid"] for r in records})
+        uid_to_pks = _with_retry(_fetch_uid_to_pks, uids)
 
-        # ── 3. Decide which rows need locations ───────────────────────────────
+        # ── 3. Decide which PKs need location rows ────────────────────────────
+        all_pks = [pk for pks in uid_to_pks.values() for pk in pks]
+
         if do_update:
-            _with_retry(_delete_locations_for, list(uid_to_pk.values()))
-            uids_for_locations = set(uid_to_pk.keys())
+            # Wipe old locations for every PK so they're rebuilt fresh.
+            _with_retry(_delete_locations_for, all_pks)
+            pks_needing_locs = set(all_pks)
         else:
-            already_have_locs = _with_retry(
-                _fetch_pks_with_locations, list(uid_to_pk.values())
-            )
-            uids_for_locations = {
-                uid for uid, pk in uid_to_pk.items()
-                if pk not in already_have_locs
-            }
+            # Only insert locations for PKs that don't have any yet.
+            already_have_locs = _with_retry(_fetch_pks_with_locations, all_pks)
+            pks_needing_locs  = set(all_pks) - already_have_locs
 
         # ── 4. Build and insert ScheduleLocation rows ─────────────────────────
         loc_rows: List[tuple] = []
         for r in records:
             uid = r["CIF_train_uid"]
-            if uid not in uids_for_locations:
-                continue
-            pk = uid_to_pk.get(uid)
-            if pk is None:
-                logger.warning("No PK for uid %s — locations skipped", uid)
-                continue
-            loc_rows.extend(_build_location_rows(r, pk, stop_cache))
+            pks = uid_to_pks.get(uid, [])
+            for pk in pks:
+                if pk not in pks_needing_locs:
+                    continue
+                loc_rows.extend(_build_location_rows(r, pk, stop_cache))
 
         if loc_rows:
             _with_retry(_insert_location_rows, loc_rows)
 
         # ── 5. Tally ──────────────────────────────────────────────────────────
-        n_in_db   = len(uid_to_pk)
-        n_new     = len(uids_for_locations)
+        n_in_db   = len(all_pks)
+        n_skipped = len(records) - len(uids)          # duplicate UIDs in batch
+        n_new     = len(pks_needing_locs)
         n_updated = n_in_db - n_new if not do_update else n_in_db
-        n_skipped = len(records) - n_in_db
 
         return n_new, max(n_updated, 0), max(n_skipped, 0), len(loc_rows)
 
@@ -744,7 +707,7 @@ class Command(BaseCommand):
             if not rows:
                 p("  (no processes)")
             else:
-                col_w  = [
+                col_w = [
                     max(len(str(c)), max(len(str(r[i])) for r in rows))
                     for i, c in enumerate(cols)
                 ]
@@ -850,7 +813,7 @@ class Command(BaseCommand):
                         with connection.cursor() as cur:
                             cur.execute(f"KILL {pid}")
                         killed.append(pid)
-                        p(f"    → killed")
+                        p("    → killed")
                     except Exception as exc:
                         p(f"    → KILL failed: {exc}")
 

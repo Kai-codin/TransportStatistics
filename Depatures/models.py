@@ -4,7 +4,7 @@ from main.models import Operator
 from Stops.models import Stop
 
 class Timetable(models.Model):
-    CIF_train_uid = models.CharField(max_length=64, unique=True)
+    CIF_train_uid = models.CharField(max_length=64)
     operator = models.ForeignKey(Operator, null=True, blank=True, on_delete=models.SET_NULL, related_name='timetables')
     schedule_days_runs = models.CharField(max_length=16, null=True, blank=True)
     schedule_start_date = models.DateField(null=True, blank=True)
@@ -42,6 +42,10 @@ class ScheduleLocation(models.Model):
     pathing_allowance = models.CharField(max_length=16, null=True, blank=True)
     performance_allowance = models.CharField(max_length=16, null=True, blank=True)
     position = models.IntegerField(null=True, blank=True)
+    from_date = models.DateField(null=True, blank=True)
+    to_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "timetable":

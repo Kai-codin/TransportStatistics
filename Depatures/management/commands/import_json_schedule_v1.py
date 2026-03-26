@@ -298,15 +298,26 @@ def _row_values(r: dict) -> tuple:
 
 
 def _insert_timetable_rows(rows: List[dict]) -> None:
-    """INSERT IGNORE — skip conflicts without gap locks."""
+    """Insert all timetable rows, allowing duplicate UIDs."""
     if not rows:
         return
-    col_sql = ", ".join(f"`{c}`" for c in TIMETABLE_COLS)
-    ph      = ", ".join(["%s"] * len(TIMETABLE_COLS))
-    sql     = f"INSERT IGNORE INTO `{_tt_table()}` ({col_sql}) VALUES ({ph})"
-    with transaction.atomic():
-        with connection.cursor() as cur:
-            cur.executemany(sql, [_row_values(r) for r in rows])
+    objs = [
+        Timetable(
+            CIF_train_uid=r["CIF_train_uid"],
+            operator_id=r["operator_id"],
+            schedule_days_runs=r["schedule_days_runs"],
+            schedule_start_date=r["schedule_start_date"],
+            schedule_end_date=r["schedule_end_date"],
+            train_status=r["train_status"],
+            headcode=r["headcode"],
+            CIF_headcode=r["CIF_headcode"],
+            train_service_code=r["train_service_code"],
+            power_type=r["power_type"],
+            max_speed=r["max_speed"],
+            train_class=r["train_class"]
+        ) for r in rows
+    ]
+    Timetable.objects.bulk_create(objs)
 
 
 def _upsert_timetable_rows(rows: List[dict]) -> None:
@@ -533,8 +544,9 @@ class Command(BaseCommand):
           f"{len(op_cache._cache):,} operators  |  "
           f"{time.time() - t0:.1f}s")
 
-        # ── Pass 1: STP selection ─────────────────────────────────────────────
-        raw_records: Dict[str, dict] = {}
+
+        # ── Pass 1: Collect ALL records ─────────────────────────────────────
+        raw_records: Dict[str, list] = {}
         total_lines = 0
         no_uid      = 0
 
@@ -549,54 +561,43 @@ class Command(BaseCommand):
                     no_uid += 1
                     continue
 
-                stp       = (rec.get("CIF_stp_indicator") or "P").upper()
-                start_raw = rec.get("schedule_start_date")
-                end_raw   = rec.get("schedule_end_date")
-
-                try:
-                    start = datetime.date.fromisoformat(start_raw) if start_raw else None
-                    end   = datetime.date.fromisoformat(end_raw)   if end_raw   else None
-                except ValueError:
-                    start = end = None
-
-                candidate = {"_stp": stp, "_start": start, "_end": end, "_rec": rec}
-                if uid in raw_records:
-                    raw_records[uid] = _pick_best_record(
-                        raw_records[uid], candidate, today
-                    )
-                else:
-                    raw_records[uid] = candidate
+                # Store all records for each UID
+                raw_records.setdefault(uid, []).append(rec)
 
                 if total_lines % 50_000 == 0:
                     elapsed = time.time() - t_read
-                    p(f"  {total_lines:,} lines  {len(raw_records):,} UIDs  "
+                    p(f"  {total_lines:,} lines  {sum(len(v) for v in raw_records.values()):,} records  "
                       f"{total_lines / elapsed:,.0f} lines/s")
 
         elapsed_read = time.time() - t_read
-        stp_counts: Dict[str, int] = {}
-        for best in raw_records.values():
-            stp_counts[best["_stp"]] = stp_counts.get(best["_stp"], 0) + 1
-
+        total_records = sum(len(v) for v in raw_records.values())
         p(f"\nRead complete: {total_lines:,} lines in {elapsed_read:.1f}s  "
-          f"({total_lines / elapsed_read:,.0f} lines/s)")
+          f"({total_lines / elapsed_read:,.0f} lines/s")
         p(f"  {len(raw_records):,} unique UIDs  "
-          f"|  STP winners: {dict(sorted(stp_counts.items()))}")
+          f"|  {total_records:,} total records")
         if no_uid:
             p(f"  WARNING: {no_uid:,} records had no CIF_train_uid and were skipped")
 
-        # ── Pass 2: flush ─────────────────────────────────────────────────────
+        # ── Pass 2: flush ─────────────────────────────────────────────────----
         p(f"\nFlushing to DB ...")
         created_tt = updated_tt = created_loc = skipped_tt = 0
+        # Flatten all records for batching
         uid_list      = list(raw_records.keys())
-        total_batches = (len(uid_list) + batch_size - 1) // batch_size
+        all_records = []
+        for uid, recs in raw_records.items():
+            for rec in recs:
+                all_records.append((uid, rec))
+
+        total_batches = (len(all_records) + batch_size - 1) // batch_size
         t_flush       = time.time()
         REPORT_EVERY  = max(1, total_batches // 20)  # ~20 progress lines total
 
-        for batch_num, batch_start in enumerate(range(0, len(uid_list), batch_size), 1):
+        for batch_num, batch_start in enumerate(range(0, len(all_records), batch_size), 1):
             batch_uids = uid_list[batch_start : batch_start + batch_size]
-            records    = [
-                _expand_record(uid, raw_records[uid], op_cache)
-                for uid in batch_uids
+            batch = all_records[batch_start : batch_start + batch_size]
+            records = [
+                _expand_record(uid, {"_rec": rec}, op_cache)
+                for uid, rec in batch
             ]
 
             try:

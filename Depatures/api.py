@@ -467,11 +467,20 @@ class TrainDeparturesView(APIView):
         show_passing = request.query_params.get("show_passing", "").lower() in ("1", "true", "yes")
         tiploc  = request.query_params.get("tiploc", "").strip()
         show_zz = request.query_params.get("show_zz", "").lower() in ("1", "true", "yes")
+        show_arrivals = request.query_params.get("show_arrivals", "").lower() in ("1", "true", "yes")
+
+        # ── optional filters (MOVE THIS UP — was breaking cache) ──
+        type_filter     = request.query_params.get("type", "").lower() or None
+        headcode_filter = request.query_params.get("headcode", "").strip()
+        operator_filter = request.query_params.get("operator", "").strip()
 
         if not crs and not tiploc:
             return Response({"detail": "Provide crs or tiploc"}, status=400)
 
-        # ── date ──────────────────────────────────────────────────────────────
+        if type_filter and type_filter not in ("stopping", "passing"):
+            return Response({"detail": "type must be 'stopping' or 'passing'"}, status=400)
+
+        # ── date ──────────────────────────────────────────────
         date_str = request.query_params.get("date", "")
         if date_str:
             try:
@@ -481,7 +490,7 @@ class TrainDeparturesView(APIView):
         else:
             date_val = datetime.date.today()
 
-        # ── time threshold → stored as "HH:MM:SS" to match sort_time ──────────
+        # ── time ──────────────────────────────────────────────
         time_str = request.query_params.get("time", "")
         if time_str:
             t = time_str.strip()
@@ -500,61 +509,49 @@ class TrainDeparturesView(APIView):
             hh, mm, ss = now.hour, now.minute, now.second
 
         threshold_secs     = hh * 3600 + mm * 60 + ss
-        threshold_sort_str = f"{hh:02d}:{mm:02d}:{ss:02d}"   # matches sort_time format
+        threshold_sort_str = f"{hh:02d}:{mm:02d}:{ss:02d}"
 
-        # ── caching: short-lived cache keyed by relevant request params ───
+        # ── caching ───────────────────────────────────────────
         try:
-            cache_ttl = 30  # seconds; tune as needed
+            cache_ttl = 30
             cache_params = {
                 "crs": crs,
                 "tiploc": tiploc,
                 "date": date_val.isoformat(),
                 "time": threshold_sort_str,
-                "show_passing": bool(show_passing),
-                "show_zz": bool(show_zz),
+                "show_passing": show_passing,
+                "show_zz": show_zz,
                 "type": type_filter,
                 "headcode": headcode_filter,
                 "operator": operator_filter,
+                "show_arrivals": show_arrivals,
             }
             cache_key_raw = "train_departures:" + json.dumps(cache_params, sort_keys=True, separators=(',',':'))
             cache_key = "tdv:" + hashlib.sha1(cache_key_raw.encode('utf-8')).hexdigest()
+
             cached = cache.get(cache_key)
             if cached is not None:
                 return Response(cached)
         except Exception:
-            # Don't let caching failures break the API; proceed without cache
-            cached = None
+            cache_key = None
 
-        # ── optional filters ───────────────────────────────────────────────────
-        type_filter     = request.query_params.get("type", "").lower() or None
-        headcode_filter = request.query_params.get("headcode", "").strip()
-        operator_filter = request.query_params.get("operator", "").strip()
+        weekday = date_val.weekday()
 
-        if type_filter and type_filter not in ("stopping", "passing"):
-            return Response({"detail": "type must be 'stopping' or 'passing'"}, status=400)
-
-        weekday = date_val.weekday()  # 0=Monday … 6=Sunday
-
-        # ── DB query ───────────────────────────────────────────────────────────
-
-        # Station match
+        # ── DB filters ────────────────────────────────────────
         loc_q = Q()
         if crs:
             loc_q |= Q(stop__crs__iexact=crs)
         if tiploc:
             loc_q |= Q(tiploc_code__iexact=tiploc) | Q(stop__tiploc__iexact=tiploc)
 
-        # Timetable date validity
         date_q = (
             Q(timetable__schedule_start_date__lte=date_val) | Q(timetable__schedule_start_date__isnull=True)
         ) & (
             Q(timetable__schedule_end_date__gte=date_val)   | Q(timetable__schedule_end_date__isnull=True)
         )
 
-        # sort_time threshold — safe because sort_time is always "HH:MM:SS"
         time_q = Q(sort_time__gte=threshold_sort_str)
 
-        # Optional headcode / operator / ZZ
         extra_q = Q()
         if headcode_filter:
             extra_q &= Q(timetable__headcode__iexact=headcode_filter)
@@ -567,11 +564,9 @@ class TrainDeparturesView(APIView):
             extra_q &= ~Q(timetable__headcode__istartswith="ZZ")
             extra_q &= ~Q(timetable__operator__code__istartswith="ZZ")
 
-        # By default, only show services that stop at this station
-        # (have either a departure_time or an arrival_time). Passing
-        # trains (only pass_time) are shown only when `show_passing` is set.
+        # ⚠️ IMPORTANT: keep DB filter SIMPLE — do NOT try to be clever here
         if not show_passing:
-            stop_q = (Q(departure_time__gt="") | Q(arrival_time__gt=""))
+            stop_q = Q(departure_time__isnull=False) | Q(arrival_time__isnull=False)
         else:
             stop_q = Q()
 
@@ -580,34 +575,36 @@ class TrainDeparturesView(APIView):
             .filter(loc_q & date_q & time_q & extra_q & stop_q)
             .select_related("stop", "timetable", "timetable__operator")
             .only(*self._SELECT)
-            .order_by("sort_time")   # safe - always HH:MM:SS
+            .order_by("sort_time")
         )
 
-        # ── Python filter: day mask + type ─────────────────────────────────────
-        # Day mask must be done in Python — the bitmask string format is not
-        # safe to filter in SQL due to variable length / padding inconsistencies.
-        station_info: Optional[dict] = None
+        # ── Python filtering (SOURCE OF TRUTH) ─────────────────
+        station_info = None
         valid = []
 
         for loc in qs.iterator(chunk_size=500):
             tt = loc.timetable
 
-            # Day mask check
+            # Day filter
             if tt:
                 mask = (tt.schedule_days_runs or "").strip()
-                mask = (mask + "0000000")[:7]   # normalise to exactly 7 chars
+                mask = (mask + "0000000")[:7]
                 if mask[weekday] != "1":
                     continue
 
-            # ZZ belt-and-braces (also in DB filter but cheap to re-check)
+            # ZZ filter
             if not show_zz and tt:
                 hc  = (tt.headcode or "").upper()
                 opc = (tt.operator.code or "").upper() if tt.operator else ""
                 if hc.startswith("ZZ") or opc.startswith("ZZ"):
                     continue
 
-            # Type filter
             ti = _time_info(loc)
+
+            if not show_passing and not show_arrivals and not ti.get("departure"):
+                continue
+
+            # Type filter
             if type_filter and ti["type"] != type_filter:
                 continue
 
@@ -616,13 +613,13 @@ class TrainDeparturesView(APIView):
 
             valid.append((loc, ti))
             if len(valid) >= 10:
-                break   # DB is already sorted by sort_time so first 10 is correct
+                break
 
-        # ── origin / destination lookup ────────────────────────────────────────
+        # ── origin/destination ────────────────────────────────
         timetable_ids = {loc.timetable_id for loc, _ in valid if loc.timetable_id}
 
-        origin_map:      dict[int, Optional[dict]] = {}
-        destination_map: dict[int, Optional[dict]] = {}
+        origin_map = {}
+        destination_map = {}
 
         if timetable_ids:
             all_locs = (
@@ -635,43 +632,40 @@ class TrainDeparturesView(APIView):
                 )
                 .order_by("timetable_id", "position")
             )
+
             for tt_id, grp in groupby(all_locs, key=lambda l: l.timetable_id):
                 locs_list = list(grp)
                 origin_map[tt_id]      = _stop_info(locs_list[0].stop, request)
                 destination_map[tt_id] = _stop_info(locs_list[-1].stop, request)
 
-        # ── build response ─────────────────────────────────────────────────────
+        # ── response ──────────────────────────────────────────
         results = []
         for loc, ti in valid:
-            tt    = loc.timetable
+            tt = loc.timetable
             tt_id = loc.timetable_id
-            op    = (tt.operator.name or tt.operator.code) if (tt and tt.operator) else None
+            op = (tt.operator.name or tt.operator.code) if (tt and tt.operator) else None
 
             results.append({
-                "time":               ti,
-                "platform":           loc.platform,
-                "origin":             origin_map.get(tt_id) or "Unknown",
-                "destination":        destination_map.get(tt_id) or "Unknown",
-                "cif_train_uid":      tt.CIF_train_uid if tt else None,
-                "headcode":           tt.headcode      if tt else None,
-                "operator":           op,
+                "time": ti,
+                "platform": loc.platform,
+                "origin": origin_map.get(tt_id) or "Unknown",
+                "destination": destination_map.get(tt_id) or "Unknown",
+                "cif_train_uid": tt.CIF_train_uid if tt else None,
+                "headcode": tt.headcode if tt else None,
+                "operator": op,
                 "schedule_days_runs": _readable_days(tt.schedule_days_runs) if tt else None,
-                "rtt_link":           _rtt_link(tt.CIF_train_uid, date_val.isoformat()) if tt else None,
+                "rtt_link": _rtt_link(tt.CIF_train_uid, date_val.isoformat()) if tt else None,
             })
 
         response_data = {
-            "date":       date_val.isoformat(),
+            "date": date_val.isoformat(),
             "time_after": threshold_secs,
-            "station":    station_info,
-            "results":    results,
+            "station": station_info,
+            "results": results,
         }
 
-        # Store in cache if we built a cache key earlier
-        try:
-            if 'cache_key' in locals() and cache_key:
-                cache.set(cache_key, response_data, cache_ttl)
-        except Exception:
-            pass
+        if cache_key:
+            cache.set(cache_key, response_data, cache_ttl)
 
         return Response(response_data)
 
@@ -683,6 +677,7 @@ class ServiceLocationsView(APIView):
     def get(self, request):
         headcode = request.query_params.get("headcode")
         cif      = request.query_params.get("cif_train_uid")
+        
         if not headcode and not cif:
             return Response(
                 {"detail": "Provide headcode or cif_train_uid"},

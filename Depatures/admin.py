@@ -47,19 +47,28 @@ class TimetableAdmin(admin.ModelAdmin):
 class ScheduleLocationAdmin(admin.ModelAdmin):
     list_display = ('timetable', 'tiploc_code', 'stop', 'time_display', 'platform')
     search_fields = ('tiploc_code', 'stop__name', 'timetable__CIF_train_uid')
-    #list_filter = ('timetable',)
     autocomplete_fields = ('stop', 'timetable')
+    list_per_page = 50
+    list_select_related = ('stop', 'timetable')  # covers list_display relations
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        qs = qs.select_related('timetable').defer('timetable__created_at', 'timetable__modified_at')
-        return qs.annotate(
-            primary_time=Cast(
-                Coalesce(F('departure_time'), F('arrival_time'), F('pass_time')),
-                output_field=models.TimeField(),
+        return (
+            qs
+            .select_related('stop', 'timetable')
+            .defer('timetable__created_at', 'timetable__modified_at')
+            .annotate(
+                primary_time=Cast(
+                    Coalesce(
+                        F('departure_time'),
+                        F('arrival_time'),
+                        F('pass_time'),
+                    ),
+                    output_field=models.TimeField(),
+                )
             )
         )
 
-    @admin.display(ordering='primary_time', description='time')
+    @admin.display(ordering='primary_time', description='Time')
     def time_display(self, obj):
-        return obj.time
+        return obj.primary_time  # was obj.time — annotation is named primary_time

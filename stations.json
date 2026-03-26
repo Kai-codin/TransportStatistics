@@ -1984,8 +1984,8 @@
     "stationName": "Euston Lt",
     "crsCode": "ZEU",
     "tiplocCode": "",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5282865,
+    "long": -0.1338745
   },
   {
     "stationName": "Euston Square Lt",
@@ -3041,8 +3041,8 @@
     "stationName": "Waterloo Lt",
     "crsCode": "ZWA",
     "tiplocCode": "WATRLLT",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5030015,
+    "long": -0.1139812
   },
   {
     "stationName": "Watford Lt",
@@ -5155,8 +5155,8 @@
     "stationName": "London Euston",
     "crsCode": "EUS",
     "tiplocCode": "EUSTON",
-    "lat": 51.528313,
-    "long": -0.134545
+    "lat": 51.5288526, 
+    "long": -0.1341909
   },
   {
     "stationName": "Up Carriage Shed",
@@ -5516,11 +5516,11 @@
     "long": -0.654557
   },
   {
-    "stationName": "St Pancras",
+    "stationName": "St Pancras International",
     "crsCode": "SPX",
     "tiplocCode": "STPANCI",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5322106,
+    "long": -0.1276185
   },
   {
     "stationName": "York Way North Jn",
@@ -5631,8 +5631,8 @@
     "stationName": "St Pancras London",
     "crsCode": "STP",
     "tiplocCode": "STPX",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5328019,
+    "long": -0.1266253
   },
   {
     "stationName": "Churchyard Chs",
@@ -15137,8 +15137,8 @@
     "stationName": "Charing Cross London",
     "crsCode": "CHX",
     "tiplocCode": "CHRX",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5074975,
+    "long": -0.1236888
   },
   {
     "stationName": "Charlton",
@@ -15165,8 +15165,8 @@
     "stationName": "London Bridge",
     "crsCode": "LBG",
     "tiplocCode": "LNDNBDG",
-    "lat": 51.5054118,
-    "long": -0.0886993
+    "lat": 51.5048764,
+    "long": -0.0851473
   },
   {
     "stationName": "Spa Road Junction",
@@ -17104,8 +17104,8 @@
     "stationName": "London International",
     "crsCode": "LNE",
     "tiplocCode": "LONDINT",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 0,
+    "long": 0
   },
   {
     "stationName": "Betchworth",
@@ -17934,11 +17934,11 @@
     "long": 0.0
   },
   {
-    "stationName": "Waterloo London",
+    "stationName": "London Waterloo",
     "crsCode": "WAT",
     "tiplocCode": "WATRLOO",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5028379,
+    "long": -0.1128010
   },
   {
     "stationName": "Br Carriage Sidings",
@@ -19729,8 +19729,8 @@
     "stationName": "King'S Cross London",
     "crsCode": "KGX",
     "tiplocCode": "KNGX",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 51.5323954,
+    "long": -0.1230224
   },
   {
     "stationName": "Orton Mere",

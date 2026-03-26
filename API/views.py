@@ -29,7 +29,8 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
       naptan_code    Exact NaPTAN code.
       stop_type      ID, code, or comma-separated IDs/codes.    e.g. 1,13,9
       stop_types     Alias for stop_type (comma-separated IDs). e.g. 1,2,8,10
-      active         Boolean: 1/true/yes or 0/false/no.
+    active         Boolean: 1/true/yes or 0/false/no. Use `all` to return both active and inactive.
+               Default: active=true (unless `active=all` is passed).
 
     ── Bounding box (two formats, pick one) ────────────────────────────────
       bbox           Comma-separated: min_lon,min_lat,max_lon,max_lat
@@ -86,11 +87,18 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
 
         # ── active ────────────────────────────────────────────────────────
         active_param = p.get('active')
-        if active_param is not None:
-            if active_param.lower() in ('1', 'true', 't', 'yes', 'y'):
-                qs = qs.filter(active=True)
-            elif active_param.lower() in ('0', 'false', 'f', 'no', 'n'):
-                qs = qs.filter(active=False)
+        # Default behaviour: only return active stops unless caller requests otherwise.
+        if active_param is None:
+            qs = qs.filter(show_on_map=True)
+        else:
+            ap = active_param.lower()
+            if ap in ('all', '*'):
+                # no filtering, return both active and inactive
+                pass
+            elif ap in ('1', 'true', 't', 'yes', 'y'):
+                qs = qs.filter(show_on_map=True)
+            elif ap in ('0', 'false', 'f', 'no', 'n'):
+                qs = qs.filter(show_on_map=False)
 
         # ── bounding box ──────────────────────────────────────────────────
         # Format A: individual params  min_lat=, max_lat=, min_lon=, max_lon=

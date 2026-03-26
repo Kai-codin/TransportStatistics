@@ -15,6 +15,7 @@ class StopType(models.Model):
 
 
 class Stop(models.Model):
+	show_on_map = models.BooleanField(default=True, db_index=True)
 	common_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 	name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 	long_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)

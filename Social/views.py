@@ -98,7 +98,23 @@ def completion_home(request):
         .values_list('operator', flat=True)
     )
     # normalize and drop any empty/whitespace-only operator names
-    operators = sorted({op.strip() for op in trips if (op and op.strip())})
+    operators_map = {}
+
+    for op in trips:
+        if not op:
+            continue
+
+        clean = op.strip()
+        if not clean:
+            continue
+
+        key = clean.lower()
+
+        # keep the "best" version (e.g. first seen or title case)
+        if key not in operators_map:
+            operators_map[key] = clean
+
+    operators = sorted(operators_map.values())
     
     return render(request, 'completion.html', {'operators': operators})
 
@@ -145,9 +161,18 @@ def fetch_full_services(noc):
         params = None
 
     return all_results
-    
+
+def get_canonical_operator(user, operator_name):
+    return (
+        TripLog.objects
+        .filter(user=user, operator__iexact=operator_name)
+        .values_list('operator', flat=True)
+        .first()
+    ) or operator_name
+
 @login_required
 def completion_fleet(request, operator_name):
+    operator_name = get_canonical_operator(request.user, operator_name)
 
     # ── 1. DETECT TRANSPORT TYPE ──────────────────────────────
     transport_type = (
@@ -224,7 +249,7 @@ def completion_fleet(request, operator_name):
     # OPERATOR API
     operator_api = requests.get(
         "https://bustimes.org/api/operators/",
-        params={"name": operator_name}
+        params={"name": operator_name.strip()}
     ).json()
 
     if not operator_api["results"]:
@@ -293,6 +318,7 @@ def completion_fleet(request, operator_name):
 
 @login_required
 def completion_route(request, operator_name):
+    operator_name = get_canonical_operator(request.user, operator_name)
 
     # ── detect mode ──────────────────────────────────────────
     transport_type = (

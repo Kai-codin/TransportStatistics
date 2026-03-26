@@ -21,9 +21,9 @@ class Command(BaseCommand):
         parser.add_argument(
             '--url',
             type=str,
-            default='https://raw.githubusercontent.com/davwheat/uk-railway-stations/refs/heads/main/stations.json'
+            #default='https://raw.githubusercontent.com/davwheat/uk-railway-stations/refs/heads/main/stations.json'
         )
-        parser.add_argument('--file', type=str)
+        parser.add_argument('--file', type=str, default='stations.json')
 
     def log(self, message):
         now = time.strftime('%H:%M:%S')
@@ -103,10 +103,15 @@ class Command(BaseCommand):
             lat = parse_float(st.get('lat') or st.get('latitude') or st.get('y'))
             lon = parse_float(st.get('long') or st.get('longitude') or st.get('x'))
             crs = st.get('crsCode') or st.get('crs')
+            tiploc = st.get('tiplocCode') or st.get('tiploc')
 
             if not crs:
                 skipped += 1
                 continue
+
+            if lat is None or lon is None:
+                lat = 0.0
+                lon = 0.0
 
             try:
                 if crs in existing:
@@ -114,6 +119,7 @@ class Command(BaseCommand):
                     obj.name = name
                     obj.lat = lat
                     obj.lon = lon
+                    obj.tiploc = tiploc
                     obj.stop_type = rls_type
                     to_update.append(obj)
                 else:
@@ -122,6 +128,7 @@ class Command(BaseCommand):
                         crs=crs,
                         lat=lat,
                         lon=lon,
+                        tiploc=tiploc,
                         stop_type=rls_type,
                         active=True
                     ))

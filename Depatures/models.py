@@ -43,6 +43,23 @@ class ScheduleLocation(models.Model):
     performance_allowance = models.CharField(max_length=16, null=True, blank=True)
     position = models.IntegerField(null=True, blank=True)
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "timetable":
+            kwargs["queryset"] = (
+                Timetable.objects
+                .all()
+                .defer("created_at", "modified_at")
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+
+        if queryset.model is Timetable:
+            queryset = queryset.defer("created_at", "modified_at")
+
+        return queryset, use_distinct
+
     def __str__(self):
         return f"{self.stop} at {self.departure_time or self.arrival_time or self.pass_time} for {self.timetable}"
 

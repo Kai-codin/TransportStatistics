@@ -689,6 +689,16 @@ class ServiceLocationsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # ── date (optional) ──────────────────────────────────────────────
+        date_str = request.query_params.get("date", "")
+        if date_str:
+            try:
+                date_val = datetime.date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "Invalid date, use YYYY-MM-DD"}, status=400)
+        else:
+            date_val = datetime.date.today()
+
         # Avoid fetching auto-managed datetime fields that may be returned
         # as strings by some DB connectors; defer them so Django doesn't
         # run timezone conversion on raw strings.
@@ -697,27 +707,28 @@ class ServiceLocationsView(APIView):
             qs = qs.filter(CIF_train_uid=cif)
         if headcode:
             qs = qs.filter(headcode=headcode)
+        # Filter by schedule date range (allow null start/end as open-ended)
+        date_q = (
+            Q(schedule_start_date__lte=date_val) | Q(schedule_start_date__isnull=True)
+        ) & (
+            Q(schedule_end_date__gte=date_val) | Q(schedule_end_date__isnull=True)
+        )
+        qs = qs.filter(date_q).order_by("-schedule_start_date")
 
-        count = qs.count()
-        if count == 0:
+        if qs.count() == 0:
             return Response({"detail": "Timetable not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if count > 1:
-            matches = []
-            for t in qs.order_by("schedule_start_date"):
-                op   = t.operator.name or t.operator.code if t.operator else None
-                link = request.build_absolute_uri(
-                    f"{request.path}?cif_train_uid={t.CIF_train_uid}"
-                )
-                matches.append({
-                    "operator":           op,
-                    "timetable":          t.CIF_train_uid,
-                    "schedule_days_runs": _readable_days(t.schedule_days_runs),
-                    "link":               link,
-                })
-            return Response({"detail": "more than one service found", "matches": matches})
+        # Prefer timetables that run on the requested weekday. If multiple
+        # still match, pick the one with the most recent schedule_start_date.
+        weekday = date_val.weekday()
+        def _runs_on_day(t):
+            mask = (t.schedule_days_runs or "").strip()
+            mask = (mask + "0000000")[:7]
+            return mask[weekday] == "1"
 
-        timetable = qs.first()
+        candidates = list(qs)
+        day_matches = [t for t in candidates if _runs_on_day(t)]
+        timetable = day_matches[0] if day_matches else candidates[0]
         # Coerce schedule date fields in case the DB returned strings
         def _coerce_date(value):
             if isinstance(value, str):
@@ -732,6 +743,7 @@ class ServiceLocationsView(APIView):
         locations = (
             timetable.location_entries.all()
             .select_related('stop')
+            .defer('created_at', 'modified_at')
             .order_by("position", "departure_time", "arrival_time", "pass_time")
         )
 

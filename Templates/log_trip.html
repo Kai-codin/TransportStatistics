@@ -624,8 +624,8 @@ textarea.ts-panel-input {
       const uid = params.get('cif_train_uid') || '';
       const hc  = params.get('headcode')      || '';
       url = uid
-        ? `/api/train-service/?cif_train_uid=${encodeURIComponent(uid)}`
-        : `/api/train-service/?headcode=${encodeURIComponent(hc)}`;
+        ? `/api/train-service/?cif_train_uid=${encodeURIComponent(uid)}&date=${encodeURIComponent(prefDate)}`
+        : `/api/train-service/?headcode=${encodeURIComponent(hc)}&date=${encodeURIComponent(prefDate)}`;
     }
 
     fetch(url)

@@ -235,6 +235,22 @@ def profile_settings(request):
     })
 
 
+
+@login_required
+def delete_trip(request, pk):
+    """Allow a trip owner to delete their trip via POST."""
+    trip = get_object_or_404(TripLog, pk=pk)
+    if request.user != trip.user:
+        return render(request, '403.html', {'message': 'You are not permitted to delete this trip.'}, status=403)
+
+    if request.method == 'POST':
+        trip.delete()
+        return redirect('profile')
+
+    # For GET requests, show a simple confirm page
+    return render(request, 'trip_confirm_delete.html', {'trip': trip})
+    
+
 def view_profile(request, user_id):
     User = get_user_model()
     view_user = get_object_or_404(User, id=user_id)

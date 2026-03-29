@@ -519,8 +519,8 @@ textarea.ts-panel-input {
   // ── initial panel state ────────────────────────────────────────────────────
   document.getElementById('lf-operator').value = prefOperator;
   document.getElementById('lf-type').value     = transportType;
-  // Prefill route number if provided in URL params
-  try { document.getElementById('lf-route-number').value = params.get('route') || ''; } catch(e) {}
+  // Prefill route number if provided in URL params (use headcode when present)
+  try { document.getElementById('lf-route-number').value = params.get('route') || headcode || ''; } catch(e) {}
 
   if (prefVehicle && prefVehicle.includes(' - ')) {
     const [fleet, reg] = prefVehicle.split(' - ', 2);

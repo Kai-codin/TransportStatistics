@@ -402,6 +402,12 @@
                           <form method="post" style="display:contents">
                             {% csrf_token %}
                             <input type="hidden" name="job_id" value="{{ job.id }}" />
+                            <input type="hidden" name="policy" value="overwrite" />
+                            <button class="ts-btn-secondary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Overwrite dupes</button>
+                          </form>
+                          <form method="post" style="display:contents">
+                            {% csrf_token %}
+                            <input type="hidden" name="job_id" value="{{ job.id }}" />
                             <input type="hidden" name="policy" value="import_all" />
                             <button class="ts-btn-primary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Import all</button>
                           </form>

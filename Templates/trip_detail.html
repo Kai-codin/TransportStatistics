@@ -154,9 +154,12 @@
             Logged {{ trip.logged_at|date:"j F Y" }} at {{ trip.logged_at|time:"H:i" }}
             {% if request.user.is_authenticated %}
               {% if not viewing_user or viewing_user.id == request.user.id %}
-                <div style="margin-top:6px;display:flex;justify-content:flex-end">
-                  <a class="ts-btn-primary" style="width: 50%; padding: 5px 10px; margin-right: 5px;" href="{% url 'edit_trip' trip.pk %}">Edit</a>
-                  <a class="ts-btn-primary" style="background-color: var(--ts-danger); width: 50%; padding: 5px 10px;" href="">Delete</a>
+                <div style="margin-top:6px;display:flex;justify-content:flex-end;gap:6px">
+                  <a class="ts-btn-primary" style="width: 50%; padding: 5px 10px;" href="{% url 'edit_trip' trip.pk %}">Edit</a>
+                  <form method="post" action="{% url 'delete_trip' trip.pk %}" style="width:50%;margin:0">
+                    {% csrf_token %}
+                    <button type="submit" class="ts-btn-primary" style="background-color: var(--ts-danger); width:100%; padding: 5px 10px; border: none;">Delete</button>
+                  </form>
                 </div>
               {% endif %}
             {% endif %}

@@ -14,30 +14,55 @@ def _trim_headcode(val):
 
 def _normalize_coords(coords):
     """
-    Always return coordinates in [lon, lat] format (GeoJSON standard)
+    Always return coordinates in [lon, lat] format (GeoJSON standard).
+    Input lists may arrive as [lat, lon] — detect and swap automatically.
     """
-
     if coords is None:
         return None
 
-    # dict input
+    # dict input — keys tell us exactly which is which
     if isinstance(coords, dict):
         lat = coords.get('lat') or coords.get('latitude') or coords.get('y')
         lon = coords.get('lon') or coords.get('lng') or coords.get('longitude') or coords.get('x')
-
         try:
             return [float(lon), float(lat)]
         except Exception:
             return None
 
-    # list/tuple input
+    # list/tuple input — source data arrives as [lat, lon], need to detect and swap
     if isinstance(coords, (list, tuple)) and len(coords) >= 2:
         try:
-            lon = float(coords[0])
-            lat = float(coords[1])
-            return [lon, lat]  # ✅ DO NOT swap
+            a = float(coords[0])
+            b = float(coords[1])
         except Exception:
             return None
+
+        # Heuristic: a valid longitude must be in (-180, 180],
+        # a valid latitude must be in [-90, 90].
+        # If coords[0] looks like a latitude (|a| <= 90) and coords[1] looks
+        # like a longitude (|b| > 90 OR |b| > |a| when both are small),
+        # treat input as [lat, lon] and swap to [lon, lat].
+        a_could_be_lat = abs(a) <= 90
+        b_could_be_lat = abs(b) <= 90
+        a_could_be_lon = abs(a) <= 180
+        b_could_be_lon = abs(b) <= 180
+
+        if a_could_be_lat and b_could_be_lon and not b_could_be_lat:
+            # b is clearly a longitude (|b| > 90), so input is [lat, lon]
+            return [b, a]
+
+        if a_could_be_lat and b_could_be_lon:
+            # Both values are within ±90 so we can't tell from range alone.
+            # For UK/European data latitudes are typically > |longitude|,
+            # so if a > |b| it's almost certainly [lat, lon] — swap.
+            # If b > |a| it's probably already [lon, lat] — keep.
+            if abs(a) > abs(b):
+                return [b, a]   # [lat, lon] → swap
+            else:
+                return [a, b]   # already [lon, lat]
+
+        # Fallback: treat as [lon, lat] (GeoJSON standard)
+        return [a, b]
 
     return None
 
@@ -100,8 +125,13 @@ def run_import_job(job_id, policy='skip'):
                 scheduled_departure = None
                 scheduled_arrival = None
 
-                # parse departure
+                # parse departure (accept date-only values and common keys)
                 try:
+                    # allow date-only keys from stop or service
+                    if not departure:
+                        # try alternate keys
+                        departure = st.get('departure_date') or svc.get('departure_date') or departure
+
                     if isinstance(departure, str) and 'T' in departure:
                         date_part, time_part = departure.split('T', 1)
                         service_date = parse_date(date_part)
@@ -111,12 +141,22 @@ def run_import_job(job_id, policy='skip'):
                         service_date = parse_date(date_part)
                         scheduled_departure = parse_time(time_part)
                     elif isinstance(departure, str) and ':' in departure:
+                        # time-only string
                         scheduled_departure = parse_time(departure)
+                    elif isinstance(departure, str):
+                        # date-only string like '2026-03-08' -> set time to 00:00
+                        d = parse_date(departure)
+                        if d:
+                            service_date = d
+                            scheduled_departure = parse_time('00:00')
                 except Exception:
                     pass
 
-                # parse arrival
+                # parse arrival (accept date-only values and common keys)
                 try:
+                    if not arrival:
+                        arrival = stops[-1].get('arrival_date') or svc.get('arrival_date') or arrival
+
                     if isinstance(arrival, str) and 'T' in arrival:
                         _, time_part2 = arrival.split('T', 1)
                         scheduled_arrival = parse_time(time_part2)
@@ -125,6 +165,11 @@ def run_import_job(job_id, policy='skip'):
                         scheduled_arrival = parse_time(time_part2)
                     elif isinstance(arrival, str) and ':' in arrival:
                         scheduled_arrival = parse_time(arrival)
+                    elif isinstance(arrival, str):
+                        # date-only string -> set time to 00:00
+                        da = parse_date(arrival)
+                        if da:
+                            scheduled_arrival = parse_time('00:00')
                 except Exception:
                     pass
 

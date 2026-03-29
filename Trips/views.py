@@ -10,6 +10,7 @@ from .models import TripLog, ImportJob
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 import os
 import datetime
 import threading
@@ -25,6 +26,11 @@ def trip_detail(request, pk):
     trip = get_object_or_404(TripLog, pk=pk)
     owner = trip.user
 
+    if request.user.is_authenticated and request.user == owner:
+        trip_owner = True
+    else:
+        trip_owner = False
+
     # Owner always can view
     if request.user == owner:
         return render(request, 'trip_detail.html', {'trip': trip})
@@ -38,7 +44,7 @@ def trip_detail(request, pk):
 
     # Public: anyone can view (including anonymous)
     if profile.privacy == profile.PRIVACY_PUBLIC:
-        return render(request, 'trip_detail.html', {'trip': trip})
+        return render(request, 'trip_detail.html', {'trip_owner': trip_owner, 'trip': trip})
 
     # Friends only: allow if the requester is an accepted friend
     if profile.privacy == profile.PRIVACY_FRIENDS:
@@ -47,26 +53,125 @@ def trip_detail(request, pk):
             return render(request, '403.html', {'message': 'This trip is friends-only. Please log in to request access.'}, status=403)
         is_friend = Friend.objects.filter(user=owner, friend=request.user, status='accepted').exists() or Friend.objects.filter(user=request.user, friend=owner, status='accepted').exists()
         if is_friend:
-            return render(request, 'trip_detail.html', {'trip': trip})
+            return render(request, 'trip_detail.html', {'trip_owner': trip_owner, 'trip': trip})
         return render(request, '403.html', {'message': 'This trip is friends-only. You are not permitted to view this trip.'}, status=403)
 
     # Private: only owner can view (we already checked owner above)
     return render(request, '403.html', {'message': 'This trip is private.'}, status=403)
 
+
 @login_required
+def join_trip(request, pk):
+    """Toggle that the requesting user was present on another user's trip.
+
+    Only allowed when the requester is permitted to view the trip (public or friends),
+    or when the requester is the trip owner.
+    """
+    trip = get_object_or_404(TripLog, pk=pk)
+    owner = trip.user
+
+    # Owner can always add/remove
+    if request.user == owner:
+        allowed = True
+    else:
+        try:
+            profile = owner.profile
+        except Exception:
+            from Social.models import UserProfile
+            profile, _ = UserProfile.objects.get_or_create(user=owner)
+
+        if profile.privacy == profile.PRIVACY_PUBLIC:
+            allowed = True
+        elif profile.privacy == profile.PRIVACY_FRIENDS:
+            is_friend = Friend.objects.filter(user=owner, friend=request.user, status='accepted').exists() or Friend.objects.filter(user=request.user, friend=owner, status='accepted').exists()
+            allowed = bool(is_friend)
+        else:
+            allowed = False
+
+    if not allowed:
+        return render(request, '403.html', {'message': 'You are not permitted to mark attendance for this trip.'}, status=403)
+
+    if request.method == 'POST':
+        if request.user in trip.on_trip_trip.all():
+            trip.on_trip_trip.remove(request.user)
+        else:
+            trip.on_trip_trip.add(request.user)
+        trip.save()
+        return redirect('trip_detail', pk=trip.pk)
+
+    # On GET show a simple confirm page
+    return render(request, 'trip_confirm_join.html', {'trip': trip})
+
 def trip_date_map(request, date):
+    # Allow viewing another user's map when permitted via query param `user_id` or `user`.
+    target_user = None
+    user_q = request.GET.get('user_id') or request.GET.get('user')
+    User = get_user_model()
+    if user_q:
+        try:
+            if user_q.isdigit():
+                target_user = User.objects.get(pk=int(user_q))
+            else:
+                target_user = User.objects.get(username=user_q)
+        except User.DoesNotExist:
+            return render(request, 'trips_map.html', {'error': 'User not found.'}, status=404)
+    else:
+        # default to the requesting user if authenticated
+        if request.user.is_authenticated:
+            target_user = request.user
+        else:
+            return render(request, 'trips_map.html', {'error': 'Please log in or specify a user.'}, status=403)
+
+    # permission check (mirror trip_detail rules)
+    if request.user == target_user:
+        allowed = True
+    else:
+        try:
+            profile = target_user.profile
+        except Exception:
+            from Social.models import UserProfile
+            profile, _ = UserProfile.objects.get_or_create(user=target_user)
+
+        if profile.privacy == profile.PRIVACY_PUBLIC:
+            allowed = True
+        elif profile.privacy == profile.PRIVACY_FRIENDS:
+            if not request.user.is_authenticated:
+                return render(request, '403.html', {'message': 'This user\'s trips are friends-only. Please log in to request access.'}, status=403)
+            is_friend = Friend.objects.filter(user=target_user, friend=request.user, status='accepted').exists() or Friend.objects.filter(user=request.user, friend=target_user, status='accepted').exists()
+            if is_friend:
+                allowed = True
+            else:
+                return render(request, '403.html', {'message': 'This user\'s trips are friends-only. You are not permitted to view this map.'}, status=403)
+        else:
+            return render(request, '403.html', {'message': 'This user\'s trips are private.'}, status=403)
+
+    # At this point `target_user` is set and allowed
     if date == 'all':
-        trips = TripLog.objects.filter(user=request.user)
+        if request.user.is_authenticated and request.user == target_user:
+            trips = TripLog.objects.filter(Q(user=target_user) | Q(on_trip_trip=target_user))
+        else:
+            trips = TripLog.objects.filter(user=target_user)
         service_date = None  # Map will show all dates, so no single date to highlight
+    elif date == 'no-date':
+        service_date = None
+        if request.user.is_authenticated and request.user == target_user:
+            trips = TripLog.objects.filter(
+                Q(user=target_user) | Q(on_trip_trip=target_user), service_date=None
+            ).order_by('scheduled_departure')
+        else:
+            trips = TripLog.objects.filter(user=target_user, service_date=None).order_by('scheduled_departure')
     else:
         try:
             service_date = parse_date(date)
         except ValueError:
             return render(request, 'trips_map.html', {'error': 'Invalid date format. Use YYYY-MM-DD.'})
 
-        trips = TripLog.objects.filter(
-            user=request.user, service_date=service_date
-        ).order_by('scheduled_departure')
+        if request.user.is_authenticated and request.user == target_user:
+            trips = TripLog.objects.filter(
+                (Q(user=target_user) | Q(on_trip_trip=target_user)), service_date=service_date
+            ).order_by('scheduled_departure')
+        else:
+            trips = TripLog.objects.filter(user=target_user, service_date=service_date).order_by('scheduled_departure')
 
     trips_data = [
         {
@@ -89,7 +194,10 @@ def trip_date_map(request, date):
 
 @login_required
 def profile(request):
-    trips = TripLog.objects.filter(user=request.user).order_by('-service_date', '-scheduled_departure', '-logged_at')
+    # Include trips the user logged themselves plus trips they were marked on by others
+    trips = TripLog.objects.filter(
+        Q(user=request.user) | Q(on_trip_trip=request.user)
+    ).distinct().order_by('-service_date', '-scheduled_departure', '-logged_at')
 
     # Group by date
     days = []
@@ -240,7 +348,7 @@ def profile_settings(request):
 def delete_trip(request, pk):
     """Allow a trip owner to delete their trip via POST."""
     trip = get_object_or_404(TripLog, pk=pk)
-    if request.user != trip.user:
+    if request.user != trip.user and not request.user.is_staff:
         return render(request, '403.html', {'message': 'You are not permitted to delete this trip.'}, status=403)
 
     if request.method == 'POST':
@@ -272,7 +380,13 @@ def view_profile(request, user_id):
         trips = TripLog.objects.none()
         days = []
     else:
-        trips = TripLog.objects.filter(user=view_user).order_by('-service_date', '-scheduled_departure', '-logged_at')
+        # If viewing your own profile, include trips you were on (on_trip_trip)
+        if request.user.is_authenticated and request.user == view_user:
+            trips = TripLog.objects.filter(
+                Q(user=view_user) | Q(on_trip_trip=view_user)
+            ).distinct().order_by('-service_date', '-scheduled_departure', '-logged_at')
+        else:
+            trips = TripLog.objects.filter(user=view_user).order_by('-service_date', '-scheduled_departure', '-logged_at')
 
         # Group by date
         days = []

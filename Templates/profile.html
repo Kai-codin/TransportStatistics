@@ -29,7 +29,13 @@
             <div class="ts-stat-label">Days</div>
           </div>
           <div class="ts-stat">
-            {% if not viewing_user or viewing_user.id == request.user.id %}
+            {% if viewing_user and not restricted %}
+              {% if viewing_user.id != request.user.id %}
+                <a class="ts-btn-primary" href="/trips/map/all/?user={{ viewing_user.id }}">Map</a>
+              {% else %}
+                <a class="ts-btn-primary" href="/trips/map/all">Map</a>
+              {% endif %}
+            {% elif not viewing_user %}
               <a class="ts-btn-primary" href="/trips/map/all">Map</a>
             {% endif %}
           </div>
@@ -53,7 +59,11 @@
               <span class="ts-day-date">{{ day.date|date:"j F Y" }}</span>
               <span class="ts-day-weekday">{{ day.date|date:"l" }}</span>
               <span class="ts-day-count">{{ day.trips|length }} trip{{ day.trips|length|pluralize }}</span>
-              <a class="ts-btn-small" href="/trips/map/{{ day.date|date:"Y-m-d" }}">Map</a>
+              {% if viewing_user and not restricted and viewing_user.id != request.user.id %}
+                <a class="ts-btn-small" href="/trips/map/{{ day.date|date:"Y-m-d" }}?user={{ viewing_user.id }}">Map</a>
+              {% else %}
+                <a class="ts-btn-small" href="/trips/map/{{ day.date|date:"Y-m-d" }}">Map</a>
+              {% endif %}
             </div>
 
             <div class="ts-trips-list">
@@ -138,6 +148,8 @@
             <div class="ts-empty-sub">Head to the departures board and tap Log on a service to get started.</div>
           </div>
         {% endif %}
+
+        
 
       </div>
     </div>

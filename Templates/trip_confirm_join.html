@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm attendance · {{ trip.headcode }}{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+  {% include "includes/sidebar.html" %}
+  <main class="ts-main">
+    <div style="max-width:700px;margin:48px auto;padding:24px;background:white;border-radius:8px">
+      <h2>{% if request.user in trip.on_trip_trip.all %}Remove yourself from{% else %}Mark yourself as present on{% endif %} this trip</h2>
+      <p>Trip: <strong>{{ trip.origin_name }} → {{ trip.destination_name }}</strong> on {{ trip.service_date|date:"j F Y" }}.</p>
+      <form method="post" action="{% url 'join_trip' trip.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="ts-btn-primary" style="background-color:var(--ts-accent);padding:8px 12px;margin-right:8px">Confirm</button>
+        <a class="ts-btn-secondary" href="{% url 'trip_detail' trip.pk %}">Cancel</a>
+      </form>
+    </div>
+  </main>
+</div>
+{% endblock %}

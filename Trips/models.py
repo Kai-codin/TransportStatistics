@@ -6,6 +6,8 @@ class TripLog(models.Model):
 
     # ── who / when ────────────────────────────────────────────────────────────
     user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='trip_logs')
+    on_trip_trip = models.ManyToManyField(User, related_name='on_trip_trips', blank=True,
+        help_text='Other users who were on the same trip (e.g. friends you travelled with) - optional, for social features and trip grouping')
     logged_at   = models.DateTimeField(auto_now_add=True)
 
     # ── service identity ──────────────────────────────────────────────────────

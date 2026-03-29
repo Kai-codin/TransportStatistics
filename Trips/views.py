@@ -380,13 +380,10 @@ def view_profile(request, user_id):
         trips = TripLog.objects.none()
         days = []
     else:
-        # If viewing your own profile, include trips you were on (on_trip_trip)
-        if request.user.is_authenticated and request.user == view_user:
-            trips = TripLog.objects.filter(
-                Q(user=view_user) | Q(on_trip_trip=view_user)
-            ).distinct().order_by('-service_date', '-scheduled_departure', '-logged_at')
-        else:
-            trips = TripLog.objects.filter(user=view_user).order_by('-service_date', '-scheduled_departure', '-logged_at')
+        # Show trips where the profile owner is either the trip owner or recorded as a participant
+        trips = TripLog.objects.filter(
+            Q(user=view_user) | Q(on_trip_trip=view_user)
+        ).distinct().order_by('-service_date', '-scheduled_departure', '-logged_at')
 
         # Group by date
         days = []

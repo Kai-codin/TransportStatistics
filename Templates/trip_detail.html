@@ -53,8 +53,8 @@
                   <div class="ts-stop-name">{{ trip.origin_name|default:"?" }}</div>
                   <div class="ts-stop-sub">
                     {% if trip.scheduled_departure %}Dep {{ trip.scheduled_departure|time:"H:i" }}{% endif %}
-                    {% if trip.origin_crs %}&nbsp;· {{ trip.origin_crs }}{% endif %}
-                    {% if trip.boarded_stop_atco %}&nbsp;· {{ trip.boarded_stop_atco }}{% endif %}
+                    {% if trip.origin_crs %}&nbsp;· &nbsp;{{ trip.origin_crs }}{% endif %}
+                    {% if trip.boarded_stop_atco %}&nbsp;· &nbsp;{{ trip.boarded_stop_atco }}{% endif %}
                   </div>
                 </div>
               </div>
@@ -64,7 +64,10 @@
                 </div>
                 <div class="ts-stop-info" style="padding-bottom:0">
                   <div class="ts-stop-name">{{ trip.destination_name|default:"?" }}</div>
-                  <div class="ts-stop-sub">{% if trip.destination_crs %}{{ trip.destination_crs }}{% endif %}</div>
+                  <div class="ts-stop-sub">
+                    {% if trip.scheduled_arrival %}Arr {{ trip.scheduled_arrival|time:"H:i" }}{% endif %}
+                    {% if trip.destination_crs %}&nbsp;· &nbsp;{{ trip.destination_crs }}{% endif %}
+                    </div>
                 </div>
               </div>
             </div>

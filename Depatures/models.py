@@ -21,7 +21,7 @@ class Timetable(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.headcode} {self.operator}"
+        return f"{self.headcode} {self.operator} - ({self.schedule_start_date} to {self.schedule_end_date})"
 
 
 class ScheduleLocation(models.Model):

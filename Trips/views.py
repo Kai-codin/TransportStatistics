@@ -26,14 +26,14 @@ def trip_detail(request, pk):
     trip = get_object_or_404(TripLog, pk=pk)
     owner = trip.user
 
-    if request.user.is_authenticated and request.user == owner:
+    if request.user.is_authenticated and request.user == trip.user:
         trip_owner = True
     else:
         trip_owner = False
 
     # Owner always can view
-    if request.user == owner:
-        return render(request, 'trip_detail.html', {'trip': trip})
+    if request.user == trip.user:
+        return render(request, 'trip_detail.html', {'trip_owner': trip_owner, 'trip': trip})
 
     # Load owner's profile (ensure exists)
     try:

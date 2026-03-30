@@ -20,6 +20,15 @@ class Timetable(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['CIF_train_uid']),
+            models.Index(fields=['headcode']),
+            models.Index(fields=['train_service_code']),
+            models.Index(fields=['schedule_start_date', 'schedule_end_date']),
+            models.Index(fields=['operator']),
+        ]
+
     def __str__(self):
         return f"{self.headcode} {self.operator} - ({self.schedule_start_date} to {self.schedule_end_date})"
 
@@ -46,6 +55,19 @@ class ScheduleLocation(models.Model):
     to_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['tiploc_code']),           # searched directly
+            models.Index(fields=['stop']),                   # FK lookup
+            models.Index(fields=['timetable']),              # FK lookup
+            models.Index(fields=['sort_time']),              # ordering
+            models.Index(fields=['from_date', 'to_date']),  # date range queries
+            # Composite: most common query pattern
+            models.Index(fields=['stop', 'sort_time']),
+            models.Index(fields=['timetable', 'position']),
+        ]
+
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "timetable":

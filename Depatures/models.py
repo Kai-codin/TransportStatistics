@@ -4,45 +4,39 @@ from main.models import Operator
 from Stops.models import Stop
 
 class Timetable(models.Model):
-    CIF_train_uid = models.CharField(max_length=64)
-    operator = models.ForeignKey(Operator, null=True, blank=True, on_delete=models.SET_NULL, related_name='timetables')
+    CIF_train_uid = models.CharField(max_length=64, db_index=True)
+    operator = models.ForeignKey(Operator, null=True, blank=True, on_delete=models.SET_NULL, related_name='timetables', db_index=True)
+    headcode = models.CharField(max_length=16, null=True, blank=True, db_index=True)
+    train_service_code = models.CharField(max_length=32, null=True, blank=True, db_index=True)
+    schedule_start_date = models.DateField(null=True, blank=True, db_index=True)
+    schedule_end_date = models.DateField(null=True, blank=True, db_index=True)
+    
     schedule_days_runs = models.CharField(max_length=16, null=True, blank=True)
-    schedule_start_date = models.DateField(null=True, blank=True)
-    schedule_end_date = models.DateField(null=True, blank=True)
     train_status = models.CharField(max_length=8, null=True, blank=True)
-    headcode = models.CharField(max_length=16, null=True, blank=True)
     CIF_headcode = models.CharField(max_length=16, null=True, blank=True)
-    train_service_code = models.CharField(max_length=32, null=True, blank=True)
     power_type = models.CharField(max_length=32, null=True, blank=True)
     max_speed = models.IntegerField(null=True, blank=True)
     train_class = models.CharField(max_length=8, null=True, blank=True)
-    schedule_locations = models.ManyToManyField(Stop, through='ScheduleLocation', related_name='timetables')
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
-            models.Index(fields=['CIF_train_uid']),
-            models.Index(fields=['headcode']),
-            models.Index(fields=['train_service_code']),
-            models.Index(fields=['schedule_start_date', 'schedule_end_date']),
-            models.Index(fields=['operator']),
+            models.Index(fields=['schedule_start_date', 'schedule_end_date']),  # composite
         ]
+
 
     def __str__(self):
         return f"{self.headcode} {self.operator} - ({self.schedule_start_date} to {self.schedule_end_date})"
 
 
 class ScheduleLocation(models.Model):
-    timetable = models.ForeignKey(
-        Timetable, 
-        related_name='location_entries',  # Changed from 'schedule_locations'
-        on_delete=models.CASCADE
-    )
+    timetable = models.ForeignKey(Timetable, related_name='location_entries', on_delete=models.CASCADE, db_index=True)
+    stop = models.ForeignKey(Stop, null=True, blank=True, on_delete=models.SET_NULL, related_name='schedule_locations', db_index=True)
+    tiploc_code = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    sort_time = models.TimeField(null=True, blank=True, db_index=True)
+    
     location_type = models.CharField(max_length=8, null=True, blank=True)
-    tiploc_code = models.CharField(max_length=64, null=True, blank=True)
-    stop = models.ForeignKey(Stop, null=True, blank=True, on_delete=models.SET_NULL, related_name='schedule_locations')
-    sort_time = models.TimeField(null=True, blank=True)
     departure_time = models.CharField(max_length=16, null=True, blank=True)
     arrival_time = models.CharField(max_length=16, null=True, blank=True)
     pass_time = models.CharField(max_length=16, null=True, blank=True)
@@ -50,24 +44,11 @@ class ScheduleLocation(models.Model):
     engineering_allowance = models.CharField(max_length=16, null=True, blank=True)
     pathing_allowance = models.CharField(max_length=16, null=True, blank=True)
     performance_allowance = models.CharField(max_length=16, null=True, blank=True)
-    position = models.IntegerField(null=True, blank=True)
-    from_date = models.DateField(null=True, blank=True)
-    to_date = models.DateField(null=True, blank=True)
+    position = models.IntegerField(null=True, blank=True, db_index=True)
+    from_date = models.DateField(null=True, blank=True, db_index=True)
+    to_date = models.DateField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['tiploc_code']),           # searched directly
-            models.Index(fields=['stop']),                   # FK lookup
-            models.Index(fields=['timetable']),              # FK lookup
-            models.Index(fields=['sort_time']),              # ordering
-            models.Index(fields=['from_date', 'to_date']),  # date range queries
-            # Composite: most common query pattern
-            models.Index(fields=['stop', 'sort_time']),
-            models.Index(fields=['timetable', 'position']),
-        ]
-
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "timetable":

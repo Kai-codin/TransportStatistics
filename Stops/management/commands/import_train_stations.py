@@ -1,10 +1,15 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.core.cache import cache
 from Stops.models import Stop, StopType
 
 import json
 import urllib.request
 import time
+
+
+STOPS_CACHE_KEY = 'all_stops'
+STOPS_CACHE_TTL = 60 * 60 * 24  # 24 hours
 
 
 def parse_float(value):
@@ -21,9 +26,14 @@ class Command(BaseCommand):
         parser.add_argument(
             '--url',
             type=str,
-            #default='https://raw.githubusercontent.com/davwheat/uk-railway-stations/refs/heads/main/stations.json'
         )
         parser.add_argument('--file', type=str, default='stations.json')
+        parser.add_argument(
+            '--cache-ttl',
+            type=int,
+            default=STOPS_CACHE_TTL,
+            help='Redis cache TTL in seconds (default: 86400 / 24h)'
+        )
 
     def log(self, message):
         now = time.strftime('%H:%M:%S')
@@ -34,6 +44,7 @@ class Command(BaseCommand):
 
         file_path = options.get('file')
         url = options.get('url')
+        cache_ttl = options.get('cache_ttl')
 
         # =========================
         # LOAD DATA
@@ -92,7 +103,6 @@ class Command(BaseCommand):
 
         to_create = []
         to_update = []
-
         skipped = 0
 
         # =========================
@@ -146,6 +156,10 @@ class Command(BaseCommand):
         # =========================
         write_start = time.time()
 
+        # Invalidate stale cache before writing so in-flight requests hit DB
+        cache.delete(STOPS_CACHE_KEY)
+        self.log(f"Invalidated cache key '{STOPS_CACHE_KEY}'")
+
         with transaction.atomic():
             if to_create:
                 Stop.objects.bulk_create(to_create, batch_size=500)
@@ -161,6 +175,24 @@ class Command(BaseCommand):
 
         self.log(f"DB phase took {time.time() - write_start:.2f}s")
         self.log(f"Total DB time: {time.time() - db_start:.2f}s")
+
+        # =========================
+        # UPDATE REDIS CACHE
+        # =========================
+        cache_start = time.time()
+        self.log("Rebuilding Redis cache...")
+
+        try:
+            all_stops = list(
+                Stop.objects.select_related('stop_type')
+                .values('id', 'name', 'crs', 'lat', 'lon', 'tiploc', 'active', 'stop_type__code', 'stop_type__name')
+            )
+            cache.set(STOPS_CACHE_KEY, all_stops, cache_ttl)
+            self.log(f"Cached {len(all_stops)} stops under key '{STOPS_CACHE_KEY}' (TTL: {cache_ttl}s)")
+        except Exception as e:
+            self.stderr.write(f"⚠️  Redis cache update failed (DB is still up to date): {e}")
+
+        self.log(f"Cache phase took {time.time() - cache_start:.2f}s")
 
         # =========================
         # DONE

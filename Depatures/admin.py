@@ -7,16 +7,11 @@ from Stops.models import Stop
 
 @admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
-    list_display = (
-        'CIF_train_uid',
-        'headcode',
-        'operator',
-        'safe_schedule_start_date',
-        'safe_schedule_end_date'
-    )
-    search_fields = ('CIF_train_uid', 'train_service_code', 'headcode')
-    list_filter = ('headcode', 'operator')
+    list_display = ('CIF_train_uid', 'headcode', 'operator', 'safe_schedule_start_date', 'safe_schedule_end_date')
+    search_fields = ('^CIF_train_uid', '^train_service_code', '^headcode')  # ^ = startswith, uses index
     autocomplete_fields = ('operator',)
+    list_per_page = 50
+    show_full_result_count = False
 
     def _coerce_date(self, value):
         import datetime as _dt
@@ -45,28 +40,24 @@ class TimetableAdmin(admin.ModelAdmin):
 
 @admin.register(ScheduleLocation)
 class ScheduleLocationAdmin(admin.ModelAdmin):
-    list_display = ('timetable', 'tiploc_code', 'stop', 'time_display', 'platform')
-    search_fields = ('tiploc_code', 'stop__name', 'timetable__CIF_train_uid')
+    list_display = ('timetable', 'stop', 'platform', 'position')
+    search_fields = ('=timetable__CIF_train_uid',)
     autocomplete_fields = ('stop', 'timetable')
-    list_per_page = 50
-
+    show_full_result_count = False
+    list_per_page = 25
+    
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-
+        # If no search/filter applied, return empty queryset to avoid full scan
+        if not request.GET:
+            return qs.none()
         return qs.select_related('stop', 'timetable').only(
-            'id',
-            'tiploc_code',
-            'platform',
-            'departure_time',
-            'arrival_time',
-            'pass_time',
-            'stop__id',
-            'stop__name',
-            'timetable__id',
-            'timetable__CIF_train_uid',
-            'timetable__headcode',
+            'id', 'tiploc_code', 'platform',
+            'departure_time', 'arrival_time', 'pass_time',
+            'stop__id', 'stop__name',
+            'timetable__id', 'timetable__CIF_train_uid', 'timetable__headcode',
         )
-
+    
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
         🚨 CRITICAL: prevent admin dropdowns from loading broken datetime fields

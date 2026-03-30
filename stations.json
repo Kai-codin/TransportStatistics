@@ -6135,15 +6135,15 @@
     "stationName": "Bootle Stations",
     "crsCode": "BOO",
     "tiplocCode": "CATZ149",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 54.2911815,
+    "long": -3.3938356
   },
   {
     "stationName": "Tutbury & Hatton",
     "crsCode": "TUT",
     "tiplocCode": "TUTBURY",
-    "lat": 0.0,
-    "long": 0.0
+    "lat": 52.8641203,
+    "long": -1.6821183
   },
   {
     "stationName": "Richmond Market",

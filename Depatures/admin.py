@@ -16,8 +16,9 @@ from Stops.models import Stop
 
 @admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
-    list_display = ('CIF_train_uid', 'headcode', 'operator', 'safe_schedule_start_date', 'safe_schedule_end_date')
+    list_display = ('CIF_train_uid', 'headcode', 'operator', 'safe_schedule_start_date', 'safe_schedule_end_date', 'CIF_timing_load')
     search_fields = ('^CIF_train_uid', '^train_service_code', '^headcode')  # ^ = startswith, uses index
+    list_filter = ('operator', 'CIF_timing_load')
     autocomplete_fields = ('operator',)
     list_per_page = 50
     show_full_result_count = False

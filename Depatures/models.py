@@ -46,9 +46,11 @@ class PathType(models.Model):
 
     def __str__(self):
         return f'{self.name}'
+
 class TimingLoad(models.Model):
     type = models.ManyToManyField('PathType', related_name='timing_loads')
     code = models.CharField(max_length=16, unique=True)
+    TOC_correction = models.JSONField(null=True, blank=True, help_text='JSON object mapping TOC codes to correction types e.g. 323s on LM are 730 (e.g. {"LM": "730"})')
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 

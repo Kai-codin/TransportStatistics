@@ -119,6 +119,8 @@ class PathTypeAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('^name',)
 
+
+
 @admin.register(TimingLoad)
 class TimingLoadAdmin(admin.ModelAdmin):
     list_display = ('code', 'get_types')

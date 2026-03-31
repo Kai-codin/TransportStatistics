@@ -74,29 +74,70 @@ def _readable_days(mask: str) -> Optional[str]:
         return f"{days[min(idxs)]} to {days[max(idxs)]}"
     return ", ".join(picked)
 
-
 def _pathed_as(timetable_id: Optional[str]) -> Optional[str]:
     """
     Look up the TimingLoad for a timetable's CIF train UID and return a
     comma-separated string of all associated PathType names.
 
+    Applies TOC_correction overrides — e.g. if LM still has 323s in the data
+    but TOC_correction maps {"LM": "730"}, the corrected timing load is used.
+
     Returns None if no timing load / path types are found.
     """
     if not timetable_id:
         return None
-
     try:
         from .models import TimingLoad, Timetable
 
-        CIF_timing_load_code = (
+        timetable = (
             Timetable.objects
             .filter(id=timetable_id)
-            .values_list("CIF_timing_load", flat=True)
+            .select_related("operator")
+            .only("CIF_timing_load", "operator__code")
             .first()
         )
-
-        if not CIF_timing_load_code:
+        if not timetable or not timetable.CIF_timing_load:
             return None
+
+        CIF_timing_load_code = timetable.CIF_timing_load
+        toc_code = timetable.operator.code if timetable.operator else None
+
+        # Check every TimingLoad whose TOC_correction might redirect this code.
+        # The correction JSON maps TOC codes → replacement timing load codes,
+        # so we need to find a TimingLoad where:
+        #   - its own code matches CIF_timing_load_code  (the raw value), OR
+        #   - another TimingLoad's TOC_correction says "for TOC X, use THIS code"
+        #
+        # Strategy: first try a direct match; then scan for a correction override.
+        if toc_code:
+            # Find any TimingLoad whose TOC_correction maps toc_code → a code
+            # that equals CIF_timing_load_code (i.e. this TOC uses a renamed load)
+            for tl in TimingLoad.objects.exclude(TOC_correction__isnull=True).prefetch_related("type"):
+                correction = tl.TOC_correction or {}
+                corrected_code = correction.get(toc_code)
+                if corrected_code and corrected_code == CIF_timing_load_code:
+                    # This TimingLoad IS the correction target — but we actually
+                    # want the *corrected* TimingLoad, i.e. the one whose code
+                    # matches corrected_code. Since tl IS that record (its own
+                    # code should equal corrected_code), use it directly.
+                    path_types = list(tl.type.values_list("name", flat=True))
+                    if path_types:
+                        return ", ".join(path_types)
+
+            # Also check: the raw code exists as a TimingLoad but a *different*
+            # TimingLoad has a TOC_correction that says "for toc_code, this raw
+            # code should actually be treated as corrected_code".
+            # e.g. raw="323", TOC="LM" → correction on the "323" TimingLoad
+            # has {"LM": "730"} meaning: look up "730" instead.
+            raw_tl = (
+                TimingLoad.objects
+                .filter(code=CIF_timing_load_code)
+                .first()
+            )
+            if raw_tl and raw_tl.TOC_correction:
+                corrected_code = raw_tl.TOC_correction.get(toc_code)
+                if corrected_code:
+                    CIF_timing_load_code = corrected_code  # redirect to corrected code
 
         CIF_timing_load = (
             TimingLoad.objects
@@ -104,19 +145,16 @@ def _pathed_as(timetable_id: Optional[str]) -> Optional[str]:
             .prefetch_related("type")
             .first()
         )
-
         if not CIF_timing_load:
             return None
 
         path_types = list(CIF_timing_load.type.values_list("name", flat=True))
         if not path_types:
             return None
-
         return ", ".join(path_types)
 
     except Exception:
         return None
-
 
 def _stop_info(stop_obj, request) -> Optional[dict]:
     if not stop_obj:

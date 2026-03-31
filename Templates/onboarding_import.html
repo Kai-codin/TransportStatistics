@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Import Your Transit Tracker Data{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+  {% include "includes/sidebar.html" %}
+  <main class="ts-main">
+    <div class="ts-content">
+      <h1 class="ts-page-title">Import Your Transit Tracker Data</h1>
+      <p class="ts-page-subtitle">Welcome! To get started, you can import your Transit tracker data into your account.</p>
+      <div class="ts-section">
+        <div class="ts-section-title">How to Import Data</div>
+        <ol class="ts-onboarding-list">
+          <li>Get your data: <p>Email gdpr@transittracker.net and request a copy of your data. <br> This normally takes a couple hours.</p></li>
+          <li>Once you have your data <p>Unzip the file they send you and find your services.json file.</p></li>
+          <li>Import your data <p>Once you have your services.json file, go to <a href="/profile/settings/">Settings</a> and upload the services.json file.</p></li>
+          <li>Click Upload and scan to start the import process. <p>Then select your import option. (Skip dupes, Overwrite dupes, Import all)</p></li>
+          <li>And you're done!</li>
+        </ol>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

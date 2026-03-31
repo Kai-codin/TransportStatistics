@@ -51,6 +51,7 @@ urlpatterns = [
     path('api/', include('API.urls')),
     path('log-trip/', log_trip, name='log_trip'),
     path('demo-map/', TemplateView.as_view(template_name='demo_map.html'), name='demo-map'),
+    path('onboarding/import/', views_auth.onboarding_import, name='onboarding_import'),
 ]
 
 if settings.DEBUG:

@@ -12,8 +12,11 @@ def register(request):
             user = form.save()
             auth_login(request, user)
             messages.success(request, 'Account created and signed in.')
-            next_url = request.GET.get('next') or reverse('home')
-            return redirect(next_url)
+            return redirect('onboarding_import')
     else:
         form = UserCreationForm()
     return render(request, 'registration/register.html', {'form': form})
+
+
+def onboarding_import(request):
+    return render(request, 'onboarding_import.html')

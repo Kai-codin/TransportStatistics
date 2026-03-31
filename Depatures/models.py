@@ -3,6 +3,58 @@ from django.utils import timezone
 from main.models import Operator
 from Stops.models import Stop
 
+class PowerType(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    code = models.CharField(max_length=16, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+    
+class TrainClass(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    code = models.CharField(max_length=16, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+class TrainStatus(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    code = models.CharField(max_length=16, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+class TrainCategory(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    code = models.CharField(max_length=16, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'    
+    
+class PathType(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name}'
+class TimingLoad(models.Model):
+    type = models.ManyToManyField('PathType', related_name='timing_loads')
+    code = models.CharField(max_length=16, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.code}'
+
 class Timetable(models.Model):
     CIF_train_uid = models.CharField(max_length=64, db_index=True)
     operator = models.ForeignKey(Operator, null=True, blank=True, on_delete=models.SET_NULL, related_name='timetables', db_index=True)
@@ -13,6 +65,8 @@ class Timetable(models.Model):
     
     schedule_days_runs = models.CharField(max_length=16, null=True, blank=True)
     train_status = models.CharField(max_length=8, null=True, blank=True)
+    CIF_train_category = models.CharField(max_length=16, null=True, blank=True)
+    CIF_timing_load = models.CharField(max_length=16, null=True, blank=True)
     CIF_headcode = models.CharField(max_length=16, null=True, blank=True)
     power_type = models.CharField(max_length=32, null=True, blank=True)
     max_speed = models.IntegerField(null=True, blank=True)

@@ -2,7 +2,16 @@ from django.contrib import admin
 from django.db.models import F
 from django.db.models.functions import Coalesce
 
-from .models import Timetable, ScheduleLocation
+from .models import (
+    Timetable,
+    ScheduleLocation,
+    PowerType,
+    TrainClass,
+    TrainStatus,
+    TrainCategory,
+    PathType,
+    TimingLoad,
+)
 from Stops.models import Stop
 
 @admin.register(Timetable)
@@ -79,3 +88,43 @@ class ScheduleLocationAdmin(admin.ModelAdmin):
 
     def time_display(self, obj):
         return obj.departure_time or obj.arrival_time or obj.pass_time or "-"
+
+
+@admin.register(PowerType)
+class PowerTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code')
+    search_fields = ('^name', '^code')
+
+
+@admin.register(TrainClass)
+class TrainClassAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code')
+    search_fields = ('^name', '^code')
+
+
+@admin.register(TrainStatus)
+class TrainStatusAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code')
+    search_fields = ('^name', '^code')
+
+
+@admin.register(TrainCategory)
+class TrainCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code')
+    search_fields = ('^name', '^code')
+
+
+@admin.register(PathType)
+class PathTypeAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+    search_fields = ('^name',)
+
+@admin.register(TimingLoad)
+class TimingLoadAdmin(admin.ModelAdmin):
+    list_display = ('code', 'get_types')
+    search_fields = ('^code',)
+    filter_horizontal = ('type',)
+
+    def get_types(self, obj):
+        return ", ".join([t.name for t in obj.type.all()])
+    get_types.short_description = 'Type'

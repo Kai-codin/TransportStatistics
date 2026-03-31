@@ -95,7 +95,7 @@ TIMETABLE_COLS = [
     "CIF_train_uid", "operator_id", "schedule_days_runs",
     "schedule_start_date", "schedule_end_date", "train_status",
     "headcode", "CIF_headcode", "train_service_code",
-    "power_type", "max_speed", "train_class",
+    "power_type", "max_speed", "train_class", "CIF_train_category", "CIF_timing_load",
 ]
 
 # Columns written to the ScheduleLocation table.
@@ -312,7 +312,7 @@ def _insert_timetable_rows(rows: List[dict]) -> int:
             r["CIF_train_uid"], r["operator_id"], r["schedule_days_runs"],
             r["schedule_start_date"], r["schedule_end_date"], r["train_status"],
             r["headcode"], r["CIF_headcode"], r["train_service_code"],
-            r["power_type"], r["max_speed"], r["train_class"],
+            r["power_type"], r["max_speed"], r["train_class"], r["CIF_train_category"], r['CIF_timing_load']
         )
         for r in rows
     ]
@@ -339,7 +339,7 @@ def _upsert_timetable_rows(rows: List[dict]) -> None:
             r["CIF_train_uid"], r["operator_id"], r["schedule_days_runs"],
             r["schedule_start_date"], r["schedule_end_date"], r["train_status"],
             r["headcode"], r["CIF_headcode"], r["train_service_code"],
-            r["power_type"], r["max_speed"], r["train_class"],
+            r["power_type"], r["max_speed"], r["train_class"], r["CIF_train_category"], r['CIF_timing_load']
         )
         for r in rows
     ]
@@ -349,13 +349,6 @@ def _upsert_timetable_rows(rows: List[dict]) -> None:
 
 
 def _fetch_uid_to_pk(uids: List[str]) -> Dict[str, int]:
-    """Fetch CIF_train_uid → PK mapping for the given UIDs.
-    
-    NOTE: When multiple rows share a UID (non-unique), this returns the
-    LAST pk seen. For a proper fix the table needs a unique constraint on
-    CIF_train_uid, or the query should use MAX(id). We use MAX(id) here
-    so locations always attach to the newest row.
-    """
     if not uids:
         return {}
     ph  = ", ".join(["%s"] * len(uids))
@@ -364,11 +357,11 @@ def _fetch_uid_to_pk(uids: List[str]) -> Dict[str, int]:
         f"WHERE `CIF_train_uid` IN ({ph}) "
         f"GROUP BY `CIF_train_uid`"
     )
-    result: Dict[str, List[int]] = {}
+    result: Dict[str, int] = {}
     with connection.cursor() as cur:
         cur.execute(sql, uids)
         for uid, pk in cur.fetchall():
-            result.setdefault(uid, []).append(pk)
+            result[uid] = pk          # ← was: result.setdefault(uid, []).append(pk)
     return result
 
 
@@ -411,7 +404,6 @@ def _insert_location_rows(loc_rows: List[tuple]) -> int:
                 total += len(chunk)
     return total
 
-
 # ── Record expansion ──────────────────────────────────────────────────────────
 
 def _expand_record(uid: str, rec: dict, op_cache: OperatorCache) -> dict:
@@ -431,6 +423,8 @@ def _expand_record(uid: str, rec: dict, op_cache: OperatorCache) -> dict:
         "power_type":         seg.get("CIF_power_type"),
         "max_speed":          _int_or_none(seg.get("CIF_speed")),
         "train_class":        seg.get("CIF_train_class"),
+        "CIF_train_category": seg.get("CIF_train_category"),
+        "CIF_timing_load":    seg.get("CIF_timing_load"),
         "schedule_locations": seg.get("schedule_location") or [],
     }
 

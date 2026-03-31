@@ -1,23 +1,24 @@
 from itertools import groupby
+from functools import reduce
+import operator as py_operator
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Timetable, ScheduleLocation
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Min, Max
 from rest_framework.viewsets import GenericViewSet
 from django_filters.rest_framework import DjangoFilterBackend
 import datetime
 from typing import Optional
 from rest_framework.viewsets import ViewSet
 from .filters import DeparturesFilter
-import datetime
 import requests
 from bs4 import BeautifulSoup
 from django.core.cache import cache
 import hashlib
 import json
- 
+
 # ---------------------------------------------------------------------------
 # Time helpers
 # ---------------------------------------------------------------------------
@@ -72,6 +73,49 @@ def _readable_days(mask: str) -> Optional[str]:
     if len(idxs) > 1 and max(idxs) - min(idxs) + 1 == len(idxs):
         return f"{days[min(idxs)]} to {days[max(idxs)]}"
     return ", ".join(picked)
+
+
+def _pathed_as(timetable_id: Optional[str]) -> Optional[str]:
+    """
+    Look up the TimingLoad for a timetable's CIF train UID and return a
+    comma-separated string of all associated PathType names.
+
+    Returns None if no timing load / path types are found.
+    """
+    if not timetable_id:
+        return None
+
+    try:
+        from .models import TimingLoad, Timetable
+
+        CIF_timing_load_code = (
+            Timetable.objects
+            .filter(id=timetable_id)
+            .values_list("CIF_timing_load", flat=True)
+            .first()
+        )
+
+        if not CIF_timing_load_code:
+            return None
+
+        CIF_timing_load = (
+            TimingLoad.objects
+            .filter(code=CIF_timing_load_code)
+            .prefetch_related("type")
+            .first()
+        )
+
+        if not CIF_timing_load:
+            return None
+
+        path_types = list(CIF_timing_load.type.values_list("name", flat=True))
+        if not path_types:
+            return None
+
+        return ", ".join(path_types)
+
+    except Exception:
+        return None
 
 
 def _stop_info(stop_obj, request) -> Optional[dict]:
@@ -159,27 +203,28 @@ def _day_mask_q(weekday: int) -> Q:
 # ---------------------------------------------------------------------------
 
 BUSTIMES_URL = "https://bustimes.org/stops/{atco_code}/departures"
- 
+
 # User-agent so bustimes.org doesn't reject the request
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; TransportStatistics/1.0)",
     "Accept": "text/html",
 }
 
+
 class BusDeparturesView(APIView):
     """
     Return upcoming bus departures for a stop by ATCO code.
- 
+
     Scrapes bustimes.org and returns the same JSON shape as DeparturesView
     so the frontend can treat both APIs identically.
- 
+
     Query parameters
     ────────────────
       atco_code   (required)  ATCO code of the stop.  e.g. 3890D001501
       date        (optional)  YYYY-MM-DD              default: today
       time        (optional)  HH:MM                   default: now
     """
- 
+
     def get(self, request):
         atco_code = request.query_params.get("atco_code", "").strip()
         if not atco_code:
@@ -187,7 +232,7 @@ class BusDeparturesView(APIView):
                 {"detail": "Provide atco_code"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
- 
+
         # ── date ──────────────────────────────────────────────────────────────
         date_str = request.query_params.get("date", "")
         if date_str:
@@ -200,7 +245,7 @@ class BusDeparturesView(APIView):
                 )
         else:
             date_val = datetime.date.today()
- 
+
         # ── time ──────────────────────────────────────────────────────────────
         time_str = request.query_params.get("time", "")
         if time_str:
@@ -221,7 +266,7 @@ class BusDeparturesView(APIView):
             now = datetime.datetime.now()
             hh, mm = now.hour, now.minute
             time_display = f"{hh:02d}:{mm:02d}"
- 
+
         # ── fetch bustimes.org ────────────────────────────────────────────────
         upstream_url = BUSTIMES_URL.format(atco_code=atco_code)
 
@@ -232,7 +277,7 @@ class BusDeparturesView(APIView):
             }
         else:
             params = {}
- 
+
         try:
             resp = requests.get(
                 upstream_url,
@@ -241,7 +286,6 @@ class BusDeparturesView(APIView):
                 timeout=10,
             )
             resp.raise_for_status()
-            print(f"Fetched {resp.url} with status {resp.status_code}")
         except requests.RequestException as exc:
             return Response(
                 {"detail": f"Failed to fetch bustimes.org: {exc}"},
@@ -249,23 +293,11 @@ class BusDeparturesView(APIView):
             )
 
         # ── TfL two-pass merge ────────────────────────────────────────────────
-        # The plain (no date/time) TfL response has cols: service | To | Expected
-        # and only /vehicles/tfl/ links — no scheduled times.
-        # The dated response has cols: service | To | Scheduled  and /trips/ links
-        # but no expected times.
-        # We fetch both and merge by normalised vehicle plate so each result
-        # has both scheduled and expected.
-        #
-        # Vehicle normalisation: strip all spaces and uppercase.
-        #   plain call  → "LV25VOU"        (already bare)
-        #   dated call  → "MHV85 - BV66 VKF" → we take the LAST token after " - "
-        #                 then strip spaces → "BV66VKF"
-
         def _normalise_plate(raw: str) -> str:
             """Return uppercased plate with spaces removed.  Handles 'fleet - PLATE' format."""
             if not raw:
                 return ""
-            part = raw.split(" - ")[-1]   # take plate half if fleet prefix present
+            part = raw.split(" - ")[-1]
             return part.replace(" ", "").upper()
 
         def _parse_tfl_expected(html_text: str) -> dict:
@@ -291,12 +323,10 @@ class BusDeparturesView(APIView):
                     mapping[plate] = exp_time
             return mapping
 
-        # expected_by_plate is only populated for TfL stops
         expected_by_plate: dict = {}
 
         is_tfl_stop = not params and "/vehicles/tfl/" in resp.text
         if is_tfl_stop:
-            # Build expected lookup from the plain response BEFORE re-fetching
             expected_by_plate = _parse_tfl_expected(resp.text)
             tfl_params = {
                 "date": date_val.isoformat(),
@@ -310,17 +340,14 @@ class BusDeparturesView(APIView):
                     timeout=10,
                 )
                 tfl_resp.raise_for_status()
-                print(f"TfL re-fetch {tfl_resp.url} with status {tfl_resp.status_code}")
-                resp = tfl_resp   # swap to dated response for scheduled times + trip IDs
-            except requests.RequestException as exc:
-                # Non-fatal — fall through, parse original, no scheduled times available
-                print(f"TfL re-fetch failed, using original response: {exc}")
-                expected_by_plate = {}   # reset; original response only has expected
+                resp = tfl_resp
+            except requests.RequestException:
+                expected_by_plate = {}
 
         # ── parse HTML ────────────────────────────────────────────────────────
         soup  = BeautifulSoup(resp.text, "html.parser")
         tbody = soup.find("tbody")
- 
+
         if not tbody:
             return Response({
                 "date":    date_val.isoformat(),
@@ -329,32 +356,29 @@ class BusDeparturesView(APIView):
             })
 
         # ── detect layout from header ─────────────────────────────────────────
-        # expected-only:  service | To | Expected        (TfL plain, re-fetch failed)
-        # standard:       service | To | Scheduled       (TfL dated, or non-TfL with/without Expected col)
         header_row   = tbody.find("tr")
         header_texts = [th.get_text(strip=True).lower() for th in header_row.find_all("th")] if header_row else []
         tfl_expected_only = "expected" in header_texts and "scheduled" not in header_texts
- 
+
         rows    = tbody.find_all("tr")
         results = []
- 
+
         for row in rows:
             cells = row.find_all(["td", "th"])
- 
-            # skip header rows
+
             if row.find("th"):
                 continue
- 
+
             if len(cells) < 3:
                 continue
- 
+
             # ── service / headcode ─────────────────────────────────────────
             service_cell = cells[0]
             service_link = service_cell.find("a")
             headcode     = service_link.get_text(strip=True) if service_link else ""
             service_href = service_link.get("href", "") if service_link else ""
             service_url  = f"https://bustimes.org{service_href}" if service_href else None
- 
+
             # ── destination + vehicle ──────────────────────────────────────
             dest_cell   = cells[1]
             vehicle_div = dest_cell.find("div", class_="vehicle")
@@ -363,10 +387,8 @@ class BusDeparturesView(APIView):
                 vehicle_div.decompose()
             destination = dest_cell.get_text(strip=True)
 
-            # Normalise plate for lookup (handles both plain and dated formats)
             plate_key = _normalise_plate(vehicle_raw) if vehicle_raw else ""
 
-            # ── expected-only layout (TfL plain response, re-fetch failed) ─
             if tfl_expected_only:
                 exp_cell  = cells[2]
                 exp_link  = exp_cell.find("a")
@@ -379,7 +401,6 @@ class BusDeparturesView(APIView):
                 trip_url  = f"https://bustimes.org{trip_href}" if trip_href else None
                 trip_id   = trip_href.split("/vehicles/tfl/")[-1] if "/vehicles/tfl/" in trip_href else None
 
-            # ── standard layout: col 2 = Scheduled, optional col 3 = Expected
             else:
                 sched_cell = cells[2]
                 sched_link = sched_cell.find("a")
@@ -391,7 +412,6 @@ class BusDeparturesView(APIView):
                 if trip_id is None and "/vehicles/tfl/" in trip_href:
                     trip_id = trip_href.split("/vehicles/tfl/")[-1]
 
-                # Try col 3 first, then fall back to expected_by_plate lookup
                 expected = None
                 if len(cells) >= 4:
                     exp_cell = cells[3]
@@ -400,11 +420,9 @@ class BusDeparturesView(APIView):
                     if exp_text:
                         expected = exp_text
 
-                # TfL dated response has no expected col — look up by plate
                 if expected is None and plate_key and plate_key in expected_by_plate:
                     expected = expected_by_plate[plate_key]
- 
-            # ── assemble result in same shape as DeparturesView ────────────
+
             results.append({
                 "headcode":    headcode,
                 "service_url": service_url,
@@ -427,13 +445,14 @@ class BusDeparturesView(APIView):
                 "schedule_days_runs": None,
                 "cif_train_uid":      None,
             })
- 
+
         return Response({
             "date":    date_val.isoformat(),
             "station": {"atco_code": atco_code},
             "results": results,
         })
- 
+
+
 class TrainDeparturesView(APIView):
     """
     Return the next 10 departures for a station identified by CRS or TIPLOC.
@@ -474,7 +493,6 @@ class TrainDeparturesView(APIView):
         if show_zz:
             show_passing = True
 
-        # ── optional filters (MOVE THIS UP — was breaking cache) ──
         type_filter     = request.query_params.get("type", "").lower() or None
         headcode_filter = request.query_params.get("headcode", "").strip()
         operator_filter = request.query_params.get("operator", "").strip()
@@ -620,28 +638,47 @@ class TrainDeparturesView(APIView):
             if len(valid) >= 10:
                 break
 
-        # ── origin/destination ────────────────────────────────
+        # ── origin/destination (fetch only first + last stop per timetable) ──
         timetable_ids = {loc.timetable_id for loc, _ in valid if loc.timetable_id}
 
         origin_map = {}
         destination_map = {}
 
         if timetable_ids:
-            all_locs = (
+            # One aggregation query to get min/max position per timetable
+            bounds = (
                 ScheduleLocation.objects
                 .filter(timetable_id__in=timetable_ids)
-                .select_related("stop")
-                .only(
-                    "timetable_id", "position",
-                    "stop__name", "stop__crs", "stop__tiploc", "stop__lat", "stop__lon",
-                )
-                .order_by("timetable_id", "position")
+                .values("timetable_id")
+                .annotate(min_pos=Min("position"), max_pos=Max("position"))
             )
+            bound_map = {b["timetable_id"]: (b["min_pos"], b["max_pos"]) for b in bounds}
 
-            for tt_id, grp in groupby(all_locs, key=lambda l: l.timetable_id):
-                locs_list = list(grp)
-                origin_map[tt_id]      = _stop_info(locs_list[0].stop, request)
-                destination_map[tt_id] = _stop_info(locs_list[-1].stop, request)
+            # Build a filter that fetches only the first and last stop rows
+            edge_filters = []
+            for tid, (mn, mx) in bound_map.items():
+                edge_filters.append(Q(timetable_id=tid, position=mn))
+                if mn != mx:
+                    edge_filters.append(Q(timetable_id=tid, position=mx))
+
+            if edge_filters:
+                edge_q = reduce(py_operator.or_, edge_filters)
+                edge_locs = (
+                    ScheduleLocation.objects
+                    .filter(edge_q)
+                    .select_related("stop")
+                    .only(
+                        "timetable_id", "position",
+                        "stop__name", "stop__crs", "stop__tiploc", "stop__lat", "stop__lon",
+                    )
+                )
+                for loc in edge_locs:
+                    tid = loc.timetable_id
+                    mn, mx = bound_map[tid]
+                    if loc.position == mn:
+                        origin_map[tid] = _stop_info(loc.stop, request)
+                    if loc.position == mx:
+                        destination_map[tid] = _stop_info(loc.stop, request)
 
         # ── response ──────────────────────────────────────────
         results = []
@@ -660,6 +697,7 @@ class TrainDeparturesView(APIView):
                 "operator": op,
                 "schedule_days_runs": _readable_days(tt.schedule_days_runs) if tt else None,
                 "rtt_link": _rtt_link(tt.CIF_train_uid, date_val.isoformat()) if tt else None,
+                "pathed_as": _pathed_as(tt.pk) if tt else None,
             })
 
         response_data = {
@@ -674,6 +712,7 @@ class TrainDeparturesView(APIView):
 
         return Response(response_data)
 
+
 # ---------------------------------------------------------------------------
 # ServiceLocationsView
 # ---------------------------------------------------------------------------
@@ -682,7 +721,7 @@ class ServiceLocationsView(APIView):
     def get(self, request):
         headcode = request.query_params.get("headcode")
         cif      = request.query_params.get("cif_train_uid")
-        
+
         if not headcode and not cif:
             return Response(
                 {"detail": "Provide headcode or cif_train_uid"},
@@ -699,15 +738,11 @@ class ServiceLocationsView(APIView):
         else:
             date_val = datetime.date.today()
 
-        # Avoid fetching auto-managed datetime fields that may be returned
-        # as strings by some DB connectors; defer them so Django doesn't
-        # run timezone conversion on raw strings.
         qs = Timetable.objects.all().defer('created_at', 'modified_at')
         if cif:
             qs = qs.filter(CIF_train_uid=cif)
         if headcode:
             qs = qs.filter(headcode=headcode)
-        # Filter by schedule date range (allow null start/end as open-ended)
         date_q = (
             Q(schedule_start_date__lte=date_val) | Q(schedule_start_date__isnull=True)
         ) & (
@@ -718,9 +753,8 @@ class ServiceLocationsView(APIView):
         if qs.count() == 0:
             return Response({"detail": "Timetable not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Prefer timetables that run on the requested weekday. If multiple
-        # still match, pick the one with the most recent schedule_start_date.
         weekday = date_val.weekday()
+
         def _runs_on_day(t):
             mask = (t.schedule_days_runs or "").strip()
             mask = (mask + "0000000")[:7]
@@ -729,7 +763,7 @@ class ServiceLocationsView(APIView):
         candidates = list(qs)
         day_matches = [t for t in candidates if _runs_on_day(t)]
         timetable = day_matches[0] if day_matches else candidates[0]
-        # Coerce schedule date fields in case the DB returned strings
+
         def _coerce_date(value):
             if isinstance(value, str):
                 try:
@@ -740,6 +774,7 @@ class ServiceLocationsView(APIView):
                     except Exception:
                         return value
             return value
+
         locations = (
             timetable.location_entries.all()
             .select_related('stop')
@@ -763,6 +798,7 @@ class ServiceLocationsView(APIView):
             "schedule_end_date": _coerce_date(timetable.schedule_end_date),
             "locations":          results,
         })
+
 
 class BusServiceView(APIView):
     """
@@ -796,9 +832,7 @@ class BusServiceView(APIView):
         # ── 1. Fetch trip ──────────────────────────────────────────────────
         try:
             trip = self._get(f"https://bustimes.org/api/trips/{trip_id}/")
-            print(f"[BusService] Trip fetched OK: id={trip.get('id')} stops={len(trip.get('times') or [])}")
         except requests.RequestException as e:
-            print(f"[BusService] Trip fetch FAILED: {e}")
             return Response({"detail": f"Failed to fetch trip: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
 
         vehicle_info  = None
@@ -812,56 +846,32 @@ class BusServiceView(APIView):
             if start_time_str:
                 break
 
-        print(f"[BusService] Start time from first stop: {start_time_str!r}")
-
         if start_time_str:
             try:
-                # Use ?date= param if provided, otherwise fall back to today
                 date_str = request.query_params.get("date", "").strip() or datetime.date.today().isoformat()
                 dt_param = f"{date_str}T{start_time_str}:00Z"
-                print(f"[BusService] Fetching vehicle journeys: trip={trip_id} datetime={dt_param}")
 
                 journey_data = self._get(
                     "https://bustimes.org/api/vehiclejourneys/",
                     params={"trip": trip_id, "datetime": dt_param},
                 )
-                print(f"[BusService] Vehicle journeys response: count={journey_data.get('count')} results={len(journey_data.get('results') or [])}")
-                print(f"[BusService] Full journey response: {journey_data}")
-
                 results = journey_data.get("results") or []
-                if not results:
-                    print("[BusService] WARNING: No vehicle journey results — vehicle will be null")
-                else:
+                if results:
                     vehicle_info = results[0].get("vehicle")
-                    print(f"[BusService] Vehicle info from journey: {vehicle_info}")
-
-                    if not vehicle_info:
-                        print("[BusService] WARNING: Journey result has no 'vehicle' field")
-                    elif not vehicle_info.get("id"):
-                        print(f"[BusService] WARNING: Vehicle has no id: {vehicle_info}")
-                    else:
+                    if vehicle_info and vehicle_info.get("id"):
                         vid = vehicle_info["id"]
-                        print(f"[BusService] Fetching vehicle details: id={vid}")
                         vehicle_data = self._get(
                             "https://bustimes.org/api/vehicles/",
                             params={"id": vid},
                         )
-                        print(f"[BusService] Vehicle details response: count={vehicle_data.get('count')} results={len(vehicle_data.get('results') or [])}")
-                        print(f"[BusService] Full vehicle response: {vehicle_data}")
-
                         v_results = vehicle_data.get("results") or []
                         if v_results:
                             vehicle_extra = v_results[0]
-                            print(f"[BusService] Vehicle extra OK: fleet={vehicle_extra.get('fleet_code')} reg={vehicle_extra.get('reg')}")
-                        else:
-                            print(f"[BusService] WARNING: Vehicle API returned no results for id={vid}")
 
-            except requests.RequestException as e:
-                print(f"[BusService] Vehicle lookup FAILED with exception: {type(e).__name__}: {e}")
-                logger.warning("Vehicle journey lookup failed for trip %s: %s", trip_id, e)
+            except requests.RequestException:
+                pass
 
         # ── Build normalised locations list ────────────────────────────────
-        # Matches the shape expected by the log-trip frontend (stop + time block)
         locations = []
         for entry in times:
             stop = entry.get("stop") or {}
@@ -870,7 +880,6 @@ class BusServiceView(APIView):
             arr = entry.get("aimed_arrival_time")
             dep = entry.get("aimed_departure_time")
 
-            # Display string mirrors the train service API format
             if arr and dep and arr != dep:
                 display = f"{arr} - {dep} | arr-dep"
             elif dep:
@@ -901,14 +910,12 @@ class BusServiceView(APIView):
                 "timing_status": entry.get("timing_status"),
                 "pick_up":       entry.get("pick_up", True),
                 "set_down":      entry.get("set_down", True),
-                # Raw track geometry for the map (list of [lon, lat] pairs)
                 "track":         entry.get("track"),
             })
 
         # ── Build vehicle block ────────────────────────────────────────────
         vehicle = None
         if vehicle_extra:
-            print("Vehicle extra:", vehicle_extra)
             vt      = vehicle_extra.get("vehicle_type") or {}
             livery  = vehicle_extra.get("livery") or {}
             vehicle = {
@@ -925,8 +932,6 @@ class BusServiceView(APIView):
                 "special_features": vehicle_extra.get("special_features") or [],
             }
         elif vehicle_info:
-            print("Vehicle info:", vehicle_info)
-            # Fallback — only basic info from the journey endpoint
             vehicle = {
                 "id":           vehicle_info.get("id"),
                 "fleet_number": vehicle_info.get("fleet_code"),

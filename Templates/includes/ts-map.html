@@ -69,6 +69,10 @@
     return BUS_TYPE_CODES.has(stop_type_code) ? BUS_DEPS_API : TRAIN_DEPS_API;
   }
 
+  function isTrainStop(stop) {
+    return stop && stop.stop_type_code && !BUS_TYPE_CODES.has(stop.stop_type_code);
+  }
+
   // ── headcode replacements ──────────────────────────────────────────────────
   // Add entries here to rewrite a headcode and optionally force a destination.
   // { headcode: 'MATCH', label: 'DISPLAY', destination: 'OVERRIDE' (optional) }
@@ -251,10 +255,12 @@
       const dt      = qt || new Date();
       const rawHead = r.headcode || '-';
       const rawDest = (r.destination && r.destination.name) || '-';
-      const vehicle = r.vehicle || '';
+      const vehicle = r.pathed_as ? "Pathed as " + r.pathed_as : r.vehicle ?? null;
       const repl    = applyHeadcodeReplacement(rawHead, rawDest);
       const head    = repl.head;
       const dest    = repl.dest;
+      const plat    = r.platform;
+      const isTrain = isTrainStop(_activeProps);
       const rtt     = repl.isReplacement ? null : (r.rtt_link || `https://www.realtimetrains.co.uk/search/detailed/gb-nr:${rawHead}/${toDate(dt)}/${toTime(dt)}`);
 
       return `<tr${repl.isReplacement ? ' class="ts-row-replacement"' : ''}>
@@ -262,6 +268,7 @@
         <td class="td-dest" title="${dest}">${dest}${vehicle ? `<div class="td-vehicle">${vehicle}</div>` : ''}</td>
         <td class="td-time">${String(sched).slice(0,5) ||  `<span class="ts-passing"><small>Pass </small>${String(pass).slice(0,5)}</span>` || '-'}</td>
         ${hasExpected ? `<td class="td-expected${late?' late':''}">${late ? String(exp).slice(0,5) : '-'}</td>` : ''}
+        ${isTrain ? `<td>${plat ? `<span class="ts-platform">${plat}</span>` : '-'}</td>` : ''}
         <td><button class="ts-log-btn"
           data-headcode="${rawHead}"
           data-trip-id="${r.trip_id || ''}"
@@ -293,11 +300,12 @@
 
   function sheetHTML_loaded(p, results, qt) {
     const hasExpected = results && results.some(r => r.time && r.time.expected_departure);
+    const isTrain = isTrainStop(p);
     const body = results && results.length
       ? `<div class="ts-departures-label">Departures</div>
          <div class="ts-table-wrap">
            <table class="ts-departure-table">
-             <thead><tr><th>Service</th><th>To</th><th>Sched</th>${hasExpected ? '<th>Exp</th>' : ''}<th></th></tr></thead>
+             <thead><tr><th>Service</th><th>To</th><th>Sched</th>${hasExpected ? '<th>Exp</th>' : ''}${isTrain ? '<th>Plat</th>' : ''}<th></th></tr></thead>
              <tbody>${departureRowsHTML(results, qt, hasExpected)}</tbody>
            </table>
          </div>`

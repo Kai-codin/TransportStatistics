@@ -46,7 +46,7 @@
   'use strict';
 
   // ── constants ──────────────────────────────────────────────────────────────
-  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
   function styleFor(t) { return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
   // Read theme from localStorage so it matches the sidebar toggle regardless of Django context
   let _currentTheme = (function(){ try { return localStorage.getItem('ts_theme') || 'light'; } catch(e) { return 'light'; } })();

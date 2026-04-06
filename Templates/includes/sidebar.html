@@ -74,6 +74,12 @@
         </span>
         Liveries
       </a>
+      <a href="{% url 'completion_update' %}" class="ts-nav-item {% if request.resolver_match.url_name == 'completion_update' %}active{% endif %}">
+        <span class="ts-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12v2H2zM2 10h12v2H2z" fill="currentColor"/></svg>
+        </span>
+        Update
+      </a>
     </div>
 
     {% if request.user.is_staff %}

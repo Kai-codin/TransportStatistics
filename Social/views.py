@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models.functions import Coalesce
 from django.db.models import Count, F, Max
 from django.contrib.auth import get_user_model
+from django.http import JsonResponse
 from .forms import FriendSearchForm
 from .models import Friend
 from Trips.models import TripLog
@@ -571,6 +572,98 @@ def completion_liveries(request):
     return render(request, "completion_liveries.html", {
         "liveries": liveries,
     })
+
+
+@login_required
+def completion_update(request):
+    """Page to inspect and replace liveries the user has logged.
+
+    Flow:
+    - GET: show dropdown of liveries (name, css, count).
+    - POST action 'replace_local': replace all TripLog.bus_livery matching source_css
+      with target_css/target_name.
+    - POST action 'search_bustimes': call bustimes API with name__icontains=<name>
+      and render results for selection.
+    - POST action 'replace_api': replace by source_css with selected API CSS.
+    """
+
+    # gather user's liveries
+    qs = (
+        TripLog.objects
+        .filter(user=request.user)
+        .exclude(bus_livery_name__isnull=True)
+        .exclude(bus_livery_name__exact='')
+        .values('bus_livery_name', 'bus_livery')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    liveries = list(qs)
+
+    message = None
+    api_results = None
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'replace_local':
+            # Accept multiple possible sources for the CSS values to be robust
+            source_css = (request.POST.get('source_css') or
+                          request.POST.get('form_source_css') or
+                          '')
+            target_css = (request.POST.get('target_css') or
+                          request.POST.get('target_css_select') or
+                          request.POST.get('api_left_css') or
+                          '')
+            target_name = request.POST.get('target_name') or ''
+            if not source_css or not target_css:
+                # helpful debug message so UI can be iterated if needed
+                message = {
+                    'kind': 'error',
+                    'text': f'Source and target CSS required. (got source={source_css!r} target={target_css!r})'
+                }
+            else:
+                qs_update = TripLog.objects.filter(user=request.user, bus_livery=source_css)
+                affected = qs_update.count()
+                qs_update.update(bus_livery=target_css, bus_livery_name=target_name)
+                message = {'kind': 'success', 'text': f'Replaced {affected} rows.'}
+
+        elif action == 'replace_api':
+            # Expect explicit fields from the client-side form
+            source_css = request.POST.get('source_css') or ''
+            api_left_css = request.POST.get('api_left_css') or ''
+            api_name = request.POST.get('api_name') or ''
+
+            if not source_css or not api_left_css:
+                message = {'kind': 'error', 'text': 'Missing source or API CSS.'}
+            else:
+                qs_update = TripLog.objects.filter(user=request.user, bus_livery=source_css)
+                affected = qs_update.count()
+                qs_update.update(bus_livery=api_left_css, bus_livery_name=api_name)
+                message = {'kind': 'success', 'text': f'Replaced {affected} rows with bustimes selection.'}
+
+    return render(request, 'completion_update.html', {
+        'liveries': liveries,
+        'message': message,
+        'api_results': api_results,
+    })
+
+
+@login_required
+def completion_update_search(request):
+    """Proxy a bustimes liveries search. Accepts GET param `q` and returns JSON results."""
+    q = request.GET.get('q', '')
+    if not q:
+        return JsonResponse({'results': []})
+
+    try:
+        res = requests.get('https://bustimes.org/api/liveries/', params={'name__icontains': q, 'limit': 50})
+        data = res.json()
+        results = data.get('results', [])
+    except Exception:
+        results = []
+
+    return JsonResponse({'results': results})
 
 @login_required
 def completion_details(request, operator_name):

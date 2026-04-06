@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Update Liveries - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+.section-card {
+  border: 1px solid var(--ts-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--ts-bg-2);
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.form-row label {
+  min-width: 180px;
+  font-size: 14px;
+  color: var(--ts-text-2);
+}
+
+.form-row select,
+.form-row input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ts-border);
+  background: var(--ts-bg);
+  color: var(--ts-text);
+}
+
+.ts-livery-box-preview {
+  width: 64px;
+  height: 44px;
+  border: 1px solid var(--ts-border);
+  border-radius: 8px;
+}
+
+.warning {
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  padding: 12px;
+  border-radius: 8px;
+  color: #e0a800;
+  font-size: 14px;
+}
+
+.action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.api-results {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.api-result {
+  border: 1px solid var(--ts-border);
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.api-result:hover {
+  background: var(--ts-bg-3);
+}
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Update Liveries</div>
+            </div>
+
+            <div class="ts-profile-body">
+                <br>
+
+                {% if message %}
+                  <div style="margin-top:12px;">
+                    {% if message.kind == 'success' %}
+                      <div class="ts-empty" style="color:var(--ts-text);">{{ message.text }}</div>
+                    {% else %}
+                      <div class="ts-empty" style="color:var(--ts-text-3);">{{ message.text }}</div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="section-card">
+                        <div class="section-title">⚠️ Warning</div>
+                        <div class="warning">This operation cannot be undone.</div>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-title">1. Select Source Livery</div>
+
+                        <div class="form-row">
+                        <label for="source">Livery</label>
+                        <select id="source" name="source_css" onchange="onSourceChange()">
+                            <option value="">-- choose --</option>
+                            {% for l in liveries %}
+                            <option value="{{ l.bus_livery }}" data-name="{{ l.bus_livery_name }}" data-count="{{ l.count }}">
+                                {{ l.bus_livery_name }} ({{ l.count }})
+                            </option>
+                            {% endfor %}
+                        </select>
+
+                        <div class="ts-livery-box-preview" id="source_preview"></div>
+                        </div>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-title">2. Replacement</div>
+
+                        <div class="form-row">
+                        <label for="target_select">Replace with</label>
+                        <select id="target_select" name="target_css_select" onchange="onTargetChange()">
+                            <option value="">-- choose replacement --</option>
+                            {% for l in liveries %}
+                            <option value="{{ l.bus_livery }}" data-name="{{ l.bus_livery_name }}">
+                                {{ l.bus_livery_name }} ({{ l.count }})
+                            </option>
+                            {% endfor %}
+                        </select>
+
+                        <div class="ts-livery-box-preview" id="target_preview"></div>
+                        </div>
+
+                        <div class="form-row">
+                        <label for="target_name">Replacement Name</label>
+                        <input type="text" id="target_name" name="target_name" placeholder="Auto-filled…" />
+                        <input type="hidden" id="target_css_hidden" name="target_css" />
+                        </div>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-title">3. Actions</div>
+
+                        <div class="action-row">
+                        <button type="submit" name="action" value="replace_local" class="ts-btn-primary">
+                            Replace with selected livery
+                        </button>
+
+                        <button type="button" id="btn_search_bustimes" class="ts-btn-secondary">
+                          Refresh from bustimes
+                        </button>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="source_name" id="source_name_input" />
+                    </form>
+
+                <div id="api_container">
+                  <div class="api-results" id="api_results"></div>
+
+                  <form method="post" id="api_replace_form" style="margin-top:12px; display:none;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="replace_api" />
+                    <input type="hidden" name="source_css" id="form_source_css" />
+                    <input type="hidden" name="api_left_css" id="form_api_left_css" />
+                    <input type="hidden" name="api_name" id="form_api_name" />
+                    <button type="submit" class="ts-btn-primary">Replace with selected bustimes livery</button>
+                  </form>
+                </div>
+        </div>
+    </main>
+</div>
+
+<script>
+function onSourceChange() {
+  const sel = document.getElementById('source');
+  const preview = document.getElementById('source_preview');
+  const nameInput = document.getElementById('source_name_input');
+
+  const option = sel.options[sel.selectedIndex];
+
+  if (!option || !option.value) {
+    preview.style.background = '';
+    nameInput.value = '';
+    return;
+  }
+
+  preview.style.background = option.value;
+  nameInput.value = option.dataset.name || '';
+}
+
+function onTargetChange() {
+  const sel = document.getElementById('target_select');
+  const preview = document.getElementById('target_preview');
+  const nameInput = document.getElementById('target_name');
+  const hidden = document.getElementById('target_css_hidden');
+
+  const option = sel.options[sel.selectedIndex];
+
+  if (!option || !option.value) {
+    preview.style.background = '';
+    if (hidden) hidden.value = '';
+    return;
+  }
+
+  // preview
+  preview.style.background = option.value;
+
+  if (hidden) hidden.value = option.value;
+
+  // ✅ AUTO-FILL NAME (only if empty)
+  if (!nameInput.value) {
+    nameInput.value = option.dataset.name || '';
+  }
+}
+
+// init
+(function(){
+  try {
+    onSourceChange();
+    onTargetChange();
+  } catch(e){}
+})();
+
+// Bustimes search via AJAX (non-refresh)
+document.getElementById('btn_search_bustimes').addEventListener('click', function () {
+  const sourceSel = document.getElementById('source');
+  const option = sourceSel.options[sourceSel.selectedIndex];
+  const source_css = option ? option.value : '';
+  const source_name = option ? (option.dataset.name || '') : '';
+
+  if (!source_name) {
+    alert('Please select a source livery with a name first.');
+    return;
+  }
+
+  const resultsEl = document.getElementById('api_results');
+  resultsEl.innerHTML = 'Searching...';
+
+  fetch('{% url "completion_update_search" %}?q=' + encodeURIComponent(source_name))
+    .then(r => r.json())
+    .then(data => {
+      resultsEl.innerHTML = '';
+      const results = data.results || [];
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="ts-empty">No results from bustimes.</div>';
+        return;
+      }
+
+      results.forEach((r, i) => {
+        const label = document.createElement('label');
+        label.className = 'api-result';
+
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'api_choice_radio';
+        radio.value = i;
+
+        const meta = document.createElement('div');
+        meta.style.flex = '1';
+        meta.innerHTML = `<div style="font-weight:600">${escapeHtml(r.name || '')}</div><div style="font-size:12px;color:var(--ts-text-3);">id: ${r.id || ''}</div>`;
+
+        const preview = document.createElement('div');
+        preview.style.width = '64px';
+        preview.style.height = '44px';
+        preview.style.border = '1px solid var(--ts-border)';
+        preview.style.borderRadius = '6px';
+        preview.style.background = r.left_css || '';
+
+        label.appendChild(radio);
+        label.appendChild(meta);
+        label.appendChild(preview);
+
+        // click selects radio
+        label.addEventListener('click', function () {
+          radio.checked = true;
+          document.getElementById('api_replace_form').style.display = '';
+          document.getElementById('form_source_css').value = source_css;
+          document.getElementById('form_api_left_css').value = r.left_css || '';
+          document.getElementById('form_api_name').value = r.name || '';
+
+          // Also populate the main replacement controls so the primary Replace button works.
+          try {
+            const targetName = document.getElementById('target_name');
+            const hidden = document.getElementById('target_css_hidden');
+            // set hidden value (do not touch the select)
+            if (hidden) hidden.value = r.left_css || '';
+            if (targetName && !targetName.value) targetName.value = r.name || '';
+            // update preview directly
+            const preview = document.getElementById('target_preview');
+            if (preview) preview.style.background = r.left_css || '';
+          } catch (e) {}
+        });
+
+        resultsEl.appendChild(label);
+      });
+    })
+    .catch(err => {
+      resultsEl.innerHTML = '<div class="ts-empty">Failed to fetch bustimes.</div>';
+    });
+});
+
+function escapeHtml(s){ return (s||'').replace(/[&"'<>]/g, function(c){return {'&':'&amp;','"':'&quot;','\'':'&#39;','<':'&lt;','>':'&gt;'}[c];}); }
+</script>
+
+{% endblock %}

@@ -551,6 +551,27 @@ def completion_route(request, operator_name):
         "operator_name": operator_name
     })
 
+
+@login_required
+def completion_liveries(request):
+    """Show a grid of unique liveries the current user has ridden."""
+    qs = (
+        TripLog.objects
+        .filter(user=request.user)
+        .exclude(bus_livery_name__isnull=True)
+        .exclude(bus_livery_name__exact='')
+        .values('bus_livery_name', 'bus_livery')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    # De-duplicate by (name, css) — the queryset above already groups by those
+    liveries = list(qs)
+
+    return render(request, "completion_liveries.html", {
+        "liveries": liveries,
+    })
+
 @login_required
 def completion_details(request, operator_name):
 

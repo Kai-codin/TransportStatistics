@@ -31,6 +31,7 @@ urlpatterns = [
     path("friends/accept/<int:user_id>/", views.accept_friend, name="accept_friend"),
     path("friends/decline/<int:user_id>/", views.decline_friend, name="decline_friend"),
     path("completion/", views.completion_home, name='completion'),
+    path("completion/liveries/", views.completion_liveries, name='completion_liveries'),
     path("completion/<str:operator_name>/fleet/", views.completion_fleet, name='fleet_completion'),
     path("completion/<str:operator_name>/route/", views.completion_route, name='route_completion'),
     path("completion/<str:operator_name>/", views.completion_details, name='operator_details'),

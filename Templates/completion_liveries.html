@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Liveries I've Ridden - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+.ts-livery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.ts-livery-tile {
+  background: var(--ts-bg-1);
+  border: 1px solid var(--ts-border);
+  padding: 12px;
+  border-radius: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.ts-livery-box {
+  width: 64px;
+  height: 44px;
+  border: 1px solid var(--ts-border);
+  flex: 0 0 64px;
+}
+.ts-livery-meta {
+  display: flex;
+  flex-direction: column;
+}
+.ts-livery-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.ts-livery-count {
+  color: var(--ts-text-3);
+  font-size: 12px;
+  margin-top: 6px;
+}
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Liveries I've Ridden</div>
+            </div>
+
+            <div class="ts-profile-body">
+                <div class="ts-table-wrap">
+                    <div class="ts-livery-grid">
+                        {% for l in liveries %}
+                        <div class="ts-livery-tile">
+                            {% if l.bus_livery %}
+                            <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
+                            {% else %}
+                            <div class="ts-livery-box ts-livery-default"></div>
+                            {% endif %}
+
+                            <div class="ts-livery-meta">
+                                <div class="ts-livery-name">{{ l.bus_livery_name }}</div>
+                                <div class="ts-livery-count">{{ l.count }} trip{{ l.count|pluralize }}</div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="ts-empty">You haven't logged any trips with liveries yet.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

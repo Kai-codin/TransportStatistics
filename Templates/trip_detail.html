@@ -5,7 +5,7 @@
 
 {% block extra_head %}
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
 <style>
 
@@ -62,7 +62,7 @@
                 <div class="ts-stop-indicator">
                   <div class="ts-stop-dot-outer {{ trip.transport_type }}"></div>
                 </div>
-                <div class="ts-stop-info" style="padding-bottom:0">
+                <div class="ts-stop-info ts-stop-info-tight">
                   <div class="ts-stop-name">{{ trip.destination_name|default:"?" }}</div>
                   <div class="ts-stop-sub">
                     {% if trip.scheduled_arrival %}Arr {{ trip.scheduled_arrival|time:"H:i" }}{% endif %}
@@ -99,7 +99,7 @@
               {% if trip.bus_livery_name %}
               <div>
                 <div class="ts-info-label">Livery</div>
-                <div class="ts-info-value" style="font-size:13px">{{ trip.bus_livery_name }}</div>
+                <div class="ts-info-value ts-info-value-sm">{{ trip.bus_livery_name }}</div>
               </div>
               {% endif %}
             </div>
@@ -118,7 +118,7 @@
               </div>
               {% endif %}
               {% if trip.bus_type %}
-              <div class="ts-info-item" style="grid-column:1/-1">
+              <div class="ts-info-item ts-grid-full">
                 <div class="ts-info-label">Vehicle type</div>
                 <div class="ts-info-value">{{ trip.bus_type }}</div>
               </div>
@@ -157,25 +157,25 @@
           {% comment %} Participants / companions {% endcomment %}
           <div>
             <div class="ts-section-title">People on this trip</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="ts-flex-wrap-row">
               {% for u in trip.on_trip_trip.all %}
-                <a href="{% url 'view_profile' u.id %}" class="ts-btn-secondary" style="padding:6px 8px">{{ u.username }}</a>
+                <a href="{% url 'view_profile' u.id %}" class="ts-btn-secondary ts-btn-user-chip">{{ u.username }}</a>
               {% empty %}
-                <div style="color:var(--ts-text-3)">No-one else marked as being on this trip.</div>
+                <div class="ts-text-muted">No-one else marked as being on this trip.</div>
               {% endfor %}
             </div>
           </div>
           
-          <div class="ts-detail-meta" style="margin-top:auto;padding-top:8px">
+          <div class="ts-detail-meta ts-detail-meta-footer">
             Logged {{ trip.logged_at|date:"j F Y" }} at {{ trip.logged_at|time:"H:i" }}
             {% if request.user != trip.user %}
-                <div style="margin-top:8px;display:flex;justify-content:flex-end;">
-                  <form method="post" action="{% url 'join_trip' trip.pk %}" style="margin:0; width: 100%;">
+                <div class="ts-actions-row ts-mt-8">
+                  <form method="post" action="{% url 'join_trip' trip.pk %}" class="ts-form-reset ts-w-full">
                     {% csrf_token %}
                     {% if request.user in trip.on_trip_trip.all %}
-                      <button type="submit" class="ts-btn-secondary" style="padding:6px 10px; width: 100%;">I was here - Undo</button>
+                      <button type="submit" class="ts-btn-secondary ts-btn-full-sm">I was here - Undo</button>
                     {% else %}
-                      <button type="submit" class="ts-btn-primary" style="padding:6px 10px; width: 100%;display: block; text-align: center;">I was here</button>
+                      <button type="submit" class="ts-btn-primary ts-btn-full-sm">I was here</button>
                     {% endif %}
                   </form>
                 </div>
@@ -183,11 +183,11 @@
             {% if request.user.is_authenticated %}
               {{ trip_owner }}
               {% if trip_owner %}
-                <div style="margin-top:6px;display:flex;justify-content:flex-end;gap:6px">
-                  <a class="ts-btn-primary" style="width: 50%; padding: 5px 10px;" href="{% url 'edit_trip' trip.pk %}">Edit</a>
-                  <form method="post" action="{% url 'delete_trip' trip.pk %}" style="width:50%;margin:0">
+                <div class="ts-actions-row ts-mt-6 ts-gap-6">
+                  <a class="ts-btn-primary ts-btn-half" href="{% url 'edit_trip' trip.pk %}">Edit</a>
+                  <form method="post" action="{% url 'delete_trip' trip.pk %}" class="ts-form-reset ts-w-half">
                     {% csrf_token %}
-                    <button type="submit" class="ts-btn-primary" style="background-color: var(--ts-danger); width:100%; padding: 5px 10px; border: none;">Delete</button>
+                    <button type="submit" class="ts-btn-primary ts-btn-full-sm ts-btn-danger">Delete</button>
                   </form>
                 </div>
               {% endif %}

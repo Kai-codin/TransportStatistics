@@ -1,10 +1,31 @@
 /* ═══════════════════════════════════════════════════════════════════
    Transport Statistics — Map styles
-   (static/css/{theme}/map.css)
+   (static/css/shared/map.css)
    Requires main.css to be loaded first for design tokens.
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── wrapper & canvas ────────────────────────────────────────────── */
+.ts-toggle-row { display: flex; gap: 14px; padding: 10px 14px 6px; flex-wrap: wrap; }
+.ts-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; opacity: 0.9; }
+.ts-toggle input { cursor: pointer; }
+.ts-stop-icon-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
 .ts-map-wrapper {
   position: relative;
   width: 100%;
@@ -355,6 +376,15 @@
   gap: 6px;
 }
 
+.ts-popup-action-btn {
+  width: 100%;
+  text-align: center;
+  padding: 5px 20px;
+  font-size: 14px;
+  display: block;
+  margin: 5px 0;
+}
+
 /* ── rail replacement rows ───────────────────────────────────────── */
 .ts-row-replacement td { background: rgba(234, 179, 8, 0.06); }
 
@@ -439,6 +469,11 @@
   opacity: 0;
   transform: translateY(-4px);
   transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.ts-zoom-hint-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .ts-zoom-hint.visible {

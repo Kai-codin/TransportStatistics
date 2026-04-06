@@ -4,7 +4,7 @@
 {% block title %}Completion - Transport Statistics{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <style>
     /* ── table layout ───────────────────────────── */
 .ts-not-ridden {
@@ -127,7 +127,7 @@
               <div class="ts-table-wrap">
                 <div class="ts-table">
                     <div class="ts-table-head">
-                        <div style="max-width: 80px;">Route</div>
+                        <div class="ts-max-w-80">Route</div>
                         <div>Description</div>
                         <div class="ts-right">Journeys</div>
                     </div>
@@ -136,7 +136,7 @@
                     <div class="ts-table-row">
 
                         <!-- ROUTE -->
-                        <div style="max-width: 80px;">
+                        <div class="ts-max-w-80">
                             <strong>{{ r.line_name }}</strong>
                         </div>
 

@@ -4,7 +4,7 @@
 {% block title %}Livery trips - Transport Statistics{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <style>
   .ts-livery-detail-header {
     display: flex;
@@ -12,9 +12,8 @@
     gap: 12px;
   }
   .ts-livery-detail-swatch {
-    width: 56px;
-    height: 38px;
-    border-radius: 10px;
+    width: 64px;
+    height: 44px;
     border: 1px solid var(--ts-border);
     flex: 0 0 auto;
   }
@@ -95,7 +94,7 @@
                   <div class="ts-trip-route">
                     <div class="ts-trip-stops">
                       {{ trip.origin_name|default:"?" }}
-                      <span style="opacity:.4;margin:0 3px">→</span>
+                      <span class="ts-separator-arrow">→</span>
                       {{ trip.destination_name|default:"?" }}
                     </div>
                     <div class="ts-trip-meta">

@@ -4,7 +4,7 @@
 {% block title %}My Trips - Transport Statistics{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -82,7 +82,7 @@
                   <div class="ts-trip-route">
                     <div class="ts-trip-stops">
                       {{ trip.origin_name|default:"?" }}
-                      <span style="opacity:.4;margin:0 3px">→</span>
+                      <span class="ts-separator-arrow">→</span>
                       {{ trip.destination_name|default:"?" }}
                     </div>
                     <div class="ts-trip-meta">

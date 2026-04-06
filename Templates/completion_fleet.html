@@ -35,10 +35,33 @@
 .ts-table-row {
   border-bottom: 1px solid var(--ts-border);
   transition: background 0.15s;
+  align-items: start;
 }
 
-.ts-table-row:hover {
-  background: var(--ts-bg-2);
+.ts-table-row > div {
+  padding-top: 4px;
+}
+
+.ts-livery-box {
+  width: 36px;
+  height: 24px;
+  border: 1px solid var(--ts-border);
+  flex-shrink: 0;/
+}
+
+.ts-prev-reg {
+  font-size: 11px;
+  color: var(--ts-text-3);
+  background: var(--ts-surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.ts-prev-regs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 /* ── livery ───────────────────────────── */
@@ -46,6 +69,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 2px;
 }
 
 .ts-livery-box {
@@ -61,17 +85,49 @@
 .ts-livery-name {
   font-weight: 600;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ts-livery-prev {
+  background: var(--ts-bg-3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-right: 3px;
+}
+
+.ts-livery-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.ts-livery-current {
+  font-size: 10px;
+  font-weight: 500;
+  background: #1a3a2a;
+  color: #6ee7b7;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
 }
 
 /* ── right aligned ───────────────────────── */
 .ts-right {
   text-align: right;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 /* ── journeys ───────────────────────────── */
 .ts-journey-count {
   font-weight: 600;
-  margin-right: 6px;
+  margin-right: 5px;
+  margin-left: -7px;
 }
 
 .ts-badge {
@@ -80,9 +136,28 @@
   border-radius: 999px;
 }
 
+.ts-badge:hover {
+  opacity: 0.9;
+  background: #1f7a4d !important;
+  color: #d1fae5 !important;
+}
+
 .ts-ridden {
   background: #1f7a4d;
   color: #d1fae5;
+}
+
+.ts-withdrawn {
+  margin-left: 5px;
+  border-color: var(--ts-danger);
+  color: white;
+  background: #9e4848;
+}
+
+.ts-badge:hover.ts-withdrawn {
+  background: #9e4848 !important;
+  color: white !important;
+  border-color: var(--ts-danger) !important;
 }
 
 /* ── empty state ───────────────────────── */
@@ -121,6 +196,11 @@
 
             <!-- ── body ────────────────────────────────────────────────── -->
             <div class="ts-profile-body">
+              <form action="{% url 'fleet_completion' operator_name %}" method="get" submit-on-change>
+                <br>
+                <label for="show-withdrawn">Show withdrawn/moved vehicles</label>
+                <input type="checkbox" id="show-withdrawn" name="show_withdrawn" {% if show_withdrawn %}checked{% endif %} onchange="this.form.submit()">
+              </form>
               <div class="ts-table-wrap">
                 <div class="ts-table">
                     <div class="ts-table-head">
@@ -134,21 +214,28 @@
                     {% for v in vehicles %}
                     <div class="ts-table-row">
 
-                        <!-- LIVERY -->
-                        <div class="ts-livery">
-                            {% if v.bus_livery %}
-                            <div class="ts-livery-box" style="background: {{ v.bus_livery }}"></div>
-                            {% else %}
-                            <div class="ts-livery-box ts-livery-default"></div>
-                            {% endif %}
-
-                            <div>
-                                {% if v.bus_livery_name %}
-                                <div class="ts-livery-name">{{ v.bus_livery_name }}</div>
-                                {% else %}
-                                <div class="ts-livery-name">-</div>
-                                {% endif %}
+                                              <!-- LIVERY -->
+                        <div class="ts-livery-cell">
+                          {% if v.ridden_liveries %}
+                            {% for name, data in v.ridden_liveries.items %}
+                              <div class="ts-livery">
+                                <div class="ts-livery-box {% if not data.css %}ts-livery-default{% endif %}"
+                                     {% if data.css %}style="background: {{ data.css }}"{% endif %}></div>
+                                <span class="ts-livery-name">
+                                  {{ name|default:"Unknown" }}
+                                  {% if name == v.current_livery_name and v.ridden_liveries|length > 1 %}
+                                    <span class="ts-livery-current">current</span>
+                                  {% endif %}
+                                </span>
+                              </div>
+                            {% endfor %}
+                          {% else %}
+                            <div class="ts-livery">
+                              <div class="ts-livery-box {% if not v.current_livery_css %}ts-livery-default{% endif %}"
+                                   {% if v.current_livery_css %}style="background: {{ v.current_livery_css }}"{% endif %}></div>
+                              <span class="ts-livery-name">{{ v.current_livery_name|default:"-" }}</span>
                             </div>
+                          {% endif %}
                         </div>
 
                         <!-- FLEET -->
@@ -159,7 +246,14 @@
                         <!-- REG / UNIT -->
                         <div>
                             {{ v.vehicle_id_final }}
-                        </div>
+                            {% if v.previous_regs %}
+                              <div class="ts-prev-regs">
+                                {% for reg in v.previous_regs %}
+                                  <span class="ts-prev-reg">{{ reg }}</span>
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+                        </div>  
 
                         <!-- TYPE -->
                         <div>
@@ -176,8 +270,15 @@
 
                             {% if v.ridden %}
                                 <span class="ts-badge ts-ridden">ridden</span>
+                                {% if v.withdrawn %}
+                                    <span class="ts-badge ts-withdrawn">withdrawn</span>
+                                {% endif %}
                             {% else %}
-                                <span class="ts-badge ts-not-ridden">not ridden</span>
+                                {% if v.withdrawn %}
+                                    <span class="ts-badge ts-withdrawn">withdrawn</span>
+                                {% else %}
+                                    <span class="ts-badge ts-not-ridden">not ridden</span>
+                                {% endif %}
                             {% endif %}
                         </div>
 

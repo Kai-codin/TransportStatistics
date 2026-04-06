@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Livery trips - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<style>
+  .ts-livery-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ts-livery-detail-swatch {
+    width: 56px;
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid var(--ts-border);
+    flex: 0 0 auto;
+  }
+  .ts-livery-detail-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ts-livery-detail-name {
+    font-weight: 650;
+    font-size: 16px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ts-livery-detail-sub {
+    color: var(--ts-text-3);
+    font-size: 13px;
+  }
+</style>
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+  {% include "includes/sidebar.html" %}
+
+  <main class="ts-main">
+    <div class="ts-profile-layout">
+
+      <div class="ts-profile-header">
+        <div class="ts-profile-title">Livery trips</div>
+        <div class="ts-profile-stats">
+          <div class="ts-stat">
+            <div class="ts-stat-value">{{ total_trips }}</div>
+            <div class="ts-stat-label">Trips</div>
+          </div>
+          <div class="ts-stat">
+            <a class="ts-btn-small" href="{% url 'completion_liveries' %}">Back</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="ts-profile-body">
+        <div class="ts-card">
+          <div class="ts-livery-detail-header">
+            <div class="ts-livery-detail-swatch" style="background: {{ css }}"></div>
+            <div class="ts-livery-detail-meta">
+              <div class="ts-livery-detail-name">{% if name %}{{ name }}{% else %}Unnamed livery{% endif %}</div>
+              <div class="ts-livery-detail-sub">{{ total_trips }} trip{{ total_trips|pluralize }}</div>
+            </div>
+          </div>
+        </div>
+
+        {% if days %}
+          {% for day in days %}
+          <div class="ts-day-group">
+            <div class="ts-day-header">
+              <span class="ts-day-date">{% if day.date %}{{ day.date|date:"j F Y" }}{% else %}No date{% endif %}</span>
+              <span class="ts-day-weekday">{% if day.date %}{{ day.date|date:"l" }}{% endif %}</span>
+              <span class="ts-day-count">{{ day.trips|length }} trip{{ day.trips|length|pluralize }}</span>
+            </div>
+
+            <div class="ts-trips-list">
+              {% for trip in day.trips %}
+                <div class="ts-trip-item">
+                  <a href="{% url 'trip_detail' trip.pk %}" class="ts-trip-card">
+                  <div class="ts-trip-mode-stripe {{ trip.transport_type }}"></div>
+                  <div class="ts-trip-body">
+
+                  <span class="ts-trip-chip {{ trip.transport_type }}">
+                    {{ trip.headcode|default:"-" }}
+                  </span>
+
+                  <div class="ts-trip-route">
+                    <div class="ts-trip-stops">
+                      {{ trip.origin_name|default:"?" }}
+                      <span style="opacity:.4;margin:0 3px">→</span>
+                      {{ trip.destination_name|default:"?" }}
+                    </div>
+                    <div class="ts-trip-meta">
+                      {{ trip.operator }}
+                    </div>
+                  </div>
+
+                  {% if trip.scheduled_departure %}
+                  <span class="ts-trip-time">{{ trip.scheduled_departure|time:"H:i" }}</span>
+                  {% endif %}
+
+                  {% if trip.is_bus %}
+                  <div class="ts-trip-vehicle-wrapper">
+                    <div class="ts-trip-vehicle">
+                      {% if trip.bus_fleet_number and trip.bus_registration %}
+                      <span class="ts-trip-fleet">{{ trip.bus_fleet_number }} - {{ trip.bus_registration }}</span>
+                      {% elif trip.bus_fleet_number %}
+                      <span class="ts-trip-fleet">{{ trip.bus_fleet_number }}</span>
+                      {% elif trip.bus_registration %}
+                      <span class="ts-trip-fleet">{{ trip.bus_registration }}</span>
+                      {% endif %}
+                      {% if trip.bus_livery %}
+                      <div class="ts-trip-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
+                      {% endif %}
+                    </div>
+                    <div class="ts-trip-meta ts-trip-meta-vehicle">
+                      {% if trip.transport_type != 'rail' and trip.bus_type %}
+                        {{ trip.bus_type }}
+                      {% elif trip.train_type %}
+                        {{ trip.train_type }}
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% elif trip.is_rail and trip.train_fleet_number %}
+                  <div class="ts-trip-vehicle-wrapper">
+                    <div class="ts-trip-vehicle">
+                      <span class="ts-trip-fleet">{{ trip.train_fleet_number }}</span>
+                    </div>
+                    <div class="ts-trip-meta ts-trip-meta-vehicle">
+                      {% if trip.transport_type != 'rail' and trip.bus_type %}
+                        {{ trip.bus_type }}
+                      {% elif trip.train_type %}
+                        {{ trip.train_type }}
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% endif %}
+
+                  </div>
+                  </a>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ts-empty">No trips found for this livery.</div>
+        {% endif %}
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

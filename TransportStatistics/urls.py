@@ -32,6 +32,7 @@ urlpatterns = [
     path("friends/decline/<int:user_id>/", views.decline_friend, name="decline_friend"),
     path("completion/", views.completion_home, name='completion'),
     path("completion/liveries/", views.completion_liveries, name='completion_liveries'),
+    path("completion/liveries/trips/", views.completion_livery_trips, name='completion_livery_trips'),
     path("completion/update/", views.completion_update, name='completion_update'),
     path("completion/update/search/", views.completion_update_search, name='completion_update_search'),
     path("completion/<str:operator_name>/fleet/", views.completion_fleet, name='fleet_completion'),

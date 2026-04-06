@@ -69,19 +69,56 @@
   color: var(--ts-text-1);
 }
 
-/* ── livery box ─────────────────── */
-.ts-livery {
+/* ── livery cards ─────────────────── */
+.ts-livery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.ts-livery-card {
+  background: var(--ts-bg-2);
+  border: 1px solid var(--ts-border);
+  border-radius: 10px;
+  padding: 12px 14px;
   display: flex;
-  background-color: transparent;
   align-items: center;
-  gap: 8px;
-  color: var(--ts-text-1)
+  gap: 10px;
 }
 
 .ts-livery-box {
-  width: 36px;
-  height: 24px;
+  width: 40px;
+  height: 26px;
   border: 1px solid var(--ts-border);
+  flex-shrink: 0;
+}
+
+.ts-livery-info {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ts-livery-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ts-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-livery-count {
+  font-size: 13px;
+  color: var(--ts-text-3);
+  font-weight: 600;
+  background: var(--ts-bg-1);
+  padding: 4px 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
 }
 
 /* ── highlights ───────────────────────── */
@@ -140,7 +177,6 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  transition: all 0.2s ease;
 }
 
 .ts-item-name {
@@ -179,7 +215,6 @@
   border-radius: 10px;
   padding: 12px;
   text-align: center;
-  transition: all 0.2s ease;
 }
 
 .ts-route-name {
@@ -263,14 +298,19 @@
     <!-- ── LIVERIES ───────────────────── -->
     <div class="ts-section">
         <h3>Liveries</h3>
-        <div class="ts-list">
+        <div class="ts-livery-grid">
             {% for l in liveries %}
-            <div class="ts-pill ts-livery">
+            <div class="ts-livery-card" title="{{ l.bus_livery_name }}">
                 <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
-                {{ l.bus_livery_name }} ({{ l.count }})
+                <div class="ts-livery-info">
+                    <div class="ts-livery-name">{{ l.bus_livery_name }}</div>
+                    <div class="ts-livery-count">{{ l.count }}</div>
+                </div>
             </div>
             {% empty %}
-            <div class="ts-pill">No data</div>
+            <div class="ts-livery-card">
+                <div class="ts-livery-name">No data</div>
+            </div>
             {% endfor %}
         </div>
     </div>
@@ -280,7 +320,7 @@
         <h3>Vehicle types</h3>
         <div class="ts-item-grid">
             {% for t in types %}
-            <div class="ts-item-card">
+            <div class="ts-item-card" title="{{ t.vtype }}">
                 <div class="ts-item-name">{{ t.vtype }}</div>
                 <div class="ts-item-count">{{ t.count }}</div>
             </div>
@@ -297,7 +337,7 @@
         <h3>Routes</h3>
         <div class="ts-route-grid">
             {% for r in route_list %}
-            <div class="ts-route-card">
+            <div class="ts-route-card" title="{{ r.headcode }}">
                 <div class="ts-route-name">{{ r.headcode }}</div>
                 <div class="ts-route-count">{{ r.count }} journeys</div>
             </div>

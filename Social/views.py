@@ -172,9 +172,6 @@ def completion_fleet(request, operator_name):
     show_withdrawn = request.GET.get("show_withdrawn") == "on"
     withdrawn_param = "unknown" if show_withdrawn else "false"
 
-    print(f"\n{'='*60}")
-    print(f"completion_fleet: operator={operator_name} show_withdrawn={show_withdrawn}")
-
     # ── 1. DETECT TRANSPORT TYPE ──────────────────────────────
     transport_type = (
         TripLog.objects
@@ -182,7 +179,6 @@ def completion_fleet(request, operator_name):
         .values_list("transport_type", flat=True)
         .first()
     )
-    print(f"transport_type: {transport_type}")
 
     # ── 2. RAIL MODE (NO API) ─────────────────────────────────
     if transport_type == "rail":
@@ -204,7 +200,6 @@ def completion_fleet(request, operator_name):
             {**v, "bus_livery": None, "bus_livery_name": None, "ridden": True}
             for v in vehicles
         ]
-        print(f"rail mode: {len(vehicles)} vehicles")
         return render(request, "completion_fleet.html", {
             "vehicles": vehicles,
             "operator_name": operator_name,
@@ -238,10 +233,8 @@ def completion_fleet(request, operator_name):
             'css': livery_css,
         }
 
-    print(f"ridden_map: {len(ridden_map)} unique vehicles ridden")
     for k, v in ridden_map.items():
         best = max(v.values(), key=lambda d: d['last_seen'])
-        print(f"  {k}: {len(v)} liveries, most recent={best['last_seen']}")
 
     # ── OPERATOR API ──────────────────────────────────────────
     operator_api = requests.get(
@@ -250,7 +243,6 @@ def completion_fleet(request, operator_name):
     ).json()
 
     if not operator_api["results"]:
-        print("no operator API results — falling back to ridden only")
         vehicles = [
             {
                 "vehicle_id": k,
@@ -274,11 +266,9 @@ def completion_fleet(request, operator_name):
         })
 
     noc = operator_api["results"][0]["noc"]
-    print(f"operator NOC: {noc}")
 
     # ── FULL FLEET ────────────────────────────────────────────
     fleet_data = fetch_full_fleet(noc, withdrawn_param)
-    print(f"fleet_data: {len(fleet_data)} vehicles from API")
 
     vehicles = []
     for vehicle in fleet_data:
@@ -338,7 +328,6 @@ def completion_fleet(request, operator_name):
                 if r and r != display_reg
             })
 
-            print(f"  [{fleet_no}] reg={reg} prev={previous_reg} → display_reg={display_reg} livery={most_recent_livery_name} ({best_date}) prev_regs={prev_regs}")
         else:
             # unridden — fall back to API data
             most_recent_livery_name = api_livery_name
@@ -360,8 +349,6 @@ def completion_fleet(request, operator_name):
             "ridden_liveries": sorted_liveries,
             "previous_regs": prev_regs,
         })
-
-    print(f"built {len(vehicles)} vehicle entries before dedupe")
 
     # ── DEDUPE on reg + fleet + type ─────────────────────────
     seen = {}
@@ -418,7 +405,6 @@ def completion_fleet(request, operator_name):
                                 best_date = d['last_seen']
                                 best_reg = r
                 if best_reg and best_reg != normalise_reg(existing["vehicle_id"]):
-                    print(f"    → updating reg from {existing['vehicle_id']} to {best_reg} (most recent ride {best_date})")
                     existing["previous_regs"] = list(set(existing["previous_regs"]) | {normalise_reg(existing["vehicle_id"])})
                     existing["vehicle_id"] = best_reg
                     existing["vehicle_id_final"] = best_reg
@@ -429,7 +415,6 @@ def completion_fleet(request, operator_name):
             for r in all_regs:
                 reg_index[r] = dedup_key
 
-    print(f"after dedupe: {len(deduped)} vehicles")
     vehicles = deduped
 
     # ── POST-DEDUPE: re-sort ridden_liveries and clean up previous_regs ──
@@ -441,12 +426,8 @@ def completion_fleet(request, operator_name):
         current = normalise_reg(v["vehicle_id"])
         v["previous_regs"] = [r for r in v["previous_regs"] if normalise_reg(r) != current]
 
-        print(f"  FINAL [{v['fleet_number']}] id={v['vehicle_id']} livery={v['current_livery_name']} prev_regs={v['previous_regs']} ridden_liveries={list(v['ridden_liveries'].keys())}")
-
     # ── SORT ──────────────────────────────────────────────────
     vehicles.sort(key=lambda x: (-x["ridden"], fleet_sort_key(x), -x["count"]))
-
-    print(f"{'='*60}\n")
 
     return render(request, "completion_fleet.html", {
         "vehicles": vehicles,

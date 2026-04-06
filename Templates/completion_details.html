@@ -124,6 +124,88 @@
   margin-bottom: 12px;
   font-size: 16px;
 }
+
+/* ── improved vehicle types ───────────────── */
+.ts-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.ts-item-card {
+  background: var(--ts-bg-2);
+  border: 1px solid var(--ts-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.ts-item-card:hover {
+  background: var(--ts-bg-1);
+  border-color: var(--ts-text-3);
+}
+
+.ts-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ts-text-1);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.ts-item-count {
+  font-size: 13px;
+  color: var(--ts-text-3);
+  font-weight: 600;
+  background: var(--ts-bg-1);
+  padding: 4px 10px;
+  border-radius: 999px;
+  min-width: 32px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── compact routes ───────────────── */
+.ts-route-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.ts-route-card {
+  background: var(--ts-bg-2);
+  border: 1px solid var(--ts-border);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.ts-route-card:hover {
+  background: var(--ts-bg-1);
+  border-color: var(--ts-text-3);
+  transform: translateY(-1px);
+}
+
+.ts-route-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ts-text-1);
+  margin-bottom: 4px;
+}
+
+.ts-route-count {
+  font-size: 12px;
+  color: var(--ts-text-3);
+  font-weight: 500;
+}
+
 </style>
 {% endblock %}
 
@@ -207,27 +289,33 @@
     <!-- ── VEHICLE TYPES ─────────────── -->
     <div class="ts-section">
         <h3>Vehicle types</h3>
-        <div class="ts-list">
+        <div class="ts-item-grid">
             {% for t in types %}
-            <div class="ts-pill">
-                {{ t.vtype }} ({{ t.count }})
+            <div class="ts-item-card">
+                <div class="ts-item-name">{{ t.vtype }}</div>
+                <div class="ts-item-count">{{ t.count }}</div>
             </div>
             {% empty %}
-            <div class="ts-pill">No data</div>
+            <div class="ts-item-card">
+                <div class="ts-item-name">No data</div>
+            </div>
             {% endfor %}
         </div>
     </div>
 
-    <!-- ── VEHICLE TYPES ─────────────── -->
+    <!-- ── ROUTES ─────────────── -->
     <div class="ts-section">
         <h3>Routes</h3>
-        <div class="ts-list">
+        <div class="ts-route-grid">
             {% for r in route_list %}
-            <div class="ts-pill">
-                {{ r.headcode }} ({{ r.count }})
+            <div class="ts-route-card">
+                <div class="ts-route-name">{{ r.headcode }}</div>
+                <div class="ts-route-count">{{ r.count }} journeys</div>
             </div>
             {% empty %}
-            <div class="ts-pill">No data</div>
+            <div class="ts-route-card">
+                <div class="ts-route-name">No data</div>
+            </div>
             {% endfor %}
         </div>
     </div>

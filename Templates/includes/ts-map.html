@@ -13,14 +13,6 @@
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
 <link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
 
-<style>
-.ts-toggle-row{display:flex;gap:14px;padding:10px 14px 6px;flex-wrap:wrap}
-.ts-toggle{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;opacity:0.9}
-.ts-toggle input{cursor:pointer}
-/* marker for stop icon fallback when style lacks glyphs */
-.ts-stop-icon-marker{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:transparent;color:#fff;font-size:10px;font-weight:700;line-height:1;border:0;padding:0;pointer-events:none;text-shadow:0 0 2px rgba(0,0,0,0.8);}
-</style>
-
 <div class="ts-map-wrapper">
 
   <!-- ── map canvas ────────────────────────────────────────────────── -->
@@ -28,7 +20,7 @@
 
   <!-- ── zoom hint ────────────────────────────────────────────────────── -->
   <div class="ts-zoom-hint" id="ts-zoom-hint" aria-hidden="true">
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0;margin-top:1px"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M8.5 8.5L11.5 11.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 3.5v4M3.5 5.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" class="ts-zoom-hint-icon"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M8.5 8.5L11.5 11.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 3.5v4M3.5 5.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
     Zoom in to see stops
   </div>
 
@@ -320,8 +312,7 @@
             data-origin="${p ? (p.long_name || p.name || '') : ''}"
             data-date="${qt ? toDate(qt) : toDate(new Date())}"
             data-transport-type="${p ? (BUS_TYPE_CODES.has(p.stop_type_code)?'bus':'rail') : 'rail'}"
-            style="width:100%;text-align:center;padding:5px 20px;font-size:14px;display:block;margin:5px 0;"
-            class="ts-btn-primary">Log custom trip</button>
+            class="ts-btn-primary ts-popup-action-btn">Log custom trip</button>
         </div>
       </div></div>`;
   }

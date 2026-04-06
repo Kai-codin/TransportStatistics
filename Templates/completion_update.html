@@ -4,7 +4,7 @@
 {% block title %}Update Liveries - Transport Statistics{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <style>
 .section-card {
   border: 1px solid var(--ts-border);
@@ -104,11 +104,11 @@
                 <br>
 
                 {% if message %}
-                  <div style="margin-top:12px;">
+                  <div class="ts-mt-12">
                     {% if message.kind == 'success' %}
-                      <div class="ts-empty" style="color:var(--ts-text);">{{ message.text }}</div>
+                      <div class="ts-empty ts-empty-text">{{ message.text }}</div>
                     {% else %}
-                      <div class="ts-empty" style="color:var(--ts-text-3);">{{ message.text }}</div>
+                      <div class="ts-empty ts-empty-text-muted">{{ message.text }}</div>
                     {% endif %}
                   </div>
                 {% endif %}
@@ -183,7 +183,7 @@
                 <div id="api_container">
                   <div class="api-results" id="api_results"></div>
 
-                  <form method="post" id="api_replace_form" style="margin-top:12px; display:none;">
+                  <form method="post" id="api_replace_form" class="ts-api-replace-form">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="replace_api" />
                     <input type="hidden" name="source_css" id="form_source_css" />
@@ -283,7 +283,7 @@ document.getElementById('btn_search_bustimes').addEventListener('click', functio
 
         const meta = document.createElement('div');
         meta.style.flex = '1';
-        meta.innerHTML = `<div style="font-weight:600">${escapeHtml(r.name || '')}</div><div style="font-size:12px;color:var(--ts-text-3);">id: ${r.id || ''}</div>`;
+        meta.innerHTML = `<div class="ts-api-result-title">${escapeHtml(r.name || '')}</div><div class="ts-api-result-id">id: ${r.id || ''}</div>`;
 
         const preview = document.createElement('div');
         preview.style.width = '64px';

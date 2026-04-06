@@ -1,13 +1,15 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.db.models.functions import Coalesce
-from django.db.models import Count, F, Max
+from django.db.models import Count, F, Max, Q
 from django.contrib.auth import get_user_model
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from .forms import FriendSearchForm
 from .models import Friend
 from Trips.models import TripLog
 import requests
+
+from itertools import groupby
 
 
 User = get_user_model()
@@ -558,11 +560,11 @@ def completion_liveries(request):
     """Show a grid of unique liveries the current user has ridden."""
     qs = (
         TripLog.objects
-        .filter(user=request.user)
-        .exclude(bus_livery_name__isnull=True)
-        .exclude(bus_livery_name__exact='')
+        .filter(Q(user=request.user) | Q(on_trip_trip=request.user))
+        .exclude(bus_livery__isnull=True)
+        .exclude(bus_livery__exact='')
         .values('bus_livery_name', 'bus_livery')
-        .annotate(count=Count('id'))
+        .annotate(count=Count('id', distinct=True))
         .order_by('-count')
     )
 
@@ -571,6 +573,40 @@ def completion_liveries(request):
 
     return render(request, "completion_liveries.html", {
         "liveries": liveries,
+    })
+
+@login_required
+def completion_livery_trips(request):
+    """List every trip the current user has ridden in a selected livery."""
+    css = (request.GET.get('css') or '').strip()
+    name = request.GET.get('name')
+
+    if not css:
+        raise Http404("Missing livery css")
+
+    trips_qs = (
+        TripLog.objects
+        .filter(Q(user=request.user) | Q(on_trip_trip=request.user))
+        .distinct()
+        .filter(bus_livery=css)
+    )
+
+    trips_qs = trips_qs.order_by('-service_date', '-scheduled_departure', '-logged_at')
+
+    if not name:
+        first_named_trip = trips_qs.exclude(bus_livery_name__isnull=True).exclude(bus_livery_name__exact='').first()
+        name = first_named_trip.bus_livery_name if first_named_trip else ""
+
+    days = []
+    for service_date, group in groupby(trips_qs, key=lambda t: t.service_date):
+        trip_list = list(group)
+        days.append({'date': service_date, 'trips': trip_list})
+
+    return render(request, "completion_livery_trips.html", {
+        "css": css,
+        "name": name or "",
+        "days": days,
+        "total_trips": trips_qs.count(),
     })
 
 
@@ -700,9 +736,7 @@ def completion_details(request, operator_name):
 
     # ── LIVERIES (bus only really) ─────────────────────────
     liveries = (
-        qs.exclude(bus_livery_name__isnull=True)
-        .exclude(bus_livery_name__exact='')
-        .values('bus_livery_name', 'bus_livery')
+        qs.values('bus_livery_name', 'bus_livery')
         .annotate(count=Count('id'))
         .order_by('-count')
     )

@@ -1,10 +1,41 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}My Trips - Transport Statistics{% endblock %}
+{% block title %}Livery trips - Transport Statistics{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
+<style>
+  .ts-livery-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ts-livery-detail-swatch {
+    width: 64px;
+    height: 44px;
+    border: 1px solid var(--ts-border);
+    flex: 0 0 auto;
+  }
+  .ts-livery-detail-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ts-livery-detail-name {
+    font-weight: 650;
+    font-size: 16px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ts-livery-detail-sub {
+    color: var(--ts-text-3);
+    font-size: 13px;
+  }
+</style>
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -16,54 +47,37 @@
   <main class="ts-main">
     <div class="ts-profile-layout">
 
-      <!-- ── header ──────────────────────────────────────────────── -->
       <div class="ts-profile-header">
-        <div class="ts-profile-title">{% if viewing_user %}{{ viewing_user.username }}'s trips{% else %}My trips{% endif %}</div>
+        <div class="ts-profile-title">Livery trips</div>
         <div class="ts-profile-stats">
           <div class="ts-stat">
             <div class="ts-stat-value">{{ total_trips }}</div>
             <div class="ts-stat-label">Trips</div>
           </div>
           <div class="ts-stat">
-            <div class="ts-stat-value">{{ total_days }}</div>
-            <div class="ts-stat-label">Days</div>
-          </div>
-          <div class="ts-stat">
-            {% if viewing_user and not restricted %}
-              {% if viewing_user.id != request.user.id %}
-                <a class="ts-btn-primary" href="/trips/map/all/?user={{ viewing_user.id }}">Map</a>
-              {% else %}
-                <a class="ts-btn-primary" href="/trips/map/all">Map</a>
-              {% endif %}
-            {% elif not viewing_user %}
-              <a class="ts-btn-primary" href="/trips/map/all">Map</a>
-            {% endif %}
+            <a class="ts-btn-small" href="{% url 'completion_liveries' %}">Back</a>
           </div>
         </div>
       </div>
 
-      <!-- ── body ────────────────────────────────────────────────── -->
       <div class="ts-profile-body">
-
-        {% if viewing_user and restricted %}
-          <div class="ts-card">
-            <div class="ts-section-title">Profile hidden</div>
-            <div>This user's profile is not visible to you.</div>
+        <div class="ts-card">
+          <div class="ts-livery-detail-header">
+            <div class="ts-livery-detail-swatch" style="background: {{ css }}"></div>
+            <div class="ts-livery-detail-meta">
+              <div class="ts-livery-detail-name">{% if name %}{{ name }}{% else %}Unnamed livery{% endif %}</div>
+              <div class="ts-livery-detail-sub">{{ total_trips }} trip{{ total_trips|pluralize }}</div>
+            </div>
           </div>
-        {% endif %}
+        </div>
 
         {% if days %}
           {% for day in days %}
           <div class="ts-day-group">
             <div class="ts-day-header">
-              <span class="ts-day-date">{{ day.date|date:"j F Y" }}</span>
-              <span class="ts-day-weekday">{{ day.date|date:"l" }}</span>
+              <span class="ts-day-date">{% if day.date %}{{ day.date|date:"j F Y" }}{% else %}No date{% endif %}</span>
+              <span class="ts-day-weekday">{% if day.date %}{{ day.date|date:"l" }}{% endif %}</span>
               <span class="ts-day-count">{{ day.trips|length }} trip{{ day.trips|length|pluralize }}</span>
-              {% if viewing_user and not restricted and viewing_user.id != request.user.id %}
-                <a class="ts-btn-small" href="/trips/map/{{ day.date|date:"Y-m-d" }}?user={{ viewing_user.id }}">Map</a>
-              {% else %}
-                <a class="ts-btn-small" href="/trips/map/{{ day.date|date:"Y-m-d" }}">Map</a>
-              {% endif %}
             </div>
 
             <div class="ts-trips-list">
@@ -73,12 +87,10 @@
                   <div class="ts-trip-mode-stripe {{ trip.transport_type }}"></div>
                   <div class="ts-trip-body">
 
-                  <!-- headcode chip -->
                   <span class="ts-trip-chip {{ trip.transport_type }}">
                     {{ trip.headcode|default:"-" }}
                   </span>
 
-                  <!-- route -->
                   <div class="ts-trip-route">
                     <div class="ts-trip-stops">
                       {{ trip.origin_name|default:"?" }}
@@ -90,12 +102,10 @@
                     </div>
                   </div>
 
-                  <!-- departure time -->
                   {% if trip.scheduled_departure %}
                   <span class="ts-trip-time">{{ trip.scheduled_departure|time:"H:i" }}</span>
                   {% endif %}
 
-                  <!-- vehicle / livery -->
                   {% if trip.is_bus %}
                   <div class="ts-trip-vehicle-wrapper">
                     <div class="ts-trip-vehicle">
@@ -140,17 +150,9 @@
             </div>
           </div>
           {% endfor %}
-
         {% else %}
-          <div class="ts-empty">
-            <div class="ts-empty-icon">🚆</div>
-            <div class="ts-empty-title">No trips yet</div>
-            <div class="ts-empty-sub">Head to the departures board and tap Log on a service to get started.</div>
-          </div>
+          <div class="ts-empty">No trips found for this livery.</div>
         {% endif %}
-
-        
-
       </div>
     </div>
   </main>

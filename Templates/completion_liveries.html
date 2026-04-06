@@ -4,7 +4,7 @@
 {% block title %}Livery grid - Transport Statistics{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <style>
 .ts-livery-grid {
   display: grid;
@@ -19,7 +19,11 @@
   display: flex;
   gap: 12px;
   align-items: center;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
 }
+
 .ts-livery-box {
   width: 64px;
   height: 44px;
@@ -52,25 +56,30 @@
         <div class="ts-profile-layout">
 
             <div class="ts-profile-header">
-                <div class="ts-profile-title">Liveries I've Ridden</div>
+                <div class="ts-profile-title">Livery Grid</div>
             </div>
 
             <div class="ts-profile-body">
+                <br>
                 <div class="ts-table-wrap">
                     <div class="ts-livery-grid">
                         {% for l in liveries %}
-                        <div class="ts-livery-tile">
                             {% if l.bus_livery %}
-                            <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
-                            {% else %}
-                            <div class="ts-livery-box ts-livery-default"></div>
-                            {% endif %}
+                            <a class="ts-livery-tile" href="{% url 'completion_livery_trips' %}?css={{ l.bus_livery|urlencode }}&name={{ l.bus_livery_name|default_if_none:''|urlencode }}">                            
+                                <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
 
-                            <div class="ts-livery-meta">
-                                <div class="ts-livery-name">{{ l.bus_livery_name }}</div>
-                                <div class="ts-livery-count">{{ l.count }} trip{{ l.count|pluralize }}</div>
-                            </div>
-                        </div>
+                                <div class="ts-livery-meta">
+                                    <div class="ts-livery-name">
+                                        {% if l.bus_livery_name %}
+                                        {{ l.bus_livery_name }}
+                                        {% else %}
+                                        Unnamed livery
+                                        {% endif %}
+                                    </div>
+                                    <div class="ts-livery-count">{{ l.count }} trip{{ l.count|pluralize }}</div>
+                                </div>
+                            </a>
+                            {% endif %}
                         {% empty %}
                         <div class="ts-empty">You haven't logged any trips with liveries yet.</div>
                         {% endfor %}

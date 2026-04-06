@@ -4,7 +4,7 @@
 {% block title %}{{ operator_name }} Details{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <style>
 
 /* ── layout ───────────────────────── */
@@ -299,15 +299,15 @@
     <div class="ts-section">
         <h3>Liveries</h3>
         <div class="ts-livery-grid">
-            {% for l in liveries %}
-            <div class="ts-livery-card" title="{{ l.bus_livery_name }}">
-                <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
-                <div class="ts-livery-info">
-                    <div class="ts-livery-name">{{ l.bus_livery_name }}</div>
-                    <div class="ts-livery-count">{{ l.count }}</div>
-                </div>
+          {% for l in liveries %}
+          <div class="ts-livery-card" title="{{ l.bus_livery_name|default:"(no name)" }}">
+            <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
+            <div class="ts-livery-info">
+              <div class="ts-livery-name">{% if l.bus_livery_name %}{{ l.bus_livery_name }}{% elif l.bus_livery %}(no name){% else %}—{% endif %}</div>
+              <div class="ts-livery-count">{{ l.count }}</div>
             </div>
-            {% empty %}
+          </div>
+          {% empty %}
             <div class="ts-livery-card">
                 <div class="ts-livery-name">No data</div>
             </div>

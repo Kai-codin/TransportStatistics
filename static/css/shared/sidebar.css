@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════
-   TransportStatistics — Sidebar  (static/css/{theme}/sidebar.css)
-   Shares the same CSS variables already defined in map.css
+   TransportStatistics — Sidebar  (static/css/shared/sidebar.css)
+   Uses theme variables defined in light/other.css or dark/other.css
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── layout shell ────────────────────────────────────────────────── */
@@ -129,7 +129,7 @@
 .ts-nav-item.active {
   background: var(--ts-accent-light);
   color: var(--ts-accent);
-  border-color: rgba(21,128,61,0.2);
+  border-color: var(--ts-accent-border);
   font-weight: 600;
 }
 
@@ -145,6 +145,10 @@
 
 .ts-nav-item.active .ts-nav-icon,
 .ts-nav-item:hover .ts-nav-icon { opacity: 1; }
+
+.ts-nav-icon-stack {
+  margin-left: -5px;
+}
 
 /* ── sidebar footer ──────────────────────────────────────────────── */
 .ts-sidebar-footer {
@@ -259,6 +263,14 @@
   background: var(--ts-surface-2);
   color: var(--ts-text-1);
   border-color: var(--ts-border-soft);
+}
+
+.ts-settings-icon {
+  margin-left: 1px;
+}
+
+.ts-logout-form {
+  margin: 0;
 }
 
 .ts-toggle-track {

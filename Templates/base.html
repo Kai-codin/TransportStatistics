@@ -24,13 +24,13 @@
   <meta name="msapplication-TileImage" content="{% static 'src/ms-icon-144x144.png' %}">
   <meta name="theme-color" content="#1e2d22">
 
-
-  {# main.css loads tokens, fonts, reset - choose light/dark from localStorage #}
+  <link rel="stylesheet" href="{% static 'css/shared/main.css' %}" />
+  {# theme overrides - choose light/dark from localStorage #}
   <script>
     (function(){
       var theme = 'light';
       try{ theme = localStorage.getItem('ts_theme') || 'light'; }catch(e){}
-      var href = "{% static 'css/light/main.css' %}".replace('/light/', '/' + theme + '/');
+      var href = "{% static 'css/light/other.css' %}".replace('/light/', '/' + theme + '/');
       var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-ts-theme','');
       document.head.appendChild(l);
     })();
@@ -38,15 +38,6 @@
   <title>{% block title %}Transport Statistics{% endblock %}</title>
 
   {% load static %}
-
-  {# ── global reset ─────────────────────────────────────────────────── #}
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
-    body { background: #f5f7f2; }
-    /* page-level override when sidebar+map fills viewport */
-    body.ts-app-page { overflow: hidden; }
-  </style>
 
   {% block extra_head %}{% endblock %}
 </head>

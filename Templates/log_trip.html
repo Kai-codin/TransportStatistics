@@ -5,7 +5,7 @@
 
 {% block extra_head %}
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
 <style>
 /* ── layout ──────────────────────────────────────────────────────── */
@@ -387,7 +387,7 @@ textarea.ts-panel-input {
                 </select>
               </div>
             </div>
-            <div class="ts-panel-field" id="ts-route-number-field" style="margin-top:8px;">
+            <div class="ts-panel-field ts-mt-8" id="ts-route-number-field">
               <label class="ts-panel-label" for="lf-route-number">Route number</label>
               <input type="text" id="lf-route-number" name="route_number" class="ts-panel-input mono" placeholder="e.g. X12 or 1A" />
             </div>
@@ -408,8 +408,8 @@ textarea.ts-panel-input {
                 <input type="text" id="lf-train-type" name="train_type" class="ts-panel-input" placeholder="e.g. Class 390" />
               </div>
             </div>
-            <a href="#" id="ts-rtt-link" class="ts-rtt-panel-link" target="_blank" rel="noopener" style="display:none">
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><path d="M7 1h4v4M11 1L5.5 6.5M2 3h3M2 3v7h7V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <a href="#" id="ts-rtt-link" class="ts-rtt-panel-link ts-hidden-inline" target="_blank" rel="noopener">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" class="ts-rtt-link-icon"><path d="M7 1h4v4M11 1L5.5 6.5M2 3h3M2 3v7h7V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               View on Realtime Trains
             </a>
           </div>
@@ -429,7 +429,7 @@ textarea.ts-panel-input {
             </div>
 
             <!-- vehicle search results dropdown -->
-            <div id="ts-vehicle-results" style="max-height: 250px;overflow-y: scroll;display:none;background:var(--ts-surface-2);border:1.5px solid var(--ts-border);border-radius:var(--ts-r-sm);"></div>
+            <div id="ts-vehicle-results" class="ts-vehicle-results-panel"></div>
 
             <div class="ts-panel-field">
               <label class="ts-panel-label" for="lf-bus-vtype">Vehicle type</label>
@@ -685,7 +685,7 @@ textarea.ts-panel-input {
         const date = prefDate || new Date().toISOString().slice(0, 10);
         if (uid) {
           rttLink.href = `https://www.realtimetrains.co.uk/service/gb-nr:${uid}/${date}/detailed`;
-          rttLink.style.display = 'inline-flex';
+          rttLink.classList.remove('ts-hidden-inline');
         }
 
         drawRoute();
@@ -693,7 +693,7 @@ textarea.ts-panel-input {
         showInstruction('Click a stop to set your <strong>From</strong> station');
       })
       .catch(err => {
-        serviceCard.innerHTML = `<div style="color:var(--ts-danger);font-size:13px">⚠ Could not load service (${err})</div>`;
+        serviceCard.innerHTML = `<div class="ts-service-error">⚠ Could not load service (${err})</div>`;
         panelSub.textContent = 'Failed to load';
       });
   }
@@ -933,8 +933,8 @@ textarea.ts-panel-input {
     return `
       <div class="ts-selected-stop-row is-${role}">
         <span class="ts-stop-dot ${colour}"></span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ts-text-3)">${label}</div>
+        <div class="ts-stop-meta-wrap">
+          <div class="ts-stop-meta-label">${label}</div>
           <div class="ts-selected-stop-name">${stop.name}</div>
         </div>
         <span class="ts-selected-stop-time">${time.display.split('|')[0].trim()}</span>
@@ -1207,7 +1207,7 @@ textarea.ts-panel-input {
                        data-withdrawn="${v.withdrawn ? '1' : '0'}">
             <div class="ts-vehicle-result-swatch" style="${swatchStyle}"></div>
             <div class="ts-vehicle-result-info">
-              <div class="ts-vehicle-result-code">${code}${reg ? ' · ' + reg : ''}${v.withdrawn ? ' · <span style="color: red;">Withdrawn</span>' : ''}</div>
+              <div class="ts-vehicle-result-code">${code}${reg ? ' · ' + reg : ''}${v.withdrawn ? ' · <span class="ts-withdrawn">Withdrawn</span>' : ''}</div>
               <div class="ts-vehicle-result-detail">${label}${livery.name ? ' · ' + livery.name : ''}</div>
             </div>
           </div>`;

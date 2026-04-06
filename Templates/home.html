@@ -6,10 +6,8 @@
 {% block extra_head %}
 <script>
   (function(){
-    var theme = 'light';
-    try{ theme = localStorage.getItem('ts_theme') || 'light'; }catch(e){}
-    var href = "{% static 'css/light/sidebar.css' %}".replace('/light/', '/' + theme + '/');
-    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-ts-theme','');
+    var href = "{% static 'css/shared/sidebar.css' %}";
+    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href;
     document.head.appendChild(l);
   })();
 </script>

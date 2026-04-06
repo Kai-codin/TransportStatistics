@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}Profile Settings — Transport Statistics{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/light/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <style>
   .ts-settings-wrap {
     max-width: 680px;
@@ -304,8 +304,8 @@
                 </select>
               {% endif %}
               <div class="ts-privacy-actions">
-                <button class="ts-btn-primary" type="submit" style="font-size:13.5px;padding:7px 16px">Save</button>
-                <a class="ts-btn-secondary" href="{% url 'profile' %}" style="display:inline-flex;align-items:center;padding:7px 14px;font-size:13.5px">Back to profile</a>
+                <button class="ts-btn-primary ts-btn-sm" type="submit">Save</button>
+                <a class="ts-btn-secondary ts-btn-inline-sm" href="{% url 'profile' %}">Back to profile</a>
               </div>
             </div>
           </form>
@@ -343,13 +343,13 @@
               {% if upload_form %}
                 {{ upload_form.dupe_policy }}
               {% else %}
-                <select name="dupe_policy" class="ts-select" style="min-width:200px ">
+                <select name="dupe_policy" class="ts-select ts-select-min-200">
                   <option value="skip">Skip duplicates (default)</option>
                   <option value="import_all">Import all</option>
                 </select>
               {% endif %}
 
-              <button class="ts-btn-primary" type="submit" style="font-size:13.5px;padding:7px 16px;margin-left: auto;">
+              <button class="ts-btn-primary ts-btn-sm ts-btn-push-right" type="submit">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 5l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Upload and scan
               </button>
@@ -375,14 +375,14 @@
                 <tbody>
                   {% for job in import_jobs %}
                   <tr>
-                    <td style="font-family:var(--ts-mono);font-size:12px;color:var(--ts-text-3)">{{ job.id }}</td>
+                    <td class="ts-cell-mono-muted">{{ job.id }}</td>
                     <td>
                       <span class="ts-status-pill {{ job.status }}">
                         {{ job.get_status_display }}
                       </span>
                     </td>
                     <td><span class="ts-num">{{ job.total }}</span></td>
-                    <td><span class="ts-num" style="color:var(--ts-accent)">{{ job.inserted }}</span></td>
+                    <td><span class="ts-text-accent">{{ job.inserted }}</span></td>
                     <td>
                       {% if job.duplicates %}
                         <span class="ts-num-muted">{{ job.duplicates }}</span>
@@ -393,27 +393,27 @@
                     <td>
                       {% if job.status == 'uploaded' or job.status == 'queued' %}
                         <div class="ts-job-actions">
-                          <form method="post" style="display:contents">
+                          <form method="post" class="ts-form-contents">
                             {% csrf_token %}
                             <input type="hidden" name="job_id" value="{{ job.id }}" />
                             <input type="hidden" name="policy" value="skip" />
-                            <button class="ts-btn-secondary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Skip dupes</button>
+                            <button class="ts-btn-secondary ts-btn-xs" name="start_import" value="1">Skip dupes</button>
                           </form>
-                          <form method="post" style="display:contents">
+                          <form method="post" class="ts-form-contents">
                             {% csrf_token %}
                             <input type="hidden" name="job_id" value="{{ job.id }}" />
                             <input type="hidden" name="policy" value="overwrite" />
-                            <button class="ts-btn-secondary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Overwrite dupes</button>
+                            <button class="ts-btn-secondary ts-btn-xs" name="start_import" value="1">Overwrite dupes</button>
                           </form>
-                          <form method="post" style="display:contents">
+                          <form method="post" class="ts-form-contents">
                             {% csrf_token %}
                             <input type="hidden" name="job_id" value="{{ job.id }}" />
                             <input type="hidden" name="policy" value="import_all" />
-                            <button class="ts-btn-primary" name="start_import" value="1" style="font-size:12px;padding:4px 11px">Import all</button>
+                            <button class="ts-btn-primary ts-btn-xs" name="start_import" value="1">Import all</button>
                           </form>
                         </div>
                       {% else %}
-                        <a class="ts-btn-secondary" href="#" style="font-size:12px;padding:4px 11px">View</a>
+                        <a class="ts-btn-secondary ts-btn-xs" href="#">View</a>
                       {% endif %}
                     </td>
                   </tr>

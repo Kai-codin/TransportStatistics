@@ -408,6 +408,7 @@ textarea.ts-panel-input {
                 <input type="text" id="lf-train-type" name="train_type" class="ts-panel-input" placeholder="e.g. Class 390" />
               </div>
             </div>
+            <div id="ts-train-results" class="ts-vehicle-results-panel"></div>
             <a href="#" id="ts-rtt-link" class="ts-rtt-panel-link ts-hidden-inline" target="_blank" rel="noopener">
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none" class="ts-rtt-link-icon"><path d="M7 1h4v4M11 1L5.5 6.5M2 3h3M2 3v7h7V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               View on Realtime Trains
@@ -526,6 +527,13 @@ textarea.ts-panel-input {
     const [fleet, reg] = prefVehicle.split(' - ', 2);
     document.getElementById('lf-bus-fleet').value = fleet.trim();
     document.getElementById('lf-bus-reg').value   = reg.trim();
+  } else if (prefVehicle && transportType === 'rail') {
+    const fleetMatch = prefVehicle.match(/\b\d{3,6}\b/);
+    if (fleetMatch) {
+      document.getElementById('lf-train-fleet').value = fleetMatch[0];
+    } else if (!document.getElementById('lf-train-type').value) {
+      document.getElementById('lf-train-type').value = prefVehicle;
+    }
   }
 
   syncVehicleSections();
@@ -1138,6 +1146,7 @@ textarea.ts-panel-input {
 
 // ── vehicle search ─────────────────────────────────────────────────────────
   let _vehicleSearchTimer = null;
+  let _trainSearchTimer = null;
 
   function setupVehicleSearch() {
     const fleetInput = document.getElementById('lf-bus-fleet');
@@ -1229,6 +1238,85 @@ textarea.ts-panel-input {
       .catch(() => { results.style.display = 'none'; });
   }
 
+  function setupTrainFleetSearch() {
+    const fleetInput = document.getElementById('lf-train-fleet');
+    const typeInput  = document.getElementById('lf-train-type');
+    const results    = document.getElementById('ts-train-results');
+
+    function onInput() {
+      const query = (fleetInput.value || typeInput.value).trim();
+      clearTimeout(_trainSearchTimer);
+      if (query.length < 2) { results.style.display = 'none'; return; }
+      _trainSearchTimer = setTimeout(() => searchTrainFleet(query), 350);
+    }
+
+    fleetInput.addEventListener('input', onInput);
+    typeInput.addEventListener('input', onInput);
+
+    document.addEventListener('click', e => {
+      if (!results.contains(e.target) && e.target !== fleetInput && e.target !== typeInput) {
+        results.style.display = 'none';
+      }
+    });
+  }
+
+  function searchTrainFleet(query, auto = false) {
+    const results = document.getElementById('ts-train-results');
+
+    fetch(`/api/fleet?q=${encodeURIComponent(query)}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        const items = (Array.isArray(data) ? data : []).slice(0, 100);
+        if (!items.length) { results.style.display = 'none'; return; }
+
+        if (items.length === 1 && auto) {
+          const t = items[0];
+          document.getElementById('lf-train-fleet').value = t.fleetnumber || '';
+          document.getElementById('lf-train-type').value  = t.type || '';
+          results.style.display = 'none';
+          return;
+        }
+
+        results.innerHTML = items.map(t => {
+          const fleet = t.fleetnumber || '';
+          const type  = t.type || '';
+          const livery = t.livery || {};
+          const liveryName = livery.name || '';
+          const liveryCss = livery.css || '';
+          const swatchStyle = liveryCss ? `background:${liveryCss}` : 'background:#888';
+
+          return `<div class="ts-vehicle-result"
+                       data-fleet="${fleet}"
+                       data-type="${type}">
+            <div class="ts-vehicle-result-swatch" style="${swatchStyle}"></div>
+            <div class="ts-vehicle-result-info">
+              <div class="ts-vehicle-result-code">${fleet || '—'}</div>
+              <div class="ts-vehicle-result-detail">${type}${liveryName ? ' · ' + liveryName : ''}</div>
+            </div>
+          </div>`;
+        }).join('');
+
+        results.style.display = 'block';
+
+        results.querySelectorAll('.ts-vehicle-result').forEach(row => {
+          row.addEventListener('click', () => {
+            document.getElementById('lf-train-fleet').value = row.dataset.fleet || '';
+            document.getElementById('lf-train-type').value  = row.dataset.type || '';
+            results.style.display = 'none';
+          });
+        });
+      })
+      .catch(() => { results.style.display = 'none'; });
+  }
+
   setupVehicleSearch();
+  setupTrainFleetSearch();
+
+  // When landing on rail mode with an existing fleet-like value, auto-search once.
+  const initialTrainFleet = (document.getElementById('lf-train-fleet').value || '').trim();
+  const currentMode = (document.getElementById('lf-type')?.value || '').toLowerCase();
+  if (currentMode === 'rail' && initialTrainFleet.length >= 2) {
+    searchTrainFleet(initialTrainFleet, true);
+  }
 </script>
 {% endblock %}

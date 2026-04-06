@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Operator
+from .models import Operator, Trains
 
 
 @admin.register(Operator)
@@ -17,3 +17,10 @@ class OperatorAdmin(admin.ModelAdmin):
         if obj:
             return {}
         return self.prepopulated_fields
+
+
+@admin.register(Trains)
+class TrainsAdmin(admin.ModelAdmin):
+    list_display = ("fleetnumber", "type", "livery_name")
+    search_fields = ("fleetnumber", "type", "livery_name")
+    list_filter = ("type", "livery_name")

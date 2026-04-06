@@ -3,8 +3,9 @@ from rest_framework import viewsets
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
-from .serializers import StopSerializer
+from .serializers import StopSerializer, FleetSerializer
 from Stops.models import Stop
+from main.models import Trains
 
 import requests
 from django.db import transaction
@@ -210,3 +211,15 @@ def enrich_stop(request):
 
     serializer = StopSerializer(stop)
     return Response({'stop': serializer.data, 'updates': updates, 'updated': bool(updates)}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def fleet_search(request):
+    q = (request.query_params.get('q') or '').strip()
+
+    qs = Trains.objects.all().order_by('fleetnumber')
+    if q:
+        qs = qs.filter(fleetnumber__icontains=q)
+
+    serializer = FleetSerializer(qs[:500], many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)

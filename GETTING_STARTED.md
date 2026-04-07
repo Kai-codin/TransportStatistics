@@ -125,8 +125,3 @@ python manage.py import_bus_stops --file data/naptan.csv
 - Django `stderr` / command output shows parsing errors and skipped rows.
 - Log messages: some commands log at `INFO`/`WARNING` levels; check the console output when running commands.
 - Use the Django admin UI to inspect `Stops`, `Timetable`, and `ScheduleLocation` after imports.
-
-If you'd like, I can:
-- add this file to the repo now (saved as `GETTING_STARTED.md`),
-- add example `.env` template, or
-- run a dry-run import for a small sample file and report results.

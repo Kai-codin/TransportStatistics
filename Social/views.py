@@ -701,11 +701,11 @@ def completion_update(request):
     qs = (
         TripLog.objects
         .filter(user=request.user)
-        .exclude(bus_livery_name__isnull=True)
-        .exclude(bus_livery_name__exact='')
+        .exclude(bus_livery__isnull=True)
+        .exclude(bus_livery__exact='')
         .values('bus_livery_name', 'bus_livery')
         .annotate(count=Count('id'))
-        .order_by('-count')
+        .order_by('-count', 'bus_livery_name', 'bus_livery')
     )
 
     liveries = list(qs)

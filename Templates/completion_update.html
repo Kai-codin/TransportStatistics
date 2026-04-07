@@ -50,7 +50,11 @@
                             <option value="">-- choose --</option>
                             {% for l in liveries %}
                             <option value="{{ l.bus_livery }}" data-name="{{ l.bus_livery_name }}" data-count="{{ l.count }}">
-                                {{ l.bus_livery_name }} ({{ l.count }})
+                                {% if l.bus_livery_name %}
+                                  {{ l.bus_livery_name }} ({{ l.count }})
+                                {% else %}
+                                  Unnamed livery ({{ l.count }}) - {{ l.bus_livery }}
+                                {% endif %}
                             </option>
                             {% endfor %}
                         </select>
@@ -68,7 +72,11 @@
                             <option value="">-- choose replacement --</option>
                             {% for l in liveries %}
                             <option value="{{ l.bus_livery }}" data-name="{{ l.bus_livery_name }}">
-                                {{ l.bus_livery_name }} ({{ l.count }})
+                                {% if l.bus_livery_name %}
+                                  {{ l.bus_livery_name }} ({{ l.count }})
+                                {% else %}
+                                  Unnamed livery ({{ l.count }}) - {{ l.bus_livery }}
+                                {% endif %}
                             </option>
                             {% endfor %}
                         </select>

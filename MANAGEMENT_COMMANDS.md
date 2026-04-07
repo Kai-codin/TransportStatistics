@@ -260,26 +260,6 @@ cat input.json | python tools/json_to_csv.py - output.csv
 python tools/json_to_csv.py input.json -
 ```
 
-### `tools/scrape_gbrail_fleet.py`
-Purpose: scrape TransitTracker GB Rail fleet completion pages with Playwright.
-
-Options:
-- `--start-id` (default: `1`)
-- `--end-id` (default: `50`)
-- `--output` (default: `gbrail_fleet.json`)
-- `--profile-dir` (default: `tools/.playwright-transittracker-profile`)
-- `--login-first`
-- `--headed`
-- `--user-agent`
-- `--pause-after-login` (default: `20.0`)
-- `--delay` (default: `0.2`)
-- `--timeout` (default: `30.0`)
-
-Example:
-```bash
-python tools/scrape_gbrail_fleet.py --headed --login-first --start-id 1 --end-id 120 --output gbrail_fleet.json
-```
-
 ### `stations.py`
 Purpose: fetch Network Rail CORPUS and OSM station data, then write merged `stations.json`.
 

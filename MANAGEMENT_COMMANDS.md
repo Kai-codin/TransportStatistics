@@ -292,6 +292,22 @@ Run:
 python stations.py
 ```
 
+### `tools/schedule_updater` package
+Purpose: installable mini package for running train schedule update pipeline on another server.
+
+Install:
+```bash
+pip install ./tools/schedule_updater
+```
+
+Run:
+```bash
+ts-schedule-updater --project-dir /srv/TransportStatistics --update
+```
+
+Docs:
+- `tools/schedule_updater/README.md`
+
 ## Discover Commands Quickly
 
 List project management commands:

@@ -70,6 +70,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
+from django.utils import timezone
 
 from Depatures.models import ScheduleLocation, Timetable
 from main.models import Operator
@@ -93,6 +94,7 @@ TIMETABLE_COLS = [
     "schedule_start_date", "schedule_end_date", "train_status",
     "headcode", "CIF_headcode", "train_service_code",
     "power_type", "max_speed", "train_class", "CIF_train_category", "CIF_timing_load",
+    "created_at", "modified_at",
 ]
 
 # Columns written to the ScheduleLocation table.
@@ -100,7 +102,7 @@ LOC_COLS = [
     "timetable_id", "location_type", "tiploc_code", "stop_id",
     "sort_time", "departure_time", "arrival_time", "pass_time",
     "platform", "engineering_allowance", "pathing_allowance",
-    "performance_allowance", "position",
+    "performance_allowance", "position", "created_at", "modified_at",
 ]
 
 def open_maybe_gz(path: Path):
@@ -281,12 +283,14 @@ def _insert_timetable_rows(rows: List[dict]) -> int:
     col_sql = ", ".join(f"`{c}`" for c in TIMETABLE_COLS)
     ph      = ", ".join(["%s"] * len(TIMETABLE_COLS))
     sql     = f"INSERT IGNORE INTO `{_tt_table()}` ({col_sql}) VALUES ({ph})"
+    now = timezone.now()
     vals = [
         (
             r["CIF_train_uid"], r["operator_id"], r["schedule_days_runs"],
             r["schedule_start_date"], r["schedule_end_date"], r["train_status"],
             r["headcode"], r["CIF_headcode"], r["train_service_code"],
-            r["power_type"], r["max_speed"], r["train_class"], r["CIF_train_category"], r['CIF_timing_load']
+            r["power_type"], r["max_speed"], r["train_class"], r["CIF_train_category"], r['CIF_timing_load'],
+            now, now,
         )
         for r in rows
     ]
@@ -300,7 +304,7 @@ def _upsert_timetable_rows(rows: List[dict]) -> None:
     """ON DUPLICATE KEY UPDATE — one round-trip upsert."""
     if not rows:
         return
-    update_cols = [c for c in TIMETABLE_COLS if c != "CIF_train_uid"]
+    update_cols = [c for c in TIMETABLE_COLS if c not in {"CIF_train_uid", "created_at"}]
     col_sql     = ", ".join(f"`{c}`" for c in TIMETABLE_COLS)
     ph          = ", ".join(["%s"] * len(TIMETABLE_COLS))
     update_sql  = ", ".join(f"`{c}`=VALUES(`{c}`)" for c in update_cols)
@@ -308,12 +312,14 @@ def _upsert_timetable_rows(rows: List[dict]) -> None:
         f"INSERT INTO `{_tt_table()}` ({col_sql}) VALUES ({ph}) "
         f"ON DUPLICATE KEY UPDATE {update_sql}"
     )
+    now = timezone.now()
     vals = [
         (
             r["CIF_train_uid"], r["operator_id"], r["schedule_days_runs"],
             r["schedule_start_date"], r["schedule_end_date"], r["train_status"],
             r["headcode"], r["CIF_headcode"], r["train_service_code"],
-            r["power_type"], r["max_speed"], r["train_class"], r["CIF_train_category"], r['CIF_timing_load']
+            r["power_type"], r["max_speed"], r["train_class"], r["CIF_train_category"], r['CIF_timing_load'],
+            now, now,
         )
         for r in rows
     ]
@@ -370,12 +376,14 @@ def _insert_location_rows(loc_rows: List[tuple]) -> int:
     ph      = ", ".join(["%s"] * len(LOC_COLS))
     sql     = f"INSERT IGNORE INTO `{_loc_table()}` ({col_sql}) VALUES ({ph})"
     total   = 0
+    now     = timezone.now()
     for start in range(0, len(loc_rows), LOC_BATCH_SIZE):
         chunk = loc_rows[start : start + LOC_BATCH_SIZE]
+        vals  = [(*row, now, now) for row in chunk]
         with transaction.atomic():
             with connection.cursor() as cur:
-                cur.executemany(sql, chunk)
-                total += len(chunk)
+                cur.executemany(sql, vals)
+                total += len(vals)
     return total
 
 def _expand_record(uid: str, rec: dict, op_cache: OperatorCache) -> dict:

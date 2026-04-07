@@ -33,6 +33,7 @@ TransportStatistics is a Django project for logging journeys and serving rail/bu
 
 See [GETTING_STARTED.md](GETTING_STARTED.md) for import workflows and dataset setup.
 Full command reference: [MANAGEMENT_COMMANDS.md](MANAGEMENT_COMMANDS.md).
+Standalone schedule updater package: [`tools/schedule_updater`](tools/schedule_updater).
 
 ## Logging (toggleable)
 Logging is controlled through environment variables:

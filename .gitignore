@@ -5,7 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
-
+cookie.txt
+*/.playwright-transittracker-profile
 # Distribution / packaging
 .Python
 build/

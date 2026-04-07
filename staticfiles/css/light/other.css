@@ -1,0 +1,36 @@
+/* Theme overrides: light */
+:root {
+  --ts-bg: #f5f7f2;
+  --ts-surface: #ffffff;
+  --ts-surface-2: #eef1eb;
+  --ts-surface-3: #e2e8dc;
+  --ts-border: #d0d9c9;
+  --ts-border-soft: #e6ebe0;
+
+  --ts-text-1: #1a2218;
+  --ts-text-2: #4a5c45;
+  --ts-text-3: #7a8f74;
+  --ts-text-inv: #ffffff;
+
+  --ts-accent: #15803d;
+  --ts-accent-h: #166534;
+  --ts-accent-light: #dcfce7;
+  --ts-accent-glow: rgba(21, 128, 61, 0.15);
+  --ts-accent-border: rgba(21, 128, 61, 0.2);
+
+  --ts-danger: #dc2626;
+  --ts-late: #d97706;
+  --ts-warning: #ca8a04;
+
+  --ts-shadow: 0 4px 16px rgba(26, 34, 24, 0.10), 0 1px 3px rgba(26, 34, 24, 0.06);
+  --ts-shadow-lg: 0 12px 40px rgba(26, 34, 24, 0.13), 0 4px 8px rgba(26, 34, 24, 0.06);
+  --ts-glow: 0 0 0 3px var(--ts-accent-glow);
+}
+
+.ts-content {
+  max-width: 960px;
+}
+
+.ts-user-card {
+  margin-top: 20px;
+}

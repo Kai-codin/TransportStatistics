@@ -5,45 +5,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
-<style>
-.ts-livery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-}
-.ts-livery-tile {
-  background: var(--ts-bg-1);
-  border: 1px solid var(--ts-border);
-  padding: 12px;
-  border-radius: 10px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  text-decoration: none;
-  color: inherit;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
-}
-
-.ts-livery-box {
-  width: 64px;
-  height: 44px;
-  border: 1px solid var(--ts-border);
-  flex: 0 0 64px;
-}
-.ts-livery-meta {
-  display: flex;
-  flex-direction: column;
-}
-.ts-livery-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-.ts-livery-count {
-  color: var(--ts-text-3);
-  font-size: 12px;
-  margin-top: 6px;
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/pages/completion_liveries.css' %}" data-ts-theme />
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -61,29 +23,26 @@
 
             <div class="ts-profile-body">
                 <br>
-                <div class="ts-table-wrap">
-                    <div class="ts-livery-grid">
-                        {% for l in liveries %}
-                            {% if l.bus_livery %}
-                            <a class="ts-livery-tile" href="{% url 'completion_livery_trips' %}?css={{ l.bus_livery|urlencode }}&name={{ l.bus_livery_name|default_if_none:''|urlencode }}">                            
-                                <div class="ts-livery-box" style="background: {{ l.bus_livery }}"></div>
-
-                                <div class="ts-livery-meta">
-                                    <div class="ts-livery-name">
-                                        {% if l.bus_livery_name %}
-                                        {{ l.bus_livery_name }}
-                                        {% else %}
-                                        Unnamed livery
-                                        {% endif %}
-                                    </div>
-                                    <div class="ts-livery-count">{{ l.count }} trip{{ l.count|pluralize }}</div>
+                <div class="ts-livery-grid">
+                    {% for l in liveries %}
+                        {% if l.bus_livery %}
+                        <a class="ts-livery-tile" href="{% url 'completion_livery_trips' %}?css={{ l.bus_livery|urlencode }}&name={{ l.bus_livery_name|default_if_none:''|urlencode }}">
+                            <div class="ts-livery-box" data-livery-bg="{{ l.bus_livery }}"></div>
+                            <div class="ts-livery-meta">
+                                <div class="ts-livery-name">
+                                    {% if l.bus_livery_name %}
+                                    {{ l.bus_livery_name }}
+                                    {% else %}
+                                    Unnamed livery
+                                    {% endif %}
                                 </div>
-                            </a>
-                            {% endif %}
-                        {% empty %}
-                        <div class="ts-empty">You haven't logged any trips with liveries yet.</div>
-                        {% endfor %}
-                    </div>
+                                <div class="ts-livery-count">{{ l.count }} trip{{ l.count|pluralize }}</div>
+                            </div>
+                        </a>
+                        {% endif %}
+                    {% empty %}
+                    <div class="ts-empty">You haven't logged any trips with liveries yet.</div>
+                    {% endfor %}
                 </div>
             </div>
         </div>

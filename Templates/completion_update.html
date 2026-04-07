@@ -5,87 +5,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
-<style>
-.section-card {
-  border: 1px solid var(--ts-border);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-  background: var(--ts-bg-2);
-}
-
-.section-title {
-  font-weight: 600;
-  margin-bottom: 12px;
-  font-size: 15px;
-}
-
-.form-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.form-row label {
-  min-width: 180px;
-  font-size: 14px;
-  color: var(--ts-text-2);
-}
-
-.form-row select,
-.form-row input {
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--ts-border);
-  background: var(--ts-bg);
-  color: var(--ts-text);
-}
-
-.ts-livery-box-preview {
-  width: 64px;
-  height: 44px;
-  border: 1px solid var(--ts-border);
-  border-radius: 8px;
-}
-
-.warning {
-  background: rgba(255, 193, 7, 0.12);
-  border: 1px solid rgba(255, 193, 7, 0.4);
-  padding: 12px;
-  border-radius: 8px;
-  color: #e0a800;
-  font-size: 14px;
-}
-
-.action-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.api-results {
-  display: grid;
-  gap: 10px;
-  max-height: 360px;
-  overflow: auto;
-}
-
-.api-result {
-  border: 1px solid var(--ts-border);
-  padding: 10px;
-  border-radius: 8px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  cursor: pointer;
-  transition: 0.15s;
-}
-
-.api-result:hover {
-  background: var(--ts-bg-3);
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/pages/completion_update.css' %}" data-ts-theme />
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -174,6 +94,19 @@
                         <button type="button" id="btn_search_bustimes" class="ts-btn-secondary">
                           Refresh from bustimes
                         </button>
+                        </div>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-title">4. Trains Backfill</div>
+                        <div class="warning">
+                          Uses <code>Trains</code> data to update your rail trips by fleet number.
+                          It sets <code>bus_livery</code>, <code>bus_livery_name</code> and updates <code>train_type</code>.
+                        </div>
+                        <div class="action-row">
+                          <button type="submit" name="action" value="fill_trains_missing" class="ts-btn-secondary">
+                            Backfill Rail Trips From Trains
+                          </button>
                         </div>
                     </div>
 

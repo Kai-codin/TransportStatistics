@@ -1,0 +1,40 @@
+/* Theme overrides: dark */
+:root {
+  --ts-bg: #0d1410;
+  --ts-surface: #141e17;
+  --ts-surface-2: #1c2920;
+  --ts-surface-3: #243328;
+  --ts-border: #2a3d2f;
+  --ts-border-soft: #1e2d22;
+
+  --ts-text-1: #e8f0e4;
+  --ts-text-2: #9ab89a;
+  --ts-text-3: #5a7a5e;
+  --ts-text-inv: #0d1410;
+
+  --ts-accent: #34d064;
+  --ts-accent-h: #4ade80;
+  --ts-accent-light: rgba(52, 208, 100, 0.10);
+  --ts-accent-glow: rgba(52, 208, 100, 0.20);
+  --ts-accent-border: rgba(52, 208, 100, 0.2);
+
+  --ts-danger: #f87171;
+  --ts-late: #fbbf24;
+  --ts-warning: #fbbf24;
+
+  --ts-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --ts-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.35);
+  --ts-glow: 0 0 0 3px var(--ts-accent-glow);
+}
+
+.ts-content {
+  max-width: none;
+}
+
+.ts-user-card {
+  margin-top: 0;
+}
+
+.ts-trip-meta-vehicle {
+  text-align: right;
+}

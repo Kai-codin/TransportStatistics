@@ -45,6 +45,27 @@
 
   {% block content %}{% endblock %}
 
+  <script>
+    (function () {
+      function applyLiveryBackgrounds(root) {
+        var scope = root || document;
+        var nodes = scope.querySelectorAll('[data-livery-bg]');
+        nodes.forEach(function (el) {
+          var bg = (el.getAttribute('data-livery-bg') || '').trim();
+          if (bg) {
+            el.style.background = bg;
+          } else {
+            el.style.background = '';
+          }
+        });
+      }
+
+      window.tsApplyLiveryBackgrounds = applyLiveryBackgrounds;
+      document.addEventListener('DOMContentLoaded', function () {
+        applyLiveryBackgrounds(document);
+      });
+    })();
+  </script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

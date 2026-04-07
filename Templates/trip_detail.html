@@ -7,9 +7,7 @@
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
-<style>
-
-</style>
+<link rel="stylesheet" href="{% static 'css/pages/trip_detail.css' %}" data-ts-theme />
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -95,7 +93,7 @@
             <div class="ts-section-title">Vehicle</div>
             {% if trip.bus_livery %}
             <div class="ts-vehicle-row">
-              <div class="ts-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
+              <div class="ts-livery-swatch" data-livery-bg="{{ trip.bus_livery }}"></div>
               {% if trip.bus_livery_name %}
               <div>
                 <div class="ts-info-label">Livery</div>

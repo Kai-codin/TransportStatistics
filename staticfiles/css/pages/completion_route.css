@@ -1,0 +1,101 @@
+    /* ── table layout ───────────────────────────── */
+.ts-not-ridden {
+  background: #444;
+  color: #ccc;
+}
+
+.ts-table {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ts-table-head,
+.ts-table-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 140px; /* route | description | journeys */
+  align-items: center;
+  padding: 18px 20px; /* more breathing room */
+  gap: 16px; /* spacing between columns */
+}
+
+.ts-table-head {
+  font-size: 13px;
+  color: var(--ts-text-3);
+  border-bottom: 1px solid var(--ts-border);
+}
+
+.ts-table-row {
+  border-bottom: 1px solid var(--ts-border);
+  transition: background 0.15s;
+  min-height: 64px; /* consistent row height */
+}
+
+.ts-table-row:hover {
+  background: var(--ts-bg-2);
+}
+
+/* ── livery ───────────────────────────── */
+.ts-livery {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ts-livery-box {
+  width: 30px;
+  aspect-ratio: 18 / 12;
+  height: auto;
+  border: 1px solid var(--ts-border);
+  border-radius: 0;
+}
+
+.ts-livery-default {
+  background: #444;
+}
+
+.ts-livery-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ── right aligned ───────────────────────── */
+.ts-right {
+  text-align: right;
+}
+
+/* ── journeys ───────────────────────────── */
+.ts-journey-count {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.ts-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.ts-ridden {
+  background: #1f7a4d;
+  color: #d1fae5;
+}
+
+/* ── empty state ───────────────────────── */
+.ts-empty {
+  padding: 20px;
+  color: var(--ts-text-3);
+}
+
+
+/* ── scroll container ───────────────────── */
+.ts-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── force table to be wider than mobile ── */
+.ts-table {
+  min-width: 720px; /* key line */
+}

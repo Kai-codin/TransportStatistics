@@ -23,3 +23,23 @@ class Operator(models.Model):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+
+class Trains(models.Model):
+    operator = models.ForeignKey(
+        Operator,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trains",
+    )
+    fleetnumber = models.CharField(max_length=32, unique=True, db_index=True)
+    type = models.CharField(max_length=255)
+    livery_name = models.CharField(max_length=255, blank=True, default="")
+    livery_css = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["fleetnumber"]
+
+    def __str__(self) -> str:
+        return f"{self.fleetnumber} - {self.type}"

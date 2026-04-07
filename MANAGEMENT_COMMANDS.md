@@ -1,80 +1,305 @@
-# Management commands
+# Command Reference
 
-This document lists the project's Django management commands, their purpose, arguments, and usage examples.
+This file documents all project-specific commands in this repository.
 
-Commands found in the repository:
+## How To Run
+- Django management commands: `python manage.py <command> [options]`
+- Utility scripts: `python <script.py> [args]`
 
-- `Stops/management/commands/import_tiploc_from_tiplocv1.py`
-  - Help: Read TiplocV1 NDJSON and assign tiploc to Stop records matching CRS codes when tiploc is empty.
-  - Purpose: Parse a Network Rail TiplocV1 NDJSON (or wrapped JSON) and assign TIPLOC codes to existing `Stop` records, or create new `Stop` entries when no CRS/name match exists.
-  - Arguments:
-    - `--file` (str) Path to TiplocV1.ndjson (default: `data/TiplocV1.ndjson`)
-    - `--batch-size` (int) Number of updates to bulk commit at once (default: 500)
-    - `--dry-run` (flag) Don't write changes, just report actions
-    - `--update` (flag) Also update tiploc on stops that already have one (overwrite existing values)
-  - Notes: The command prints progress, supports dry-run and batching, and will create `Stop` records for entries with no CRS when no name match exists.
-  - Example:
-    ```bash
-    python manage.py import_tiploc_from_tiplocv1 --file data/TiplocV1.ndjson --batch-size 1000
-    ```
+## Django Built-In Commands
+Django also provides built-in commands (`runserver`, `migrate`, `makemigrations`, `createsuperuser`, etc.).
 
-- `Stops/management/commands/split_nr_json.py`
-  - Help: Download and split Network Rail CIF JSON file into separate NDJSON files by record type.
-  - Purpose: Download (or use a local file) the Network Rail CIF feed and split it into multiple NDJSON files such as `TiplocV1.ndjson`, `JsonScheduleV1.ndjson`, `JsonTimetableV1.ndjson`, and `JsonAssociationV1.ndjson`.
-  - Arguments:
-    - `--url` (str) Network Rail download URL (defaults to the configured feed URL)
-    - `--file` (str) Local file path (gzipped or plain text) to split instead of downloading
-    - `--out-dir` (str) Output directory for split files (default: `data`)
-    - `--username` / `--password` (str) Network Rail credentials (override .env or environment vars)
-  - Notes: The command attempts to load credentials from a `.env` file or environment variables (`NR_USERNAME`/`NR_PASSWORD`) if not supplied. It prefers `requests` for downloading but falls back to `urllib` when `requests` is not available. Output files are created under the specified output directory.
-  - Example (local file):
-    ```bash
-    python manage.py split_nr_json --file /path/to/nr_feed.gz --out-dir data
-    ```
+Use:
+```bash
+python manage.py help
+python manage.py help <command>
+```
 
-- `Stops/management/commands/import_train_stations.py`
-  - Help: Download rail stations JSON and import as Stops with StopType RLS
-  - Purpose: Import a JSON list of UK rail stations (from a URL or local file) into the `Stop` model, marking them with the `RLS` `StopType`.
-  - Arguments:
-    - `--url` (str) Stations JSON URL (default points to a GitHub raw stations.json)
-    - `--file` (str) Local JSON file path to import (overrides `--url`)
-  - Notes: The command will create the `RLS` StopType if it does not exist and uses `update_or_create` when CRS is provided.
-  - Example:
-    ```bash
-    python manage.py import_train_stations --file data/stations.json
-    ```
+## Project Management Commands
 
-- `Stops/management/commands/import_bus_stops.py`
-  - Help: Download NaPTAN CSV and import bus stops into the Stops app
-  - Purpose: Download or read a local NaPTAN CSV and create/update `Stop` rows for bus stops. Supports coordinate conversion from Easting/Northing via `pyproj` if installed.
-  - Arguments:
-    - `--url` (str) CSV URL (default: NaPTAN download URL)
-    - `--file` (str) Local CSV file path to import (overrides `--url`)
-    - `--batch-size` (int) Number of rows to process per DB batch (default: 2000)
-  - Notes: The command batches inserts/updates, creates missing `StopType` entries as needed, and attempts to convert grid references when `pyproj` is available.
-  - Example:
-    ```bash
-    python manage.py import_bus_stops --file data/Naptan.csv --batch-size 3000
-    ```
+### `import_json_schedule_v1`
+File: `Depatures/management/commands/import_json_schedule_v1.py`
 
-- `Depatures/management/commands/import_json_schedule_v1.py`
-  - Help: Import JsonScheduleV1 NDJSON into Timetable and ScheduleLocation models.
-  - Purpose: Parse Network Rail JsonScheduleV1 NDJSON (optionally gzipped) and populate `Timetable` and `ScheduleLocation` models. The importer is streaming, batched, and supports resuming and optional updates.
-  - Arguments:
-    - `--file` (str) Path to JsonScheduleV1 ndjson(.gz) file (default: `data/JsonScheduleV1.ndjson`)
-    - `--batch-size` (int) Timetable rows per DB transaction (default: 500)
-    - `--dry-run` (flag) Parse only - nothing written to DB
-    - `--resume-from` (int) Skip the first N lines and start processing from line N+1; useful for resuming interrupted imports
-    - `--update` (flag) When a Timetable already exists, compare fields and update + replace ScheduleLocations only if something changed
-  - Notes: The command uses internal caches (`OperatorCache`, `StopCache`) for performance, pre-warms tiploc lookups per batch, and supports insert-only (default) or update mode with field-diffing.
-  - Example (resume):
-    ```bash
-    python manage.py import_json_schedule_v1 --file data/JsonScheduleV1.ndjson.gz --resume-from 25000
-    ```
+Purpose: high-performance importer for `JsonScheduleV1` NDJSON into `Timetable` and `ScheduleLocation`.
 
+Options:
+- `--file` (default: `data/JsonScheduleV1.ndjson`)
+- `--batch-size` (default: `2000`)
+- `--dry-run`
+- `--resume-from LINE` (default: `0`)
+- `--update`
+- `--replace`
+- `--parallel-locs`
+- `--show-locks`
+- `--kill-locks`
 
-## How this file was generated
+Examples:
+```bash
+python manage.py import_json_schedule_v1 --replace
+python manage.py import_json_schedule_v1 --update --batch-size 1000
+python manage.py import_json_schedule_v1 --resume-from 250000 --update
+python manage.py import_json_schedule_v1 --show-locks
+```
 
-I scanned the project's `management/commands` directories and extracted the command `help` strings, arguments from `add_arguments`, and inline notes. If you want richer documentation (e.g., full option lists with default values, or generated `--help` output), I can run each command's `--help` and include the results (requires running Django manage.py in your environment).
+### `correct_stop`
+File: `Depatures/management/commands/correct_stop.py`
 
-Would you like me to also add these command summaries to the main README or auto-generate `--help` output for each command and include it here?
+Purpose: replace one `Stop` FK with another on `ScheduleLocation` rows.
+
+Arguments:
+- positional `from_id`
+- positional `to_id`
+
+Options:
+- `--batch-size` (default: `1000`)
+- `--dry-run`
+
+Example:
+```bash
+python manage.py correct_stop 123 456 --dry-run
+```
+
+### `fix_timetables`
+File: `Depatures/management/commands/fix_timetables.py`
+
+Purpose: backfill missing `ScheduleLocation.stop` from TIPLOC codes.
+
+Options:
+- `--batch-size` (default: `1000`)
+- `--dry-run`
+
+Example:
+```bash
+python manage.py fix_timetables --batch-size 2000
+```
+
+### `populate_sort_times`
+File: `Depatures/management/commands/populate_sort_times.py`
+
+Purpose: populate/recompute `sort_time` for `ScheduleLocation` rows.
+
+Options:
+- `--batch-size` (default: `2000`)
+- `--only-null`
+
+Example:
+```bash
+python manage.py populate_sort_times --only-null
+```
+
+### `dedupe_timetables`
+File: `Depatures/management/commands/dedupe_timetables.py`
+
+Purpose: remove duplicate `Timetable` rows while handling child FK rows first.
+
+Options: none (chunk size is internal: `500`).
+
+Example:
+```bash
+python manage.py dedupe_timetables
+```
+
+### `mysql_diagnostics`
+File: `Depatures/management/commands/mysql_diagnostics.py`
+
+Purpose: print MySQL memory variables, buffer status, and processlist.
+
+Options: none.
+
+Example:
+```bash
+python manage.py mysql_diagnostics
+```
+
+### `split_nr_json`
+File: `Stops/management/commands/split_nr_json.py`
+
+Purpose: download (or read local) Network Rail CIF file and split into NDJSON by record type.
+
+Options:
+- `--url` (default: official CIF feed URL)
+- `--file` (local file instead of download)
+- `--out-dir` (default: `data`)
+- `--username`
+- `--password`
+
+Examples:
+```bash
+python manage.py split_nr_json --file /path/to/CIF.gz --out-dir data
+python manage.py split_nr_json --out-dir data --username "$NR_USERNAME" --password "$NR_PASSWORD"
+```
+
+### `import_tiploc_from_tiplocv1`
+File: `Stops/management/commands/import_tiploc_from_tiplocv1.py`
+
+Purpose: import TIPLOC mappings into `Stop` records from `TiplocV1` NDJSON.
+
+Options:
+- `--file` (default: `data/TiplocV1.ndjson`)
+- `--batch-size` (default: `500`)
+- `--dry-run`
+- `--update` (overwrite existing tiploc values)
+
+Examples:
+```bash
+python manage.py import_tiploc_from_tiplocv1 --dry-run
+python manage.py import_tiploc_from_tiplocv1 --file data/TiplocV1.ndjson --batch-size 1000 --update
+```
+
+### `import_train_stations`
+File: `Stops/management/commands/import_train_stations.py`
+
+Purpose: import rail stations JSON into `Stops` with `StopType=RLS`.
+
+Options:
+- `--url` (remote JSON source)
+- `--file` (default: `stations.json`)
+- `--cache-ttl` (default: `86400`)
+
+Examples:
+```bash
+python manage.py import_train_stations --file stations.json
+python manage.py import_train_stations --url https://example.com/stations.json
+```
+
+### `import_bus_stops`
+File: `Stops/management/commands/import_bus_stops.py`
+
+Purpose: import NaPTAN CSV bus stops into `Stops`.
+
+Options:
+- `--url` (default: NaPTAN CSV URL)
+- `--file` (local CSV; overrides `--url`)
+- `--batch-size` (default: `2000`)
+
+Examples:
+```bash
+python manage.py import_bus_stops --url https://beta-naptan.dft.gov.uk/Download/National/csv
+python manage.py import_bus_stops --file data/naptan.csv --batch-size 3000
+```
+
+### `update_bus_stops`
+File: `Stops/management/commands/update_bus_stops.py`
+
+Purpose: append indicator to bus stop names where missing.
+
+Options:
+- `--dry-run`
+- `--limit`, `-n` (default: `0` = unlimited)
+- `--atco`, `-a`
+
+Examples:
+```bash
+python manage.py update_bus_stops --dry-run
+python manage.py update_bus_stops --atco 1800SB12345 --limit 10
+```
+
+### `enrich_stops`
+File: `Stops/management/commands/enrich_stops.py`
+
+Purpose: enrich stops via bustimes API and/or indicator name updates.
+
+Options:
+- `--commit`
+- `--atco`, `-a`
+- `--limit`, `-n` (default: `0`)
+- `--sleep` (default: `0.01`)
+- `--indicators`
+- `--bustimes`
+
+Examples:
+```bash
+python manage.py enrich_stops --limit 100
+python manage.py enrich_stops --atco 1800SB12345 --sleep 0.1 --commit
+```
+
+### `enrich_stops_bustimes`
+File: `Stops/management/commands/enrich_stops_bustimes.py`
+
+Purpose: enrich stop data from bustimes.org using `atco_code`.
+
+Options:
+- `--commit`
+- `--atco`, `-a`
+- `--limit`, `-n` (default: `0`)
+- `--sleep` (default: `0.05`)
+
+Examples:
+```bash
+python manage.py enrich_stops_bustimes --limit 100
+python manage.py enrich_stops_bustimes --atco 1800SB12345 --commit
+```
+
+### `import_gbrail_fleet`
+File: `main/management/commands/import_gbrail_fleet.py`
+
+Purpose: import GB rail fleet data into `main.Trains` and resolve operators.
+
+Options:
+- `--file` (default: `gbrail_fleet.json`)
+- `--map-file` (default: `map.json`)
+
+Example:
+```bash
+python manage.py import_gbrail_fleet --file gbrail_fleet.json --map-file map.json
+```
+
+## Utility Script Commands
+
+### `tools/json_to_csv.py`
+Purpose: flatten JSON and convert to CSV.
+
+Arguments:
+- positional `input` (`-` for stdin)
+- positional `output` (`-` for stdout)
+
+Examples:
+```bash
+python tools/json_to_csv.py input.json output.csv
+cat input.json | python tools/json_to_csv.py - output.csv
+python tools/json_to_csv.py input.json -
+```
+
+### `tools/scrape_gbrail_fleet.py`
+Purpose: scrape TransitTracker GB Rail fleet completion pages with Playwright.
+
+Options:
+- `--start-id` (default: `1`)
+- `--end-id` (default: `50`)
+- `--output` (default: `gbrail_fleet.json`)
+- `--profile-dir` (default: `tools/.playwright-transittracker-profile`)
+- `--login-first`
+- `--headed`
+- `--user-agent`
+- `--pause-after-login` (default: `20.0`)
+- `--delay` (default: `0.2`)
+- `--timeout` (default: `30.0`)
+
+Example:
+```bash
+python tools/scrape_gbrail_fleet.py --headed --login-first --start-id 1 --end-id 120 --output gbrail_fleet.json
+```
+
+### `stations.py`
+Purpose: fetch Network Rail CORPUS and OSM station data, then write merged `stations.json`.
+
+Environment:
+- `NR_USERNAME`
+- `NR_PASSWORD`
+
+Run:
+```bash
+python stations.py
+```
+
+## Discover Commands Quickly
+
+List project management commands:
+```bash
+find . -type f -path '*/management/commands/*.py' ! -name '__init__.py' | sort
+```
+
+List script-style command files:
+```bash
+ls tools
+```

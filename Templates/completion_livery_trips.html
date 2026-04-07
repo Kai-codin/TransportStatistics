@@ -5,37 +5,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
-<style>
-  .ts-livery-detail-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .ts-livery-detail-swatch {
-    width: 64px;
-    height: 44px;
-    border: 1px solid var(--ts-border);
-    flex: 0 0 auto;
-  }
-  .ts-livery-detail-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-  .ts-livery-detail-name {
-    font-weight: 650;
-    font-size: 16px;
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .ts-livery-detail-sub {
-    color: var(--ts-text-3);
-    font-size: 13px;
-  }
-</style>
+<link rel="stylesheet" href="{% static 'css/pages/completion_livery_trips.css' %}" data-ts-theme />
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -63,7 +33,7 @@
       <div class="ts-profile-body">
         <div class="ts-card">
           <div class="ts-livery-detail-header">
-            <div class="ts-livery-detail-swatch" style="background: {{ css }}"></div>
+            <div class="ts-livery-detail-swatch" data-livery-bg="{{ css }}"></div>
             <div class="ts-livery-detail-meta">
               <div class="ts-livery-detail-name">{% if name %}{{ name }}{% else %}Unnamed livery{% endif %}</div>
               <div class="ts-livery-detail-sub">{{ total_trips }} trip{{ total_trips|pluralize }}</div>
@@ -117,7 +87,7 @@
                       <span class="ts-trip-fleet">{{ trip.bus_registration }}</span>
                       {% endif %}
                       {% if trip.bus_livery %}
-                      <div class="ts-trip-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
+                      <div class="ts-trip-livery-swatch" data-livery-bg="{{ trip.bus_livery }}"></div>
                       {% endif %}
                     </div>
                     <div class="ts-trip-meta ts-trip-meta-vehicle">

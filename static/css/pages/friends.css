@@ -1,0 +1,9 @@
+    .ts-form {
+        max-width: 100%;
+    }
+
+    .ts-btn-primary, .ts-btn-secondary {
+        padding: 6px 12px !important;
+        margin-left: 5px;
+        font-size: 16px;
+    }

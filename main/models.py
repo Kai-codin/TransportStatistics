@@ -26,6 +26,13 @@ class Operator(models.Model):
 
 
 class Trains(models.Model):
+    operator = models.ForeignKey(
+        Operator,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trains",
+    )
     fleetnumber = models.CharField(max_length=32, unique=True, db_index=True)
     type = models.CharField(max_length=255)
     livery_name = models.CharField(max_length=255, blank=True, default="")

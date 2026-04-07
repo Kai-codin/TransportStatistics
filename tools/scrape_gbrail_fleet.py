@@ -3,6 +3,7 @@
 
 Expected output shape per record:
 {
+  "operator": "Avanti West Coast",
   "fleetnumber": "97304",
   "type": "Class 97 (ex Cl. 37)",
   "livery": {
@@ -46,8 +47,19 @@ def extract_background(style: str) -> str:
     return ""
 
 
-def parse_page(html: str) -> list[dict[str, Any]]:
+def extract_operator_name(soup: BeautifulSoup) -> str:
+    heading = soup.select_one("div[data-flux-heading]")
+    if not heading:
+        return ""
+    text = collapse_ws(heading.get_text(" ", strip=True))
+    if " — " in text:
+        return text.split(" — ", 1)[1].strip()
+    return ""
+
+
+def parse_page(html: str) -> tuple[str, list[dict[str, Any]]]:
     soup = BeautifulSoup(html, "html.parser")
+    operator_name = extract_operator_name(soup)
     rows = soup.select("tbody[data-flux-rows] tr[data-flux-row]")
     results: list[dict[str, Any]] = []
 
@@ -74,6 +86,7 @@ def parse_page(html: str) -> list[dict[str, Any]]:
 
         results.append(
             {
+                "operator": operator_name,
                 "fleetnumber": fleet_number,
                 "type": vehicle_type,
                 "livery": {
@@ -83,20 +96,24 @@ def parse_page(html: str) -> list[dict[str, Any]]:
             }
         )
 
-    return results
+    return operator_name, results
 
 
-def collect_rows_from_paginated_view(page, timeout_seconds: float) -> list[dict[str, Any]]:
+def collect_rows_from_paginated_view(page, timeout_seconds: float) -> tuple[str, list[dict[str, Any]]]:
     """Collect all rows from current page, following pagination next buttons when present."""
     all_rows: list[dict[str, Any]] = []
-    seen_keys: set[tuple[str, str, str, str]] = set()
+    operator_name = ""
+    seen_keys: set[tuple[str, str, str, str, str]] = set()
     timeout_ms = int(timeout_seconds * 1000)
 
     while True:
         html = page.content()
-        rows = parse_page(html)
+        parsed_operator, rows = parse_page(html)
+        if parsed_operator:
+            operator_name = parsed_operator
         for row in rows:
             key = (
+                row["operator"],
                 row["fleetnumber"],
                 row["type"],
                 row["livery"]["name"],
@@ -138,7 +155,7 @@ def collect_rows_from_paginated_view(page, timeout_seconds: float) -> list[dict[
             # If DOM didn't visibly change but click succeeded, avoid infinite loops.
             break
 
-    return all_rows
+    return operator_name, all_rows
 
 
 def scrape_ids(
@@ -200,8 +217,8 @@ def scrape_ids(
                 )
                 continue
 
-            rows = collect_rows_from_paginated_view(page, timeout_seconds=timeout_seconds)
-            print(f"ID {page_id}: {len(rows)} rows (all pagination pages)")
+            operator_name, rows = collect_rows_from_paginated_view(page, timeout_seconds=timeout_seconds)
+            print(f"ID {page_id}: {len(rows)} rows (all pagination pages) operator={operator_name or 'unknown'}")
             all_rows.extend(rows)
 
             if delay_seconds > 0:

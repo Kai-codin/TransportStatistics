@@ -7,7 +7,9 @@ from django.http import JsonResponse, Http404
 from .forms import FriendSearchForm
 from .models import Friend
 from Trips.models import TripLog
+from main.models import Trains, Operator
 import requests
+import re
 
 from itertools import groupby
 
@@ -169,6 +171,43 @@ def get_canonical_operator(user, operator_name):
     ) or operator_name
 
 
+def split_train_units(raw_value: str) -> list[str]:
+    """
+    Split coupled train fleet strings into individual unit numbers.
+    Examples:
+      "220029 + 220022" -> ["220029", "220022"]
+      "390115/390005"   -> ["390115", "390005"]
+    """
+    if not raw_value:
+        return []
+
+    text = str(raw_value).strip()
+    if not text:
+        return []
+
+    # Split on common coupling separators.
+    parts = re.split(r"\s*(?:\+|/|,|&| and )\s*", text, flags=re.IGNORECASE)
+    units: list[str] = []
+    for part in parts:
+        unit = part.strip()
+        if not unit:
+            continue
+        # Keep only plausible fleet tokens (letters/digits), strip punctuation noise.
+        cleaned = "".join(ch for ch in unit if ch.isalnum())
+        if cleaned:
+            units.append(cleaned)
+
+    # preserve order while deduplicating
+    seen = set()
+    unique_units: list[str] = []
+    for u in units:
+        if u in seen:
+            continue
+        seen.add(u)
+        unique_units.append(u)
+    return unique_units
+
+
 @login_required
 def completion_fleet(request, operator_name):
     operator_name = get_canonical_operator(request.user, operator_name)
@@ -183,29 +222,88 @@ def completion_fleet(request, operator_name):
         .first()
     )
 
-    # ── 2. RAIL MODE (NO API) ─────────────────────────────────
+    # ── 2. RAIL MODE (catalog + ridden counts) ───────────────
     if transport_type == "rail":
-        vehicles = (
+        ridden_trip_rows = (
             TripLog.objects
             .filter(user=request.user, operator__iexact=operator_name)
-            .annotate(
-                vehicle_id_final=Coalesce('train_fleet_number', 'train_type'),
-                vehicle_type=F('train_type'),
-                fleet_number=F('train_fleet_number'),
-            )
-            .exclude(vehicle_id_final__isnull=True)
-            .exclude(vehicle_id_final__exact='')
-            .values('vehicle_id_final', 'vehicle_type', 'fleet_number', 'transport_type')
-            .annotate(count=Count('id'))
-            .order_by('-count')
+            .exclude(train_fleet_number__isnull=True)
+            .exclude(train_fleet_number__exact='')
+            .values('train_fleet_number', 'service_date', 'train_type')
         )
-        vehicles = [
-            {**v, "bus_livery": None, "bus_livery_name": None, "ridden": True}
-            for v in vehicles
-        ]
+
+        ridden_map: dict[str, dict] = {}
+        for row in ridden_trip_rows:
+            raw_units = str(row.get('train_fleet_number') or '').strip()
+            units = split_train_units(raw_units)
+            if not units:
+                continue
+
+            service_date = row.get('service_date')
+            train_type = (row.get('train_type') or '').strip()
+            for unit in units:
+                entry = ridden_map.setdefault(
+                    unit,
+                    {'count': 0, 'last_seen': None, 'vehicle_type': ''},
+                )
+                entry['count'] += 1
+                if service_date and (entry['last_seen'] is None or service_date > entry['last_seen']):
+                    entry['last_seen'] = service_date
+                if train_type and not entry['vehicle_type']:
+                    entry['vehicle_type'] = train_type
+
+        fleet_rows = (
+            Trains.objects
+            .select_related('operator')
+            .filter(operator__name__iexact=operator_name)
+            .order_by('fleetnumber')
+        )
+
+        vehicles = []
+        seen_fleets = set()
+        for t in fleet_rows:
+            fleet = str(t.fleetnumber).strip()
+            seen_fleets.add(fleet)
+            ride = ridden_map.get(fleet)
+            count = ride['count'] if ride else 0
+            vehicles.append({
+                'vehicle_id_final': fleet,
+                'fleet_number': fleet,
+                'vehicle_type': t.type,
+                'transport_type': 'rail',
+                'current_livery_name': t.livery_name or None,
+                'current_livery_css': t.livery_css or None,
+                'ridden_liveries': {},
+                'count': count,
+                'ridden': count > 0,
+                'withdrawn': False,
+                'previous_regs': [],
+            })
+
+        # Include ridden trains not present in catalog so no data is hidden.
+        for fleet, ride in ridden_map.items():
+            if fleet in seen_fleets:
+                continue
+            vehicles.append({
+                'vehicle_id_final': fleet,
+                'fleet_number': fleet,
+                'vehicle_type': ride.get('vehicle_type') or '',
+                'transport_type': 'rail',
+                'current_livery_name': None,
+                'current_livery_css': None,
+                'ridden_liveries': {},
+                'count': ride['count'],
+                'ridden': True,
+                'withdrawn': False,
+                'previous_regs': [],
+            })
+
+        vehicles.sort(key=lambda x: (-int(bool(x.get("ridden"))), fleet_sort_key(x), -x.get("count", 0)))
         return render(request, "completion_fleet.html", {
             "vehicles": vehicles,
             "operator_name": operator_name,
+            "show_withdrawn": show_withdrawn,
+            "is_rail_completion": True,
         })
 
     # ── 3. BUS MODE (API) ─────────────────────────────────────
@@ -266,6 +364,7 @@ def completion_fleet(request, operator_name):
         return render(request, "completion_fleet.html", {
             "vehicles": vehicles,
             "operator_name": operator_name,
+            "is_rail_completion": False,
         })
 
     noc = operator_api["results"][0]["noc"]
@@ -436,6 +535,7 @@ def completion_fleet(request, operator_name):
         "vehicles": vehicles,
         "show_withdrawn": show_withdrawn,
         "operator_name": operator_name,
+        "is_rail_completion": False,
     })
 
 @login_required
@@ -677,6 +777,82 @@ def completion_update(request):
                 affected = qs_update.count()
                 qs_update.update(bus_livery=api_left_css, bus_livery_name=api_name)
                 message = {'kind': 'success', 'text': f'Replaced {affected} rows with bustimes selection.'}
+
+        elif action == 'fill_trains_missing':
+            rail_rows = (
+                TripLog.objects
+                .filter(user=request.user, transport_type='rail')
+                .exclude(train_fleet_number__isnull=True)
+                .exclude(train_fleet_number__exact='')
+            )
+
+            fleet_set = set()
+            trip_units = {}
+            for trip in rail_rows:
+                units = split_train_units(trip.train_fleet_number or '')
+                trip_units[trip.id] = units
+                fleet_set.update(units)
+
+            trains_by_fleet = Trains.objects.in_bulk(list(fleet_set), field_name='fleetnumber')
+
+            matched_trips = 0
+            missing_trips = 0
+            changed = 0
+            to_update = []
+
+            for trip in rail_rows:
+                units = trip_units.get(trip.id) or []
+                matched_train = None
+                for unit in units:
+                    t = trains_by_fleet.get(unit)
+                    if t:
+                        matched_train = t
+                        break
+
+                if not matched_train:
+                    missing_trips += 1
+                    continue
+
+                matched_trips += 1
+                row_changed = False
+
+                # Update train type from trains catalog.
+                new_type = (matched_train.type or '').strip()
+                if new_type and (trip.train_type or '').strip() != new_type:
+                    trip.train_type = new_type
+                    row_changed = True
+
+                # Set livery fields from trains catalog.
+                new_livery_css = (matched_train.livery_css or '').strip()
+                new_livery_name = (matched_train.livery_name or '').strip()
+                if new_livery_css and (trip.bus_livery or '').strip() != new_livery_css:
+                    trip.bus_livery = new_livery_css
+                    row_changed = True
+                if new_livery_name and (trip.bus_livery_name or '').strip() != new_livery_name:
+                    trip.bus_livery_name = new_livery_name
+                    row_changed = True
+
+                if row_changed:
+                    changed += 1
+                    to_update.append(trip)
+
+            if to_update:
+                TripLog.objects.bulk_update(
+                    to_update,
+                    fields=['train_type', 'bus_livery', 'bus_livery_name'],
+                    batch_size=1000,
+                )
+
+            message = {
+                'kind': 'success',
+                'text': (
+                    f'Rail trip backfill complete. '
+                    f'trips scanned: {rail_rows.count()} · '
+                    f'trips matched to trains: {matched_trips} · '
+                    f'trips with no train match: {missing_trips} · '
+                    f'rows updated: {changed}.'
+                ),
+            }
 
     return render(request, 'completion_update.html', {
         'liveries': liveries,

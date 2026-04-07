@@ -1,0 +1,128 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.section-card {
+  border: 1px solid var(--ts-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--ts-bg-2);
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.form-row label {
+  min-width: 180px;
+  font-size: 14px;
+  color: var(--ts-text-2);
+}
+
+.form-row select,
+.form-row input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ts-border);
+  background: var(--ts-bg);
+  color: var(--ts-text);
+}
+
+.ts-livery-box-preview {
+  width: 96px;
+  aspect-ratio: 18 / 12;
+  height: auto;
+  border: 1px solid var(--ts-border);
+  border-radius: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.warning {
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  padding: 12px;
+  border-radius: 8px;
+  color: #e0a800;
+  font-size: 14px;
+}
+
+.action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.api-results {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.api-result {
+  border: 1px solid var(--ts-border);
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.api-result:hover {
+  background: var(--ts-bg-3);
+}
+
+#api_replace_form {
+  margin-top: 10px;
+}
+
+#api_replace_form .ts-btn-primary {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .form-row label {
+    min-width: 0;
+  }
+
+  .ts-livery-box-preview {
+    width: min(140px, 100%);
+    aspect-ratio: 18 / 12;
+    height: auto;
+  }
+
+  .action-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-row .ts-btn-primary,
+  .action-row .ts-btn-secondary,
+  .action-row button {
+    width: 100%;
+  }
+}

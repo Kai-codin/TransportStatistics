@@ -107,7 +107,7 @@
                       <span class="ts-trip-fleet">{{ trip.bus_registration }}</span>
                       {% endif %}
                       {% if trip.bus_livery %}
-                      <div class="ts-trip-livery-swatch" style="background:{{ trip.bus_livery }}"></div>
+                      <div class="ts-trip-livery-swatch" data-livery-bg="{{ trip.bus_livery }}"></div>
                       {% endif %}
                     </div>
                     <div class="ts-trip-meta ts-trip-meta-vehicle">
@@ -122,8 +122,15 @@
                   <div class="ts-trip-vehicle-wrapper">
                     <div class="ts-trip-vehicle">
                       <span class="ts-trip-fleet">{{ trip.train_fleet_number }}</span>
+                      {% if trip.bus_livery %}
+                      <div class="ts-trip-livery-swatch" data-livery-bg="{{ trip.bus_livery }}"></div>
+                      {% endif %}
                     </div>
                     <div class="ts-trip-meta ts-trip-meta-vehicle">
+                      {% if trip.bus_livery_name %}
+                        {{ trip.bus_livery_name }}
+                        {% if trip.train_type %} · {% endif %}
+                      {% endif %}
                       {% if trip.transport_type != 'rail' and trip.bus_type %}
                         {{ trip.bus_type }}
                       {% elif trip.train_type %}

@@ -8,6 +8,7 @@ Each record in the output JSON looks like this:
 
 ```json
 {
+  "operator": "Avanti West Coast",
   "fleetnumber": "97304",
   "type": "Class 97 (ex Cl. 37)",
   "livery": {

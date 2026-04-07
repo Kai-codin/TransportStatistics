@@ -1,0 +1,31 @@
+  .ts-livery-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ts-livery-detail-swatch {
+    width: 64px;
+    aspect-ratio: 18 / 12;
+    height: auto;
+    border: 1px solid var(--ts-border);
+    border-radius: 0;
+    flex: 0 0 auto;
+  }
+  .ts-livery-detail-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ts-livery-detail-name {
+    font-weight: 650;
+    font-size: 16px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ts-livery-detail-sub {
+    color: var(--ts-text-3);
+    font-size: 13px;
+  }

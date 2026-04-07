@@ -1,9 +1,10 @@
 from django.db.models import Q
+from urllib.parse import urlencode
 from rest_framework import viewsets
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
-from .serializers import StopSerializer, FleetSerializer
+from .serializers import StopSerializer, FleetSerializer, TrainFleetVehicleSerializer
 from Stops.models import Stop
 from main.models import Trains
 
@@ -223,3 +224,58 @@ def fleet_search(request):
 
     serializer = FleetSerializer(qs[:500], many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def train_fleet(request):
+    params = request.query_params
+    q = (params.get('q') or '').strip()
+    operator = (params.get('operator') or '').strip()
+    operator_id = (params.get('operator_id') or '').strip()
+
+    try:
+        limit = int(params.get('limit', 100))
+    except ValueError:
+        limit = 100
+    try:
+        offset = int(params.get('offset', 0))
+    except ValueError:
+        offset = 0
+
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+
+    qs = Trains.objects.select_related('operator').all().order_by('fleetnumber')
+
+    if operator_id.isdigit():
+        qs = qs.filter(operator_id=int(operator_id))
+    elif operator:
+        qs = qs.filter(operator__name__iexact=operator)
+
+    if q:
+        qs = qs.filter(
+            Q(fleetnumber__icontains=q)
+            | Q(type__icontains=q)
+            | Q(livery_name__icontains=q)
+            | Q(operator__name__icontains=q)
+        )
+
+    total = qs.count()
+    page_qs = qs[offset:offset + limit]
+    serializer = TrainFleetVehicleSerializer(page_qs, many=True)
+
+    def build_link(new_offset: int) -> str | None:
+        if new_offset < 0 or new_offset >= total:
+            return None
+        query = params.copy()
+        query['limit'] = str(limit)
+        query['offset'] = str(new_offset)
+        return request.build_absolute_uri(f"{request.path}?{urlencode(query, doseq=True)}")
+
+    payload = {
+        'count': total,
+        'next': build_link(offset + limit),
+        'previous': build_link(offset - limit),
+        'results': serializer.data,
+    }
+    return Response(payload, status=status.HTTP_200_OK)

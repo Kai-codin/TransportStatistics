@@ -21,6 +21,6 @@ class OperatorAdmin(admin.ModelAdmin):
 
 @admin.register(Trains)
 class TrainsAdmin(admin.ModelAdmin):
-    list_display = ("fleetnumber", "type", "livery_name")
-    search_fields = ("fleetnumber", "type", "livery_name")
-    list_filter = ("type", "livery_name")
+    list_display = ("fleetnumber", "type", "operator", "livery_name")
+    search_fields = ("fleetnumber", "type", "livery_name", "operator__name")
+    list_filter = ("operator", "type", "livery_name")

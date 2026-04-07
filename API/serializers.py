@@ -29,3 +29,49 @@ class FleetSerializer(serializers.ModelSerializer):
             "name": obj.livery_name,
             "css": obj.livery_css,
         }
+
+
+class TrainFleetVehicleSerializer(serializers.ModelSerializer):
+    fleet_number = serializers.CharField(source="fleetnumber")
+    reg = serializers.SerializerMethodField()
+    withdrawn = serializers.SerializerMethodField()
+    vehicle_type = serializers.SerializerMethodField()
+    livery = serializers.SerializerMethodField()
+    operator = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Trains
+        fields = (
+            "id",
+            "fleet_number",
+            "reg",
+            "withdrawn",
+            "vehicle_type",
+            "livery",
+            "operator",
+        )
+
+    def get_reg(self, obj):
+        return None
+
+    def get_withdrawn(self, obj):
+        return False
+
+    def get_vehicle_type(self, obj):
+        return {"name": obj.type}
+
+    def get_livery(self, obj):
+        return {
+            "name": obj.livery_name or "",
+            "left": obj.livery_css or "",
+            "right": "",
+        }
+
+    def get_operator(self, obj):
+        if not obj.operator:
+            return None
+        return {
+            "id": obj.operator_id,
+            "name": obj.operator.name,
+            "code": obj.operator.code,
+        }

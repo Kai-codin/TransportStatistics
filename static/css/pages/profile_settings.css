@@ -1,0 +1,259 @@
+  .ts-settings-wrap {
+    max-width: 680px;
+    margin: 36px auto;
+    padding: 0 20px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ── page heading ── */
+  .ts-settings-heading {
+    margin-bottom: 28px;
+  }
+  .ts-settings-heading h1 {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--ts-text-1);
+    line-height: 1.15;
+  }
+  .ts-settings-heading p {
+    font-size: 13.5px;
+    color: var(--ts-text-3);
+    margin-top: 4px;
+    margin-bottom: 0;
+  }
+
+  /* ── section cards ── */
+  .ts-settings-card {
+    background: var(--ts-surface);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r-lg);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  .ts-settings-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px 13px;
+    border-bottom: 1.5px solid var(--ts-border-soft);
+    background: var(--ts-surface-2);
+  }
+
+  .ts-settings-card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--ts-r-sm);
+    background: var(--ts-accent-light);
+    border: 1.5px solid rgba(52,208,100,0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+
+  .ts-settings-card-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ts-text-3);
+  }
+
+  .ts-settings-card-body {
+    padding: 20px;
+  }
+
+  /* ── privacy form row ── */
+  .ts-privacy-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .ts-privacy-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ts-text-2);
+    min-width: 52px;
+  }
+
+  /* style the select to match the design system */
+  .ts-select {
+    margin-left: auto;
+    font-family: var(--ts-font);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ts-text-1);
+    background: var(--ts-surface-2);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r-sm);
+    padding: 7px 32px 7px 11px;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a7a5e' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    min-width: 160px;
+  }
+  .ts-select:focus {
+    border-color: var(--ts-accent);
+    box-shadow: var(--ts-glow);
+  }
+  .ts-select option {
+    background: var(--ts-surface-2);
+  }
+
+  .ts-privacy-row .ts-privacy-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  /* ── upload area ── */
+  .ts-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .ts-file-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* hide native file input, show styled label */
+  .ts-file-input-wrapper input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .ts-file-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ts-text-2);
+    background: var(--ts-surface-2);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r-sm);
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .ts-file-label:hover {
+    border-color: var(--ts-accent);
+    color: var(--ts-accent);
+  }
+
+  .ts-file-name {
+    font-size: 12.5px;
+    color: var(--ts-text-3);
+    font-style: italic;
+  }
+
+  /* ── import jobs table ── */
+  .ts-import-table-wrap {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1.5px solid var(--ts-border-soft);
+  }
+
+  .ts-import-table-heading {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ts-text-3);
+    margin-bottom: 10px;
+  }
+
+  /* status pill */
+  .ts-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .ts-status-pill::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ts-status-pill.completed {
+    background: var(--ts-accent-light);
+    color: var(--ts-accent);
+    border: 1px solid rgba(52,208,100,0.2);
+  }
+  .ts-status-pill.completed::before { background: var(--ts-accent); }
+  .ts-status-pill.running {
+    background: rgba(251,191,36,0.1);
+    color: var(--ts-warning);
+    border: 1px solid rgba(251,191,36,0.2);
+  }
+  .ts-status-pill.running::before { background: var(--ts-warning); }
+  .ts-status-pill.queued {
+    background: var(--ts-surface-2);
+    color: var(--ts-text-3);
+    border: 1px solid var(--ts-border);
+  }
+  .ts-status-pill.queued::before { background: var(--ts-text-3); }
+  .ts-status-pill.uploaded {
+    background: rgba(14,165,233,0.08);
+    color: #38bdf8;
+    border: 1px solid rgba(14,165,233,0.2);
+  }
+  .ts-status-pill.uploaded::before { background: #38bdf8; }
+
+  /* stat cells */
+  .ts-num {
+    font-family: var(--ts-mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ts-text-1);
+  }
+
+  .ts-num-muted {
+    font-family: var(--ts-mono);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ts-text-3);
+  }
+
+  .ts-job-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* divider */
+  .ts-settings-card-body + .ts-settings-card-body {
+    border-top: 1.5px solid var(--ts-border-soft);
+  }
+
+  @media (max-width: 600px) {
+    .ts-privacy-row { flex-direction: column; align-items: flex-start; }
+    .ts-privacy-row .ts-privacy-actions { margin-left: 0; }
+    .ts-upload-row { flex-direction: column; align-items: flex-start; }
+  }

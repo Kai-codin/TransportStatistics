@@ -949,8 +949,11 @@
 
         if (items.length === 1 && auto) {
           const t = items[0];
+          const livery = t.livery || {};
           document.getElementById('lf-train-fleet').value = t.fleetnumber || '';
           document.getElementById('lf-train-type').value  = t.type || '';
+          document.getElementById('lf-livery-name').value = livery.name || '';
+          document.getElementById('lf-livery-hex').value  = livery.css || '';
           results.style.display = 'none';
           return;
         }
@@ -965,7 +968,9 @@
 
           return `<div class="ts-vehicle-result"
                        data-fleet="${fleet}"
-                       data-type="${type}">
+                       data-type="${type}"
+                       data-livery-name="${liveryName}"
+                       data-livery-css="${liveryCss}">
             <div class="ts-vehicle-result-swatch" data-livery-bg="${swatchColour}"></div>
             <div class="ts-vehicle-result-info">
               <div class="ts-vehicle-result-code">${fleet || '—'}</div>
@@ -983,6 +988,8 @@
           row.addEventListener('click', () => {
             document.getElementById('lf-train-fleet').value = row.dataset.fleet || '';
             document.getElementById('lf-train-type').value  = row.dataset.type || '';
+            document.getElementById('lf-livery-name').value = row.dataset.liveryName || '';
+            document.getElementById('lf-livery-hex').value  = row.dataset.liveryCss || '';
             results.style.display = 'none';
           });
         });

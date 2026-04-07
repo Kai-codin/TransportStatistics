@@ -62,7 +62,7 @@ class TripLogForm(forms.ModelForm):
         if transport:
             transport = transport.lower()
 
-        if transport == "bus":
+        if transport in {"bus", "tram", "ferry"}:
             self.fields["headcode"].label = "Route number"
             self.fields["headcode"].widget.attrs["placeholder"] = "e.g. 50"
             self._hide_fields([

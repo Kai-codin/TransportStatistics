@@ -348,7 +348,7 @@
           document.getElementById('lf-bus-reg').value     = v.reg          || '';
           document.getElementById('lf-bus-vtype').value   = v.type         || '';
           document.getElementById('lf-livery-name').value = v.livery_name  || v.branding || '';
-          document.getElementById('lf-livery-hex').value  = v.livery_left  || '';
+          document.getElementById('lf-livery-hex').value  = v.livery_left || v.livery_right || v.livery_css || '';
         }
         else {
           // If no vehicle info returned, but a fleet number is already
@@ -710,6 +710,9 @@
   // ── save ───────────────────────────────────────────────────────────────────
   document.getElementById('ts-save-btn').addEventListener('click', () => {
     if (!_fromStop || !_toStop) return;
+    const routeNumberInput = document.getElementById('lf-route-number');
+    const routeNumberValue = routeNumberInput ? (routeNumberInput.value || '').trim() : '';
+    const resolvedHeadcode = routeNumberValue || headcode;
 
     // Compute route segment coordinates with fallbacks for synthetic/custom stops
     function computeSegCoords(fromStop, toStop) {
@@ -752,7 +755,7 @@
     const segCoords = computeSegCoords(_fromStop, _toStop);
 
     const payload = new URLSearchParams({
-      headcode:            headcode,
+      headcode:            resolvedHeadcode,
       service_date:        prefDate,
       transport_type:      document.getElementById('lf-type').value,
       operator:            document.getElementById('lf-operator').value,
@@ -785,7 +788,7 @@
       bus_livery:          document.getElementById('lf-livery-hex').value,
       bus_livery_name:     document.getElementById('lf-livery-name').value,
       notes:               document.getElementById('lf-notes').value,
-      route_number:        document.getElementById('lf-route-number') ? document.getElementById('lf-route-number').value : '',
+      route_number:        routeNumberValue,
       route_geometry:      JSON.stringify(segCoords),
       full_route_geometry: JSON.stringify(_locations && _locations.length ? _locations.map(l => [l.stop.lon, l.stop.lat]) : segCoords),
       full_locations: JSON.stringify(_locations.map(l => ({
@@ -866,7 +869,7 @@
           document.getElementById('lf-bus-reg').value     = v.reg || '';
           document.getElementById('lf-bus-vtype').value   = (v.vehicle_type && v.vehicle_type.name) || '';
           document.getElementById('lf-livery-name').value = (v.livery && v.livery.name) || v.branding || '';
-          document.getElementById('lf-livery-hex').value  = (v.livery && v.livery.left) || '';
+          document.getElementById('lf-livery-hex').value  = (v.livery && (v.livery.left || v.livery.right || v.livery.colour || v.livery.hex)) || '';
           results.style.display = 'none';
           return;
         }
@@ -877,12 +880,13 @@
           const code    = v.fleet_code || v.fleet_number || '—';
           const reg     = v.reg || '';
           const label   = vtype.name || '';
-          const colour  = livery.left || '#888';
+          const liveryCss = livery.left || livery.right || livery.colour || livery.hex || '';
+          const colour  = liveryCss || '#888';
           return `<div class="ts-vehicle-result" data-id="${v.id}"
                        data-fleet="${code}" data-reg="${reg}"
                        data-type="${label}"
                        data-livery-name="${livery.name || v.branding || ''}"
-                       data-livery-left="${livery.left || ''}"
+                       data-livery-left="${liveryCss}"
                        data-livery-right="${livery.right || ''}"
                        data-withdrawn="${v.withdrawn ? '1' : '0'}">
             <div class="ts-vehicle-result-swatch" data-livery-bg="${colour}"></div>
@@ -904,7 +908,7 @@
             document.getElementById('lf-bus-reg').value     = row.dataset.reg;
             document.getElementById('lf-bus-vtype').value   = row.dataset.type;
             document.getElementById('lf-livery-name').value = row.dataset.liveryName;
-            document.getElementById('lf-livery-hex').value  = row.dataset.liveryLeft;
+            document.getElementById('lf-livery-hex').value  = row.dataset.liveryLeft || row.dataset.liveryRight || '';
             results.style.display = 'none';
           });
         });

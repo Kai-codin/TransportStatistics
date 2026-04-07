@@ -382,10 +382,16 @@ def log_trip(request):
     """
     if request.method == 'POST':
         logger.debug("log_trip POST fields: %s", dict(request.POST))
-        form = TripLogForm(request.POST)
+        post_data = request.POST.copy()
+        route_number = (post_data.get('route_number') or '').strip()
+        if route_number and not (post_data.get('headcode') or '').strip():
+            post_data['headcode'] = route_number
+        form = TripLogForm(post_data)
         if form.is_valid():
             trip = form.save(commit=False)
             trip.user = request.user
+            if not (trip.headcode or '').strip():
+                trip.headcode = route_number
             trip.save()
             return redirect('home')
         else:

@@ -1,9 +1,12 @@
 import datetime
+from unittest.mock import patch
 
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory
 
 from Depatures.filters import DeparturesFilter
 from Depatures.models import Timetable, ScheduleLocation
+from Depatures.api import TrainDeparturesView
 from Stops.models import Stop
 from main.models import Operator
 
@@ -88,3 +91,33 @@ class DeparturesFilterTests(TestCase):
 
         self.assertTrue(origin_filtered.filter(timetable=self.timetable).exists())
         self.assertTrue(destination_filtered.filter(timetable=self.timetable).exists())
+
+
+class TrainDeparturesTimezoneTests(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.view = TrainDeparturesView.as_view()
+
+    @patch("Depatures.api.timezone.now")
+    def test_default_date_time_uses_uk_timezone_in_bst(self, mock_now):
+        # 23:30 UTC in July is 00:30 in UK local time (BST, UTC+1).
+        mock_now.return_value = datetime.datetime(2026, 7, 1, 23, 30, 0, tzinfo=datetime.timezone.utc)
+
+        request = self.factory.get("/api/departures/", {"crs": "SOT"})
+        response = self.view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["date"], "2026-07-02")
+        self.assertEqual(response.data["time_after"], 30 * 60)
+
+    @patch("Depatures.api.timezone.now")
+    def test_default_date_time_uses_uk_timezone_in_gmt(self, mock_now):
+        # 00:30 UTC in December is 00:30 in UK local time (GMT, UTC+0).
+        mock_now.return_value = datetime.datetime(2026, 12, 1, 0, 30, 0, tzinfo=datetime.timezone.utc)
+
+        request = self.factory.get("/api/departures/", {"crs": "SOT"})
+        response = self.view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["date"], "2026-12-01")
+        self.assertEqual(response.data["time_after"], 30 * 60)

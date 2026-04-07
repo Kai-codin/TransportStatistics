@@ -11,14 +11,27 @@ from rest_framework.viewsets import GenericViewSet
 from django_filters.rest_framework import DjangoFilterBackend
 import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 from rest_framework.viewsets import ViewSet
 from .filters import DeparturesFilter
 import requests
 from bs4 import BeautifulSoup
 from django.core.cache import cache
+from django.utils import timezone
 import hashlib
 import json
 # Time helpers
+
+UK_TZ = ZoneInfo("Europe/London")
+
+
+def _uk_now() -> datetime.datetime:
+    """Current time in UK local timezone (handles GMT/BST transitions)."""
+    return timezone.now().astimezone(UK_TZ)
+
+
+def _uk_today() -> datetime.date:
+    return _uk_now().date()
 
 def _format_time(raw):
     if not raw:
@@ -262,7 +275,7 @@ class BusDeparturesView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            date_val = datetime.date.today()
+            date_val = _uk_today()
         time_str = request.query_params.get("time", "")
         if time_str:
             t = time_str.strip()
@@ -279,7 +292,7 @@ class BusDeparturesView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            now = datetime.datetime.now()
+            now = _uk_now()
             hh, mm = now.hour, now.minute
             time_display = f"{hh:02d}:{mm:02d}"
         upstream_url = BUSTIMES_URL.format(atco_code=atco_code)
@@ -513,7 +526,7 @@ class TrainDeparturesView(APIView):
             except ValueError:
                 return Response({"detail": "Invalid date, use YYYY-MM-DD"}, status=400)
         else:
-            date_val = datetime.date.today()
+            date_val = _uk_today()
         time_str = request.query_params.get("time", "")
         if time_str:
             t = time_str.strip()
@@ -528,7 +541,7 @@ class TrainDeparturesView(APIView):
             except Exception:
                 return Response({"detail": "Invalid time format"}, status=400)
         else:
-            now = datetime.datetime.now()
+            now = _uk_now()
             hh, mm, ss = now.hour, now.minute, now.second
 
         threshold_secs     = hh * 3600 + mm * 60 + ss
@@ -720,7 +733,7 @@ class ServiceLocationsView(APIView):
             except ValueError:
                 return Response({"detail": "Invalid date, use YYYY-MM-DD"}, status=400)
         else:
-            date_val = datetime.date.today()
+            date_val = _uk_today()
 
         qs = Timetable.objects.all().defer('created_at', 'modified_at')
         if cif:
@@ -828,7 +841,7 @@ class BusServiceView(APIView):
 
         if start_time_str:
             try:
-                date_str = request.query_params.get("date", "").strip() or datetime.date.today().isoformat()
+                date_str = request.query_params.get("date", "").strip() or _uk_today().isoformat()
                 dt_param = f"{date_str}T{start_time_str}:00Z"
 
                 journey_data = self._get(

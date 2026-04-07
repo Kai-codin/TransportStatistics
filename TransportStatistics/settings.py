@@ -2,13 +2,18 @@
 Django settings for TransportStatistics project.
 """
 
-from pathlib import Path
-from dotenv import load_dotenv
-import pymysql
+import logging
 import os
+from pathlib import Path
 
-# pymysql must be installed before any DB config so it acts as MySQLdb
-pymysql.install_as_MySQLdb()
+from dotenv import load_dotenv
+try:
+    import pymysql
+except ImportError:
+    pymysql = None
+
+if pymysql is not None:
+    pymysql.install_as_MySQLdb()
 
 load_dotenv()
 
@@ -69,16 +74,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'TransportStatistics.wsgi.application'
 
-# ── Database ──────────────────────────────────────────────────────────────────
-#
-# Reads DATABASE_URL from the environment. Examples:
-#   mysql://user:pass@host:3306/dbname
-#   mysql://user:pass@host:3306/dbname?charset=utf8mb4
-#   postgres://user:pass@host:5432/dbname
-#   sqlite:///db.sqlite3
-#
-# Falls back to a local SQLite database if DATABASE_URL is not set.
-
 from urllib.parse import urlparse, parse_qs
 
 _db_url = os.getenv('DATABASE_URL', '')
@@ -120,7 +115,6 @@ if _db_url:
         }
 
     else:
-        # sqlite or unknown — fall through to file-based sqlite
         _path = _parsed.path or ''
         if _path in ('/:memory:', ':memory:'):
             _name = ':memory:'
@@ -136,15 +130,12 @@ if _db_url:
         }
 
 else:
-    # No DATABASE_URL — default to local SQLite
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME':   BASE_DIR / 'db.sqlite3',
         }
     }
-
-# ── Password validation ───────────────────────────────────────────────────────
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -153,20 +144,14 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# ── Internationalisation ──────────────────────────────────────────────────────
-
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE     = 'UTC'
 USE_I18N      = True
 USE_TZ        = True
 
-# ── Static files ──────────────────────────────────────────────────────────────
-
 STATIC_URL      = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT     = BASE_DIR / 'staticfiles'
-
-# ── REST framework ────────────────────────────────────────────────────────────
 
 REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
@@ -176,8 +161,6 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Cache configuration: prefer Redis if REDIS_URL is provided, otherwise fall
-# back to Django's local-memory cache. Uses `django-redis` if available.
 REDIS_URL = os.getenv('REDIS_URL', '')
 if REDIS_URL:
     CACHES = {
@@ -191,7 +174,6 @@ if REDIS_URL:
         }
     }
 else:
-    # Local-memory cache for development if Redis not configured
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -199,7 +181,31 @@ else:
         }
     }
 
-# ── Misc ──────────────────────────────────────────────────────────────────────
+LOGGING_ENABLED = os.getenv('LOGGING_ENABLED', 'True').lower() in ('1', 'true', 'yes', 'on')
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+
+if LOGGING_ENABLED:
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'standard': {
+                'format': '%(asctime)s %(levelname)s [%(name)s] %(message)s',
+            },
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'formatter': 'standard',
+            },
+        },
+        'root': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+        },
+    }
+else:
+    logging.disable(logging.CRITICAL)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

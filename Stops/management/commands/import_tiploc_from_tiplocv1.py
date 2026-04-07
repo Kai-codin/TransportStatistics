@@ -95,10 +95,7 @@ class Command(BaseCommand):
                 crs_code = rec.get('crs_code') or rec.get('crs')
                 tiploc_code = rec.get('tiploc_code') or rec.get('tiploc')
                 tps_description = rec.get('tps_description') or rec.get('description')
-
-                # ------------------------------------------------------------------ #
                 #  No CRS: match by name or create                                   #
-                # ------------------------------------------------------------------ #
                 if not crs_code or not str(crs_code).strip():
                     no_crs += 1
 
@@ -175,10 +172,7 @@ class Command(BaseCommand):
                     to_update, updated = self._maybe_flush_updates(to_update, updated, batch_size, dry_run)
                     to_create, created = self._maybe_flush_creates(to_create, created, batch_size, dry_run)
                     continue
-
-                # ------------------------------------------------------------------ #
                 #  Has CRS: original logic                                            #
-                # ------------------------------------------------------------------ #
                 crs_code = str(crs_code).strip().upper()
                 qs = Stop.objects.filter(crs__iexact=crs_code)
                 cnt = qs.count()
@@ -227,10 +221,7 @@ class Command(BaseCommand):
                     to_update.append(s)
 
                 to_update, updated = self._maybe_flush_updates(to_update, updated, batch_size, dry_run)
-
-        # ------------------------------------------------------------------ #
         #  Final flush                                                         #
-        # ------------------------------------------------------------------ #
         self.stdout.write('\nFlushing remaining records…')
 
         if to_update:
@@ -254,10 +245,7 @@ class Command(BaseCommand):
                 logger.info('Final flush: created %d stops', len(to_create))
                 self.stdout.write(self.style.SUCCESS(f'  ✔ Final flush: created {len(to_create)} stops'))
             created += len(to_create)
-
-        # ------------------------------------------------------------------ #
         #  Summary                                                             #
-        # ------------------------------------------------------------------ #
         summary_lines = [
             ('Lines processed',               processed),
             ('Lines skipped (parse error)',    skipped_parse),
@@ -278,10 +266,7 @@ class Command(BaseCommand):
             self.stdout.write(f'  {label:<35} {value}')
         self.stdout.write(self.style.MIGRATE_HEADING('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'))
         self.stdout.write(self.style.SUCCESS('✔  Done'))
-
-    # ------------------------------------------------------------------ #
     #  Helpers                                                             #
-    # ------------------------------------------------------------------ #
     def _maybe_flush_updates(self, to_update, updated, batch_size, dry_run):
         if len(to_update) < batch_size:
             return to_update, updated

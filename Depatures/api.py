@@ -18,10 +18,7 @@ from bs4 import BeautifulSoup
 from django.core.cache import cache
 import hashlib
 import json
-
-# ---------------------------------------------------------------------------
 # Time helpers
-# ---------------------------------------------------------------------------
 
 def _format_time(raw):
     if not raw:
@@ -217,21 +214,13 @@ def _time_info(loc) -> dict:
         "sort_time": sort_time,
         "type":      stop_type,
     }
-
-
-# ---------------------------------------------------------------------------
 # Helpers to build the day-mask SQL filter
-# ---------------------------------------------------------------------------
 
 def _day_mask_q(weekday: int) -> Q:
     # Allow any characters before position, just check the bit itself
     prefix = "." * weekday
     return Q(timetable__schedule_days_runs__regex=rf"^{prefix}1")
-
-
-# ---------------------------------------------------------------------------
 # Views
-# ---------------------------------------------------------------------------
 
 BUSTIMES_URL = "https://bustimes.org/stops/{atco_code}/departures"
 
@@ -263,8 +252,6 @@ class BusDeparturesView(APIView):
                 {"detail": "Provide atco_code"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # ── date ──────────────────────────────────────────────────────────────
         date_str = request.query_params.get("date", "")
         if date_str:
             try:
@@ -276,8 +263,6 @@ class BusDeparturesView(APIView):
                 )
         else:
             date_val = datetime.date.today()
-
-        # ── time ──────────────────────────────────────────────────────────────
         time_str = request.query_params.get("time", "")
         if time_str:
             t = time_str.strip()
@@ -297,8 +282,6 @@ class BusDeparturesView(APIView):
             now = datetime.datetime.now()
             hh, mm = now.hour, now.minute
             time_display = f"{hh:02d}:{mm:02d}"
-
-        # ── fetch bustimes.org ────────────────────────────────────────────────
         upstream_url = BUSTIMES_URL.format(atco_code=atco_code)
 
         if date_str and time_str:
@@ -322,8 +305,6 @@ class BusDeparturesView(APIView):
                 {"detail": f"Failed to fetch bustimes.org: {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
-
-        # ── TfL two-pass merge ────────────────────────────────────────────────
         def _normalise_plate(raw: str) -> str:
             """Return uppercased plate with spaces removed.  Handles 'fleet - PLATE' format."""
             if not raw:
@@ -374,8 +355,6 @@ class BusDeparturesView(APIView):
                 resp = tfl_resp
             except requests.RequestException:
                 expected_by_plate = {}
-
-        # ── parse HTML ────────────────────────────────────────────────────────
         soup  = BeautifulSoup(resp.text, "html.parser")
         tbody = soup.find("tbody")
 
@@ -385,8 +364,6 @@ class BusDeparturesView(APIView):
                 "station": {"atco_code": atco_code},
                 "results": [],
             })
-
-        # ── detect layout from header ─────────────────────────────────────────
         header_row   = tbody.find("tr")
         header_texts = [th.get_text(strip=True).lower() for th in header_row.find_all("th")] if header_row else []
         tfl_expected_only = "expected" in header_texts and "scheduled" not in header_texts
@@ -402,15 +379,11 @@ class BusDeparturesView(APIView):
 
             if len(cells) < 3:
                 continue
-
-            # ── service / headcode ─────────────────────────────────────────
             service_cell = cells[0]
             service_link = service_cell.find("a")
             headcode     = service_link.get_text(strip=True) if service_link else ""
             service_href = service_link.get("href", "") if service_link else ""
             service_url  = f"https://bustimes.org{service_href}" if service_href else None
-
-            # ── destination + vehicle ──────────────────────────────────────
             dest_cell   = cells[1]
             vehicle_div = dest_cell.find("div", class_="vehicle")
             vehicle_raw = vehicle_div.get_text(strip=True) if vehicle_div else None
@@ -533,8 +506,6 @@ class TrainDeparturesView(APIView):
 
         if type_filter and type_filter not in ("stopping", "passing"):
             return Response({"detail": "type must be 'stopping' or 'passing'"}, status=400)
-
-        # ── date ──────────────────────────────────────────────
         date_str = request.query_params.get("date", "")
         if date_str:
             try:
@@ -543,8 +514,6 @@ class TrainDeparturesView(APIView):
                 return Response({"detail": "Invalid date, use YYYY-MM-DD"}, status=400)
         else:
             date_val = datetime.date.today()
-
-        # ── time ──────────────────────────────────────────────
         time_str = request.query_params.get("time", "")
         if time_str:
             t = time_str.strip()
@@ -564,8 +533,6 @@ class TrainDeparturesView(APIView):
 
         threshold_secs     = hh * 3600 + mm * 60 + ss
         threshold_sort_str = f"{hh:02d}:{mm:02d}:{ss:02d}"
-
-        # ── caching ───────────────────────────────────────────
         try:
             cache_ttl = 30
             cache_params = {
@@ -590,8 +557,6 @@ class TrainDeparturesView(APIView):
             cache_key = None
 
         weekday = date_val.weekday()
-
-        # ── DB filters ────────────────────────────────────────
         loc_q = Q()
         if crs:
             loc_q |= Q(stop__crs__iexact=crs)
@@ -631,8 +596,6 @@ class TrainDeparturesView(APIView):
             .only(*self._SELECT)
             .order_by("sort_time")
         )
-
-        # ── Python filtering (SOURCE OF TRUTH) ─────────────────
         station_info = None
         valid = []
 
@@ -668,8 +631,6 @@ class TrainDeparturesView(APIView):
             valid.append((loc, ti))
             if len(valid) >= 10:
                 break
-
-        # ── origin/destination (fetch only first + last stop per timetable) ──
         timetable_ids = {loc.timetable_id for loc, _ in valid if loc.timetable_id}
 
         origin_map = {}
@@ -710,8 +671,6 @@ class TrainDeparturesView(APIView):
                         origin_map[tid] = _stop_info(loc.stop, request)
                     if loc.position == mx:
                         destination_map[tid] = _stop_info(loc.stop, request)
-
-        # ── response ──────────────────────────────────────────
         results = []
         for loc, ti in valid:
             tt = loc.timetable
@@ -742,11 +701,7 @@ class TrainDeparturesView(APIView):
             cache.set(cache_key, response_data, cache_ttl)
 
         return Response(response_data)
-
-
-# ---------------------------------------------------------------------------
 # ServiceLocationsView
-# ---------------------------------------------------------------------------
 
 class ServiceLocationsView(APIView):
     def get(self, request):
@@ -758,8 +713,6 @@ class ServiceLocationsView(APIView):
                 {"detail": "Provide headcode or cif_train_uid"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # ── date (optional) ──────────────────────────────────────────────
         date_str = request.query_params.get("date", "")
         if date_str:
             try:
@@ -859,8 +812,6 @@ class BusServiceView(APIView):
         trip_id = request.query_params.get("trip", "").strip()
         if not trip_id:
             return Response({"detail": "Provide trip"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # ── 1. Fetch trip ──────────────────────────────────────────────────
         try:
             trip = self._get(f"https://bustimes.org/api/trips/{trip_id}/")
         except requests.RequestException as e:
@@ -869,8 +820,6 @@ class BusServiceView(APIView):
         vehicle_info  = None
         vehicle_extra = None
         times = trip.get("times") or []
-
-        # ── 2. Find start time ─────────────────────────────────────────────
         start_time_str = None
         for t in times:
             start_time_str = t.get("aimed_departure_time") or t.get("aimed_arrival_time")
@@ -901,8 +850,6 @@ class BusServiceView(APIView):
 
             except requests.RequestException:
                 pass
-
-        # ── Build normalised locations list ────────────────────────────────
         locations = []
         for entry in times:
             stop = entry.get("stop") or {}
@@ -943,8 +890,6 @@ class BusServiceView(APIView):
                 "set_down":      entry.get("set_down", True),
                 "track":         entry.get("track"),
             })
-
-        # ── Build vehicle block ────────────────────────────────────────────
         vehicle = None
         if vehicle_extra:
             vt      = vehicle_extra.get("vehicle_type") or {}
@@ -968,8 +913,6 @@ class BusServiceView(APIView):
                 "fleet_number": vehicle_info.get("fleet_code"),
                 "reg":          vehicle_info.get("reg"),
             }
-
-        # ── Operator block ─────────────────────────────────────────────────
         op_raw   = trip.get("operator") or {}
         service  = trip.get("service") or {}
         operator = {

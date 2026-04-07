@@ -1,6 +1,6 @@
 from django import forms
+
 from .models import TripLog
-from django import forms
 
 
 class UploadServicesForm(forms.Form):
@@ -18,28 +18,15 @@ class TripLogForm(forms.ModelForm):
     class Meta:
         model  = TripLog
         fields = [
-            # service
             'headcode', 'operator', 'service_date', 'transport_type',
-
-            # journey
             'origin_name', 'origin_crs',
             'destination_name', 'destination_crs',
             'scheduled_departure', 'scheduled_arrival',
-
-            # boarded stop
             'boarded_stop_name', 'boarded_stop_crs', 'boarded_stop_atco',
-
-            # vehicle — rail
             'train_fleet_number', 'train_type',
-
-            # vehicle — bus
             'bus_fleet_number', 'bus_registration', 'bus_type',
             'bus_livery', 'bus_livery_name',
-
-            # misc
             'notes',
-
-            # geometry
             'route_geometry', 'full_route_geometry', 'full_locations',
         ]
 
@@ -54,8 +41,6 @@ class TripLogForm(forms.ModelForm):
             'route_geometry': forms.HiddenInput(),
             'full_route_geometry': forms.HiddenInput(),
             'full_locations': forms.HiddenInput(),
-
-            # hidden pre-fill fields
             'origin_crs':        forms.HiddenInput(),
             'destination_crs':   forms.HiddenInput(),
             'boarded_stop_crs':  forms.HiddenInput(),
@@ -65,11 +50,9 @@ class TripLogForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # everything optional
         for field in self.fields.values():
             field.required = False
 
-        # detect transport type (POST > instance > initial)
         transport = (
             self.data.get("transport_type")
             or getattr(self.instance, "transport_type", None)
@@ -79,29 +62,16 @@ class TripLogForm(forms.ModelForm):
         if transport:
             transport = transport.lower()
 
-        # ─────────────────────────────────────────────
-        # BUS MODE
-        # ─────────────────────────────────────────────
         if transport == "bus":
-
-            # rename headcode → route number
             self.fields["headcode"].label = "Route number"
             self.fields["headcode"].widget.attrs["placeholder"] = "e.g. 50"
-
-            # hide TRAIN fields
             self._hide_fields([
                 "train_fleet_number",
                 "train_type",
             ])
-
-        # ─────────────────────────────────────────────
-        # TRAIN MODE (default)
-        # ─────────────────────────────────────────────
         else:
             self.fields["headcode"].label = "Headcode"
             self.fields["headcode"].widget.attrs["placeholder"] = "e.g. 2H41"
-
-            # hide BUS fields
             self._hide_fields([
                 "bus_fleet_number",
                 "bus_registration",
@@ -110,7 +80,6 @@ class TripLogForm(forms.ModelForm):
                 "bus_livery_name",
             ])
 
-    # helper
     def _hide_fields(self, field_names):
         for name in field_names:
             if name in self.fields:

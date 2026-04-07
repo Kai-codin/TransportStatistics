@@ -1,11 +1,8 @@
 import django_filters
 from django.db.models import Q, Subquery, OuterRef
+
 from .models import ScheduleLocation
 
-
-# ---------------------------------------------------------------------------
-# Day-mask helper
-# ---------------------------------------------------------------------------
 
 _DAY_NAME_TO_INDEX = {
     "monday":    0,
@@ -42,7 +39,6 @@ class DeparturesFilter(django_filters.FilterSet):
     candidates = f.qs.iterator(chunk_size=200)
     """
 
-    # ── simple timetable fields ─────────────────────────`──────────────────────
     headcode = django_filters.CharFilter(
         field_name="timetable__headcode",
         lookup_expr="iexact",
@@ -54,13 +50,11 @@ class DeparturesFilter(django_filters.FilterSet):
         label="Operator name or code (partial match)",
     )
 
-    # ── day / schedule_days_runs ──────────────────────────────────────────────
     day = django_filters.CharFilter(
         method="filter_day",
         label='Day name ("Monday") or index 0-6',
     )
 
-    # ── origin ────────────────────────────────────────────────────────────────
     origin_crs = django_filters.CharFilter(
         method="filter_origin_crs",
         label="Origin station CRS code",
@@ -70,7 +64,6 @@ class DeparturesFilter(django_filters.FilterSet):
         label="Origin station name (partial match)",
     )
 
-    # ── destination ───────────────────────────────────────────────────────────
     destination_crs = django_filters.CharFilter(
         method="filter_destination_crs",
         label="Destination station CRS code",
@@ -82,9 +75,7 @@ class DeparturesFilter(django_filters.FilterSet):
 
     class Meta:
         model  = ScheduleLocation
-        fields: list = []   # all filtering is done via explicit filter definitions above
-
-    # ── custom filter methods ─────────────────────────────────────────────────
+        fields: list = []
 
     def filter_operator(self, queryset, name, value):
         """Match operator name (partial, case-insensitive) OR operator code (exact)."""
@@ -127,8 +118,6 @@ class DeparturesFilter(django_filters.FilterSet):
 
         return queryset.filter(timetable__schedule_days_runs__regex=pattern)
 
-    # ── origin helpers ────────────────────────────────────────────────────────
-
     def _origin_timetable_ids(self, crs=None, name=None):
         """
         Return a queryset of timetable IDs whose first ScheduleLocation stop
@@ -167,8 +156,6 @@ class DeparturesFilter(django_filters.FilterSet):
     def filter_origin_name(self, queryset, name, value):
         ids = self._origin_timetable_ids(name=value)
         return queryset.filter(timetable_id__in=ids)
-
-    # ── destination helpers ───────────────────────────────────────────────────
 
     def _destination_timetable_ids(self, crs=None, name=None):
         """

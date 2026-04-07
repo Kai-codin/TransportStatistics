@@ -4,10 +4,7 @@ import gzip
 import requests
 from dotenv import load_dotenv
 import time
-
-# ─────────────────────────────────────────────
 # Config
-# ─────────────────────────────────────────────
 
 load_dotenv()
 
@@ -24,11 +21,7 @@ OUTPUT_FILE = "stations.json"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 DELAY = 1.0
-
-
-# ─────────────────────────────────────────────
 # 1. Download CORPUS
-# ─────────────────────────────────────────────
 
 def download_corpus():
     print("Downloading CORPUS...")
@@ -62,10 +55,7 @@ def extract_corpus():
 
     print(f"Loaded {len(data)} CORPUS records")
     return data
-
-# ─────────────────────────────────────────────
 # 2. Filter stations
-# ─────────────────────────────────────────────
 
 def build_station_base(corpus):
     stations = []
@@ -88,11 +78,7 @@ def build_station_base(corpus):
 
     print(f"Filtered to {len(stations)} CRS stations")
     return stations
-
-
-# ─────────────────────────────────────────────
 # 3. Fetch OSM data
-# ─────────────────────────────────────────────
 
 def fetch_osm_stations():
     print("Fetching OSM stations...")
@@ -138,11 +124,7 @@ def build_osm_index(elements):
             index_by_name[name.lower()] = (lat, lon)
 
     return index_by_crs, index_by_name
-
-
-# ─────────────────────────────────────────────
 # 4. Merge CORPUS + OSM
-# ─────────────────────────────────────────────
 
 def merge_data(stations, osm_crs, osm_name):
     matched = 0
@@ -165,11 +147,7 @@ def merge_data(stations, osm_crs, osm_name):
 
     print(f"Matched {matched}/{len(stations)} with OSM")
     return stations
-
-
-# ─────────────────────────────────────────────
 # MAIN
-# ─────────────────────────────────────────────
 
 def main():
     download_corpus()

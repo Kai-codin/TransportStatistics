@@ -1,18 +1,22 @@
+import logging
 from django.db.models import Q
 from urllib.parse import urlencode
-from rest_framework import viewsets
-from rest_framework.pagination import LimitOffsetPagination
-from rest_framework.filters import SearchFilter, OrderingFilter
+
+import requests
+from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status
+from rest_framework import viewsets
+from rest_framework.decorators import api_view
+from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.response import Response
+
 from .serializers import StopSerializer, FleetSerializer, TrainFleetVehicleSerializer
 from Stops.models import Stop
 from main.models import Trains
 
-import requests
-from django.db import transaction
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
+logger = logging.getLogger(__name__)
 
 
 class StopPagination(LimitOffsetPagination):
@@ -21,34 +25,11 @@ class StopPagination(LimitOffsetPagination):
 
 
 class StopViewSet(viewsets.ReadOnlyModelViewSet):
-    """Read-only API for Stops with search and filters.
-
-    ── Lookup ──────────────────────────────────────────────────────────────
-      q              Partial name search.                        e.g. Manch
-      crs            Exact CRS code.                             e.g. MAN
-      tiploc         Exact TIPLOC.                               e.g. MNCRPIC
-      atco_code      Exact ATCO code.
-      naptan_code    Exact NaPTAN code.
-      stop_type      ID, code, or comma-separated IDs/codes.    e.g. 1,13,9
-      stop_types     Alias for stop_type (comma-separated IDs). e.g. 1,2,8,10
-    active         Boolean: 1/true/yes or 0/false/no. Use `all` to return both active and inactive.
-               Default: active=true (unless `active=all` is passed).
-
-    ── Bounding box (two formats, pick one) ────────────────────────────────
-      bbox           Comma-separated: min_lon,min_lat,max_lon,max_lat
-                                                    e.g. -2.34,53.47,-2.22,53.48
-      min_lat / max_lat / min_lon / max_lon
-                     Individual bbox params (used by the map frontend).
-
-    ── Ordering ────────────────────────────────────────────────────────────
-      ordering       id | name | lat | lon  (prefix - for descending)
-    """
+    """Read-only Stops API with text, type, active-state, and bbox filters."""
 
     serializer_class   = StopSerializer
     pagination_class   = StopPagination
     filter_backends    = (DjangoFilterBackend, SearchFilter, OrderingFilter)
-    # stop_type/stop_types handled manually below - removed from filterset_fields
-    # to prevent DjangoFilterBackend rejecting comma-separated values with a 400
     filterset_fields   = ('active', 'crs', 'atco_code', 'naptan_code', 'tiploc')
     search_fields      = ('name',)
     ordering_fields    = ('id', 'name', 'lat', 'lon')
@@ -57,24 +38,16 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
         p  = self.request.query_params
         qs = Stop.objects.select_related('stop_type').all()
 
-        # ── name search ───────────────────────────────────────────────────
         q = p.get('q')
         if q:
             qs = qs.filter(name__icontains=q)
 
-        # ── exact field matches ───────────────────────────────────────────
         for field in ('crs', 'atco_code', 'naptan_code', 'tiploc'):
             val = p.get(field)
             if val:
                 qs = qs.filter(**{field: val})
 
-        # ── stop_type / stop_types ────────────────────────────────────────
-        # Accepts any of:
-        #   single ID:            stop_type=1
-        #   single code:          stop_type=RLS
-        #   comma-separated IDs:  stop_type=1,13,9   or  stop_types=1,13,9
-        #   mixed:                stop_type=1,RLS,9
-        # stop_types is checked first; falls back to stop_type
+        # Accept comma-separated stop type IDs/codes.
         raw = p.get('stop_types') or p.get('stop_type')
         if raw:
             parts = [v.strip() for v in raw.split(',') if v.strip()]
@@ -87,24 +60,18 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
             elif codes:
                 qs = qs.filter(stop_type__code__in=codes)
 
-        # ── active ────────────────────────────────────────────────────────
         active_param = p.get('active')
-        # Default behaviour: only return active stops unless caller requests otherwise.
         if active_param is None:
             qs = qs.filter(show_on_map=True)
         else:
             ap = active_param.lower()
             if ap in ('all', '*'):
-                # no filtering, return both active and inactive
                 pass
             elif ap in ('1', 'true', 't', 'yes', 'y'):
                 qs = qs.filter(show_on_map=True)
             elif ap in ('0', 'false', 'f', 'no', 'n'):
                 qs = qs.filter(show_on_map=False)
 
-        # ── bounding box ──────────────────────────────────────────────────
-        # Format A: individual params  min_lat=, max_lat=, min_lon=, max_lon=
-        # Format B: combined param     bbox=min_lon,min_lat,max_lon,max_lat
         min_lat = max_lat = min_lon = max_lon = None
 
         if p.get('min_lat') or p.get('max_lat') or p.get('min_lon') or p.get('max_lon'):
@@ -135,13 +102,13 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['GET', 'POST'])
 def enrich_stop(request):
-    print('enrich_stop called with method', request.method)
     """Fetch bustimes.org for a single stop (by ATCO) and persist updates.
 
     Accepts either GET ?atco=... or POST { atco: '...' }.
     Returns the serialized Stop and any applied updates.
     """
     atco = None
+    logger.debug("enrich_stop called method=%s", request.method)
     if request.method == 'POST':
         atco = request.data.get('atco') or request.data.get('atco_code')
     if not atco:

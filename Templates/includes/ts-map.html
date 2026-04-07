@@ -505,7 +505,28 @@
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    const geolocate = new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: false,
+      showUserLocation: true,
+      showUserHeading: true,
+      fitBoundsOptions: { maxZoom: 16 },
+    });
+    map.addControl(geolocate, 'top-right');
     map.addControl(new maplibregl.ScaleControl(),      'bottom-left');
+
+    geolocate.on('error', (e) => {
+      const code = e && typeof e.code !== 'undefined' ? Number(e.code) : null;
+      if (code === 1) {
+        console.info('Location permission was denied by the user.');
+      } else if (code === 2) {
+        console.info('Location is currently unavailable.');
+      } else if (code === 3) {
+        console.info('Location request timed out.');
+      } else {
+        console.info('Unable to determine current location.');
+      }
+    });
 
     const persistView = () => saveView(map.getCenter().toArray(), map.getZoom());
 

@@ -80,9 +80,6 @@ logger = logging.getLogger(__name__)
 
 def p(msg: str) -> None:
     print(msg, flush=True)
-
-
-# ── Tuning knobs ──────────────────────────────────────────────────────────────
 STP_PRIORITY         = {"C": 0, "N": 1, "O": 2, "P": 3}
 TIMETABLE_BATCH_SIZE = 2_000   # timetable rows per DB flush (was 200)
 LOC_BATCH_SIZE       = 5_000   # ScheduleLocation rows per executemany (was 500)
@@ -105,9 +102,6 @@ LOC_COLS = [
     "platform", "engineering_allowance", "pathing_allowance",
     "performance_allowance", "position",
 ]
-
-
-# ── File helpers ──────────────────────────────────────────────────────────────
 
 def open_maybe_gz(path: Path):
     try:
@@ -146,9 +140,6 @@ def _int_or_none(value) -> Optional[int]:
     except (TypeError, ValueError):
         return None
 
-
-# ── STP selection ─────────────────────────────────────────────────────────────
-
 def _stp_key(rec: dict) -> tuple:
     """Lower tuple = higher priority (wins)."""
     stp   = STP_PRIORITY.get(rec.get("CIF_stp_indicator", ""), 99)
@@ -177,9 +168,6 @@ def _best_record(recs: List[dict], today: datetime.date) -> dict:
     valid   = [r for r in recs if valid_today(r)]
     pool    = valid if valid else recs
     return min(pool, key=_stp_key)
-
-
-# ── Time helpers ──────────────────────────────────────────────────────────────
 
 def _compute_sort_time(raw: Optional[str]) -> Optional[str]:
     if not raw:
@@ -210,9 +198,6 @@ def _compute_sort_time(raw: Optional[str]) -> Optional[str]:
 
 def _pick_sort_time(dep, arr, pas) -> Optional[str]:
     return _compute_sort_time(dep or arr or pas)
-
-
-# ── DB caches ─────────────────────────────────────────────────────────────────
 
 class OperatorCache:
     def __init__(self):
@@ -260,9 +245,6 @@ class StopCache:
             return None
         return self._cache.get(tiploc.strip().upper())
 
-
-# ── Retry helper ──────────────────────────────────────────────────────────────
-
 def _is_lock_error(exc: Exception) -> bool:
     cause = getattr(exc, "__cause__", None) or exc
     errno = getattr(cause, "args", [None])[0]
@@ -282,20 +264,12 @@ def _with_retry(fn, *args, **kwargs):
             time.sleep(delay)
             delay = min(delay * 2, 30)
 
-
-# ── Table name helpers ────────────────────────────────────────────────────────
-
 def _tt_table() -> str:
     return Timetable._meta.db_table
 
 
 def _loc_table() -> str:
     return ScheduleLocation._meta.db_table
-
-
-# ── Raw-SQL writers ───────────────────────────────────────────────────────────
-
-# ── Raw-SQL writers ───────────────────────────────────────────────────────────
 
 def _insert_timetable_rows(rows: List[dict]) -> int:
     """
@@ -404,8 +378,6 @@ def _insert_location_rows(loc_rows: List[tuple]) -> int:
                 total += len(chunk)
     return total
 
-# ── Record expansion ──────────────────────────────────────────────────────────
-
 def _expand_record(uid: str, rec: dict, op_cache: OperatorCache) -> dict:
     seg = rec.get("schedule_segment") or {}
     return {
@@ -456,9 +428,6 @@ def _build_location_rows(
         ))
     return rows
 
-
-# ── Optional parallel location inserter ──────────────────────────────────────
-
 class _LocInserter:
     """
     Background thread that drains a queue of loc_row lists and inserts them.
@@ -499,9 +468,6 @@ class _LocInserter:
     def stop(self) -> None:
         self._q.put(None)
         self._thread.join()
-
-
-# ── Management command ────────────────────────────────────────────────────────
 
 class Command(BaseCommand):
     help = (
@@ -554,8 +520,6 @@ class Command(BaseCommand):
             help="Kill stale/blocking connections then exit.",
         )
 
-    # ── handle ───────────────────────────────────────────────────────────────
-
     def handle(self, *args, **options):
         file_path      = Path(options["file"])
         batch_size     = options["batch_size"] or TIMETABLE_BATCH_SIZE
@@ -588,8 +552,6 @@ class Command(BaseCommand):
         if resume_from:
             p(f"  resume: from line {resume_from + 1}")
         p("=" * 60)
-
-        # ── Session setup ────────────────────────────────────────────────────
         if not dry_run:
             try:
                 with connection.cursor() as cur:
@@ -609,8 +571,6 @@ class Command(BaseCommand):
 
         if do_replace and not dry_run:
             self._truncate_tables()
-
-        # ── Auto-detect empty table → behave like --replace ──────────────────
         if not dry_run and not do_replace and not do_update:
             with connection.cursor() as cur:
                 cur.execute(f"SELECT COUNT(*) FROM `{_tt_table()}` LIMIT 1")
@@ -620,8 +580,6 @@ class Command(BaseCommand):
                 do_replace = True
 
         today = datetime.date.today()
-
-        # ── Cache warm-up ────────────────────────────────────────────────────
         p("\nWarming caches ...")
         t0         = time.time()
         stop_cache = StopCache()
@@ -629,8 +587,6 @@ class Command(BaseCommand):
         p(f"  {len(stop_cache._cache):,} stops  |  "
           f"{len(op_cache._cache):,} operators  |  "
           f"{time.time() - t0:.1f}s")
-
-        # ── Streaming pass ───────────────────────────────────────────────────
         #
         # Strategy:
         #   • Accumulate raw records per UID in uid_recs (dict of lists).
@@ -672,18 +628,12 @@ class Command(BaseCommand):
             if dry_run:
                 loc_count = sum(len(r["schedule_locations"]) for r in expanded)
                 return len(expanded), 0, 0, loc_count
-
-            # ── 1. Write timetable rows ───────────────────────────────────
             if do_update:
                 _with_retry(_upsert_timetable_rows, expanded)
             else:
                 _with_retry(_insert_timetable_rows, expanded)
-
-            # ── 2. Fetch PKs ──────────────────────────────────────────────
             uids      = [r["CIF_train_uid"] for r in expanded]
             uid_to_pk = _with_retry(_fetch_uid_to_pk, uids)
-
-            # ── 3. Decide which UIDs need location rows ───────────────────
             if do_replace or do_update:
                 # replace: table was truncated, every row is new
                 # update: always rebuild locations
@@ -698,16 +648,12 @@ class Command(BaseCommand):
                     uid for uid, pk in uid_to_pk.items()
                     if pk not in already
                 }
-
-            # ── 4. Build location rows ────────────────────────────────────
             loc_rows: List[tuple] = []
             for r in expanded:
                 pk = uid_to_pk.get(r["CIF_train_uid"])
                 if pk is None or r["CIF_train_uid"] not in uids_need_locs:
                     continue
                 loc_rows.extend(_build_location_rows(r, pk, stop_cache))
-
-            # ── 5. Insert locations (parallel or inline) ──────────────────
             if loc_rows:
                 if loc_inserter:
                     loc_inserter.submit(loc_rows)
@@ -794,8 +740,6 @@ class Command(BaseCommand):
             f"created: {created_tt:,} | updated: {updated_tt:,} | "
             f"skipped: {skipped_tt:,} | locations: {created_loc:,}"
         ))
-
-    # ── helpers ───────────────────────────────────────────────────────────────
 
     def _truncate_tables(self):
         p("\nTruncating tables ...")

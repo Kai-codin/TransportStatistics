@@ -213,16 +213,12 @@ def completion_fleet(request, operator_name):
     operator_name = get_canonical_operator(request.user, operator_name)
     show_withdrawn = request.GET.get("show_withdrawn") == "on"
     withdrawn_param = "unknown" if show_withdrawn else "false"
-
-    # ── 1. DETECT TRANSPORT TYPE ──────────────────────────────
     transport_type = (
         TripLog.objects
         .filter(user=request.user, operator__iexact=operator_name)
         .values_list("transport_type", flat=True)
         .first()
     )
-
-    # ── 2. RAIL MODE (catalog + ridden counts) ───────────────
     if transport_type == "rail":
         ridden_trip_rows = (
             TripLog.objects
@@ -306,8 +302,6 @@ def completion_fleet(request, operator_name):
             "is_rail_completion": True,
         })
 
-    # ── 3. BUS MODE (API) ─────────────────────────────────────
-
     # Build ridden map: normalised_reg -> {livery_name -> {count, last_seen, css}}
     ridden_qs = (
         TripLog.objects
@@ -336,8 +330,6 @@ def completion_fleet(request, operator_name):
 
     for k, v in ridden_map.items():
         best = max(v.values(), key=lambda d: d['last_seen'])
-
-    # ── OPERATOR API ──────────────────────────────────────────
     operator_api = requests.get(
         "https://bustimes.org/api/operators/",
         params={"name": operator_name.strip()}
@@ -368,8 +360,6 @@ def completion_fleet(request, operator_name):
         })
 
     noc = operator_api["results"][0]["noc"]
-
-    # ── FULL FLEET ────────────────────────────────────────────
     fleet_data = fetch_full_fleet(noc, withdrawn_param)
 
     vehicles = []
@@ -451,8 +441,6 @@ def completion_fleet(request, operator_name):
             "ridden_liveries": sorted_liveries,
             "previous_regs": prev_regs,
         })
-
-    # ── DEDUPE on reg + fleet + type ─────────────────────────
     seen = {}
     reg_index = {}
     deduped = []
@@ -518,8 +506,6 @@ def completion_fleet(request, operator_name):
                 reg_index[r] = dedup_key
 
     vehicles = deduped
-
-    # ── POST-DEDUPE: re-sort ridden_liveries and clean up previous_regs ──
     for v in vehicles:
         if v["ridden_liveries"]:
             v["ridden_liveries"] = dict(
@@ -527,8 +513,6 @@ def completion_fleet(request, operator_name):
             )
         current = normalise_reg(v["vehicle_id"])
         v["previous_regs"] = [r for r in v["previous_regs"] if normalise_reg(r) != current]
-
-    # ── SORT ──────────────────────────────────────────────────
     vehicles.sort(key=lambda x: (-x["ridden"], fleet_sort_key(x), -x["count"]))
 
     return render(request, "completion_fleet.html", {
@@ -541,16 +525,12 @@ def completion_fleet(request, operator_name):
 @login_required
 def completion_route(request, operator_name):
     operator_name = get_canonical_operator(request.user, operator_name)
-
-    # ── detect mode ──────────────────────────────────────────
     transport_type = (
         TripLog.objects
         .filter(user=request.user, operator__iexact=operator_name)
         .values_list("transport_type", flat=True)
         .first()
     )
-
-    # ── 🚆 RAIL (no API) ─────────────────────────────────────
     if transport_type == "rail":
         routes = (
             TripLog.objects
@@ -576,8 +556,6 @@ def completion_route(request, operator_name):
             "routes": routes,
             "operator_name": operator_name
         })
-
-    # ── 🚌 BUS (API) ─────────────────────────────────────────
 
     # user rides
     ridden_qs = (
@@ -610,8 +588,6 @@ def completion_route(request, operator_name):
 
     # full service list
     services = fetch_full_services(noc)
-
-    # ── 🔥 dedupe routes (IMPORTANT) ─────────────────────────
     route_map = {}
 
     for s in services:
@@ -633,8 +609,6 @@ def completion_route(request, operator_name):
     for r in route_map.values():
         r["ridden"] = r["count"] > 0
         routes.append(r)
-
-    # ── sorting ─────────────────────────────────────────────
     def route_sort_key(name):
         try:
             return (0, int(name))
@@ -884,8 +858,6 @@ def completion_details(request, operator_name):
         user=request.user,
         operator__iexact=operator_name
     )
-
-    # ── VEHICLES ───────────────────────────────────────────
     vehicles = (
         qs.annotate(
             vehicle=Coalesce(
@@ -900,8 +872,6 @@ def completion_details(request, operator_name):
         .distinct()
         .count()
     )
-
-    # ── ROUTES ─────────────────────────────────────────────
     routes = (
         qs.exclude(headcode__isnull=True)
         .exclude(headcode__exact='')
@@ -909,15 +879,11 @@ def completion_details(request, operator_name):
         .distinct()
         .count()
     )
-
-    # ── LIVERIES (bus only really) ─────────────────────────
     liveries = (
         qs.values('bus_livery_name', 'bus_livery')
         .annotate(count=Count('id'))
         .order_by('-count')
     )
-
-    # ── VEHICLE TYPES ──────────────────────────────────────
     types = (
         qs.annotate(
             vtype=Coalesce('bus_type', 'train_type')
@@ -928,11 +894,7 @@ def completion_details(request, operator_name):
         .annotate(count=Count('id'))
         .order_by('-count')
     )
-
-    # ── TOP TYPES (top 5) ──────────────────────────────────
     top_types = list(types[:5])
-
-    # ── EXTRA NICE STATS ───────────────────────────────────
     total_trips = qs.count()
 
     most_used_route = (
@@ -943,8 +905,6 @@ def completion_details(request, operator_name):
         .order_by('-count')
         .first()
     )
-
-    # ── ROUTE LIST (for display) ─────────────────────────
     route_list = (
         qs.exclude(headcode__isnull=True)
         .exclude(headcode__exact='')

@@ -45,10 +45,7 @@ class Command(BaseCommand):
         file_path = options.get('file')
         url = options.get('url')
         cache_ttl = options.get('cache_ttl')
-
-        # =========================
         # LOAD DATA
-        # =========================
         load_start = time.time()
 
         if file_path:
@@ -82,10 +79,7 @@ class Command(BaseCommand):
 
         self.log(f"Loaded {len(stations)} stations")
         self.log(f"Load phase took {time.time() - load_start:.2f}s")
-
-        # =========================
         # PREP DB
-        # =========================
         db_start = time.time()
 
         rls_type, _ = StopType.objects.get_or_create(
@@ -104,10 +98,7 @@ class Command(BaseCommand):
         to_create = []
         to_update = []
         skipped = 0
-
-        # =========================
         # PROCESS DATA
-        # =========================
         for i, st in enumerate(stations, start=1):
             name = st.get('stationName') or st.get('name')
             lat = parse_float(st.get('lat') or st.get('latitude') or st.get('y'))
@@ -150,10 +141,7 @@ class Command(BaseCommand):
                 self.log(f"Processed {i}/{len(stations)}")
 
         self.log(f"Prepared: {len(to_create)} creates, {len(to_update)} updates")
-
-        # =========================
         # WRITE TO DB
-        # =========================
         write_start = time.time()
 
         # Invalidate stale cache before writing so in-flight requests hit DB
@@ -175,10 +163,7 @@ class Command(BaseCommand):
 
         self.log(f"DB phase took {time.time() - write_start:.2f}s")
         self.log(f"Total DB time: {time.time() - db_start:.2f}s")
-
-        # =========================
         # UPDATE REDIS CACHE
-        # =========================
         cache_start = time.time()
         self.log("Rebuilding Redis cache...")
 
@@ -193,10 +178,7 @@ class Command(BaseCommand):
             self.stderr.write(f"⚠️  Redis cache update failed (DB is still up to date): {e}")
 
         self.log(f"Cache phase took {time.time() - cache_start:.2f}s")
-
-        # =========================
         # DONE
-        # =========================
         total_time = time.time() - start_time
 
         self.stdout.write(

@@ -1,9 +1,13 @@
 import json
+import logging
 import os
-from django.utils import timezone
+
 from django.db import transaction
+from django.utils import timezone
 
 from .models import ImportJob, TripLog
+
+logger = logging.getLogger(__name__)
 
 
 def _trim_headcode(val):
@@ -20,7 +24,6 @@ def _normalize_coords(coords):
     if coords is None:
         return None
 
-    # dict input — keys tell us exactly which is which
     if isinstance(coords, dict):
         lat = coords.get('lat') or coords.get('latitude') or coords.get('y')
         lon = coords.get('lon') or coords.get('lng') or coords.get('longitude') or coords.get('x')
@@ -29,7 +32,6 @@ def _normalize_coords(coords):
         except Exception:
             return None
 
-    # list/tuple input — source data arrives as [lat, lon], need to detect and swap
     if isinstance(coords, (list, tuple)) and len(coords) >= 2:
         try:
             a = float(coords[0])
@@ -37,34 +39,23 @@ def _normalize_coords(coords):
         except Exception:
             return None
 
-        # Heuristic: a valid longitude must be in (-180, 180],
-        # a valid latitude must be in [-90, 90].
-        # If coords[0] looks like a latitude (|a| <= 90) and coords[1] looks
-        # like a longitude (|b| > 90 OR |b| > |a| when both are small),
-        # treat input as [lat, lon] and swap to [lon, lat].
         a_could_be_lat = abs(a) <= 90
         b_could_be_lat = abs(b) <= 90
         a_could_be_lon = abs(a) <= 180
         b_could_be_lon = abs(b) <= 180
 
         if a_could_be_lat and b_could_be_lon and not b_could_be_lat:
-            # b is clearly a longitude (|b| > 90), so input is [lat, lon]
             return [b, a]
 
         if a_could_be_lat and b_could_be_lon:
-            # Both values are within ±90 so we can't tell from range alone.
-            # For UK/European data latitudes are typically > |longitude|,
-            # so if a > |b| it's almost certainly [lat, lon] — swap.
-            # If b > |a| it's probably already [lon, lat] — keep.
             if abs(a) > abs(b):
-                return [b, a]   # [lat, lon] → swap
-            else:
-                return [a, b]   # already [lon, lat]
+                return [b, a]
+            return [a, b]
 
-        # Fallback: treat as [lon, lat] (GeoJSON standard)
         return [a, b]
 
     return None
+
 
 def run_import_job(job_id, policy='skip'):
     """Background import worker for an ImportJob.
@@ -75,7 +66,7 @@ def run_import_job(job_id, policy='skip'):
     if not job:
         return
 
-    print(f"[import-job {job.pk}] starting, file={job.filepath}")
+    logger.info("[import-job %s] starting, file=%s", job.pk, job.filepath)
     job.status = ImportJob.STATUS_RUNNING
     job.started_at = timezone.now()
     job.save()
@@ -99,20 +90,19 @@ def run_import_job(job_id, policy='skip'):
         from django.utils.dateparse import parse_date, parse_time
 
         for i, svc in enumerate(data):
-            # debug info
             svc_id = ''
             try:
                 svc_id = str(svc.get('id') or svc.get('service_id') or svc.get('service_name') or '')[:80]
             except Exception:
                 pass
-            print(f"[import-job {job.pk}] processing {i+1}/{total} id={svc_id}")
+            logger.debug("[import-job %s] processing %s/%s id=%s", job.pk, i + 1, total, svc_id)
 
             try:
                 stops = svc.get('stops', []) or []
                 if not stops:
                     failed += 1
                     errors.append({'index': i, 'error': 'no stops'})
-                    print(f"[import-job {job.pk}] item {i} has no stops; skipping")
+                    logger.warning("[import-job %s] item %s has no stops; skipping", job.pk, i)
                     continue
 
                 origin = stops[0].get('stop_name') or stops[0].get('name') or ''
@@ -125,12 +115,9 @@ def run_import_job(job_id, policy='skip'):
                 scheduled_departure = None
                 scheduled_arrival = None
 
-                # parse departure (accept date-only values and common keys)
                 try:
-                    # allow date-only keys from stop or service
                     if not departure:
-                        # try alternate keys
-                        departure = st.get('departure_date') or svc.get('departure_date') or departure
+                        departure = stops[0].get('departure_date') or svc.get('departure_date') or departure
 
                     if isinstance(departure, str) and 'T' in departure:
                         date_part, time_part = departure.split('T', 1)
@@ -141,10 +128,8 @@ def run_import_job(job_id, policy='skip'):
                         service_date = parse_date(date_part)
                         scheduled_departure = parse_time(time_part)
                     elif isinstance(departure, str) and ':' in departure:
-                        # time-only string
                         scheduled_departure = parse_time(departure)
                     elif isinstance(departure, str):
-                        # date-only string like '2026-03-08' -> set time to 00:00
                         d = parse_date(departure)
                         if d:
                             service_date = d
@@ -152,7 +137,6 @@ def run_import_job(job_id, policy='skip'):
                 except Exception:
                     pass
 
-                # parse arrival (accept date-only values and common keys)
                 try:
                     if not arrival:
                         arrival = stops[-1].get('arrival_date') or svc.get('arrival_date') or arrival
@@ -166,14 +150,12 @@ def run_import_job(job_id, policy='skip'):
                     elif isinstance(arrival, str) and ':' in arrival:
                         scheduled_arrival = parse_time(arrival)
                     elif isinstance(arrival, str):
-                        # date-only string -> set time to 00:00
                         da = parse_date(arrival)
                         if da:
                             scheduled_arrival = parse_time('00:00')
                 except Exception:
                     pass
 
-                # duplicate detection
                 existing_qs = TripLog.objects.filter(
                     user=job.user,
                     origin_name=origin,
@@ -185,10 +167,9 @@ def run_import_job(job_id, policy='skip'):
 
                 if is_dup and policy == 'skip':
                     duplicates += 1
-                    print(f"[import-job {job.pk}] item {i} duplicate detected; skipping")
+                    logger.info("[import-job %s] item %s duplicate detected; skipping", job.pk, i)
                     continue
 
-                # build full_locations
                 full_locations = []
                 for st in stops:
                     coords_raw = st.get('coordinates') or st.get('latlon') or st.get('location') or None
@@ -202,13 +183,11 @@ def run_import_job(job_id, policy='skip'):
                         'coordinates': coords,
                     })
 
-                # build route geometry from polyline arrays if present
                 route_coords = []
                 poly_arr = svc.get('polyline_to_stop') or svc.get('polyline') or []
                 if poly_arr and isinstance(poly_arr, list):
                     for segment in poly_arr:
                         if isinstance(segment, list):
-                            # normalize any coordinate pairs inside segment
                             for pair in segment:
                                 nc = _normalize_coords(pair)
                                 if nc:
@@ -220,7 +199,6 @@ def run_import_job(job_id, policy='skip'):
                         if c:
                             route_coords.append(c)
 
-                # extract vehicle info (if present)
                 veh = None
                 try:
                     vehicles = svc.get('vehicle') or svc.get('vehicle_data') or []
@@ -261,7 +239,6 @@ def run_import_job(job_id, policy='skip'):
                         vlivery = ''
                         vlivery_name = ''
 
-                # create or update TripLog
                 if is_dup and policy == 'overwrite':
                     trip = existing_qs.first()
                     svc_head = svc.get('service_name') or svc.get('service') or svc.get('trip') or svc.get('id') or ''
@@ -274,7 +251,6 @@ def run_import_job(job_id, policy='skip'):
                     trip.full_locations = full_locations
                     trip.full_route_geometry = route_coords
                     trip.route_geometry = route_coords
-                    # update vehicle fields
                     try:
                         trip.bus_fleet_number = vfleet or trip.bus_fleet_number
                         trip.bus_registration = vreg or trip.bus_registration
@@ -286,7 +262,7 @@ def run_import_job(job_id, policy='skip'):
                     with transaction.atomic():
                         trip.save()
                     inserted += 1
-                    print(f"[import-job {job.pk}] item {i} overwritten existing trip id={trip.pk}")
+                    logger.info("[import-job %s] item %s overwritten existing trip id=%s", job.pk, i, trip.pk)
                 else:
                     svc_head = svc.get('service_name') or svc.get('service') or svc.get('trip') or svc.get('id') or ''
                     trip = TripLog(
@@ -299,7 +275,6 @@ def run_import_job(job_id, policy='skip'):
                         destination_name=destination,
                         scheduled_departure=scheduled_departure,
                         scheduled_arrival=scheduled_arrival,
-                        # vehicle fields
                         bus_fleet_number=vfleet,
                         bus_registration=vreg,
                         bus_type=vtype,
@@ -312,27 +287,38 @@ def run_import_job(job_id, policy='skip'):
                     with transaction.atomic():
                         trip.save()
                     inserted += 1
-                    print(f"[import-job {job.pk}] item {i} created trip id={trip.pk}")
+                    logger.info("[import-job %s] item %s created trip id=%s", job.pk, i, trip.pk)
 
-                # periodic save
                 if (i + 1) % 10 == 0:
                     job.inserted = inserted
                     job.duplicates = duplicates
                     job.failed_count = failed
                     job.save()
-                    print(f"[import-job {job.pk}] progress {i+1}/{total} inserted={inserted} dupes={duplicates} failed={failed}")
+                    logger.info(
+                        "[import-job %s] progress %s/%s inserted=%s dupes=%s failed=%s",
+                        job.pk,
+                        i + 1,
+                        total,
+                        inserted,
+                        duplicates,
+                        failed,
+                    )
 
             except Exception as e:
                 failed += 1
-                # capture error and a small sample
                 try:
                     sample = json.dumps(svc if isinstance(svc, dict) else {'value': str(svc)})[:800]
                 except Exception:
                     sample = '<unserializable service>'
                 errors.append({'index': i, 'error': str(e), 'sample': sample})
-                print(f"[import-job {job.pk}] ERROR processing item {i}: {e}; sample={sample}")
+                logger.exception(
+                    "[import-job %s] ERROR processing item %s: %s; sample=%s",
+                    job.pk,
+                    i,
+                    e,
+                    sample,
+                )
 
-        # final save
         job.inserted = inserted
         job.duplicates = duplicates
         job.failed_count = failed
@@ -341,11 +327,11 @@ def run_import_job(job_id, policy='skip'):
         job.result_log = job.result_log or {}
         job.result_log.update({'inserted': inserted, 'duplicates': duplicates, 'failed': failed, 'errors': errors[:50]})
         job.save()
-        print(f"[import-job {job.pk}] completed inserted={inserted} dupes={duplicates} failed={failed}")
+        logger.info("[import-job %s] completed inserted=%s dupes=%s failed=%s", job.pk, inserted, duplicates, failed)
 
     except Exception as exc:
         job.status = ImportJob.STATUS_FAILED
         job.completed_at = timezone.now()
         job.result_log = {'error': str(exc)}
         job.save()
-        print(f"[import-job {job.pk}] FAILED: {exc}")
+        logger.exception("[import-job %s] FAILED: %s", job.pk, exc)

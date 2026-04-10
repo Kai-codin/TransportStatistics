@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 
 from django.db import transaction
 from django.utils import timezone
@@ -10,19 +11,74 @@ from .models import ImportJob, TripLog
 logger = logging.getLogger(__name__)
 
 
+# -------------------------
+# Helpers
+# -------------------------
+
 def _trim_headcode(val):
     if not isinstance(val, str):
         return str(val)[:20]
-    return val[:20] if len(val) > 20 else val
+    return val[:20]
+
+
+def _get_key(obj, base):
+    """Case-insensitive prefix match for obfuscated keys."""
+    if not isinstance(obj, dict):
+        return None
+    base = base.lower()
+    for k, v in obj.items():
+        if k.lower().startswith(base):
+            return v
+    return None
+
+
+def _get_all_keys(obj, base):
+    if not isinstance(obj, dict):
+        return []
+    base = base.lower()
+    return [v for k, v in obj.items() if k.lower().startswith(base)]
+
+
+def _find_list_of_dicts(obj):
+    """Find first list of dicts inside object."""
+    if not isinstance(obj, dict):
+        return None
+    for v in obj.values():
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            return v
+    return None
+
+
+def _detect_stops(svc):
+    """Schema-agnostic stop detection."""
+    # Try known prefix first
+    stops = svc.get('stops') or _get_key(svc, 'stations')
+    if stops:
+        return stops
+
+    # Fallback: detect by structure
+    candidates = _find_list_of_dicts(svc)
+    if not candidates:
+        return []
+
+    for item in candidates:
+        keys = [k.lower() for k in item.keys()]
+        if any("berth" in k or "name" in k for k in keys):
+            return candidates
+
+    return []
 
 
 def _normalize_coords(coords):
-    """
-    Always return coordinates in [lon, lat] format (GeoJSON standard).
-    Input lists may arrive as [lat, lon] — detect and swap automatically.
-    """
     if coords is None:
         return None
+
+    if isinstance(coords, str) and ',' in coords:
+        try:
+            lat, lon = coords.split(',')
+            return [float(lon), float(lat)]
+        except Exception:
+            return None
 
     if isinstance(coords, dict):
         lat = coords.get('lat') or coords.get('latitude') or coords.get('y')
@@ -36,37 +92,71 @@ def _normalize_coords(coords):
         try:
             a = float(coords[0])
             b = float(coords[1])
+            return [b, a] if abs(a) <= 90 else [a, b]
         except Exception:
             return None
-
-        a_could_be_lat = abs(a) <= 90
-        b_could_be_lat = abs(b) <= 90
-        a_could_be_lon = abs(a) <= 180
-        b_could_be_lon = abs(b) <= 180
-
-        if a_could_be_lat and b_could_be_lon and not b_could_be_lat:
-            return [b, a]
-
-        if a_could_be_lat and b_could_be_lon:
-            if abs(a) > abs(b):
-                return [b, a]
-            return [a, b]
-
-        return [a, b]
 
     return None
 
 
-def run_import_job(job_id, policy='skip'):
-    """Background import worker for an ImportJob.
+def _parse_timestamp(ts):
+    try:
+        dt = datetime.fromtimestamp(ts)
+        return dt.date(), dt.time()
+    except Exception:
+        return None, None
 
-    policy: 'skip' | 'import_all' | 'overwrite'
-    """
+
+def _get_name(st):
+    return (
+        st.get('stop_name')
+        or st.get('name')
+        or _get_key(st, 'berthName')
+        or ''
+    )
+
+
+def _detect_vehicle(svc):
+    """Schema-agnostic vehicle detection."""
+    vehicles = svc.get('vehicle') or _get_key(svc, 'fleetItem')
+
+    if not vehicles:
+        vehicles = _find_list_of_dicts(svc)
+
+    if not isinstance(vehicles, list) or not vehicles:
+        return {}, {}, {}
+
+    v = vehicles[0]
+
+    vreg = _get_key(v, 'unitReg') or ''
+    vfleet = _get_key(v, 'unitName') or ''
+
+    vdata = (
+        _get_key(v, 'fleetItemData')
+        or v.get('vehicle_data')
+        or {}
+    )
+
+    vtype = (vdata.get('vehicle_type') or {}).get('name', '')
+
+    l = vdata.get('livery') or {}
+    vlivery = l.get('left') or l.get('colour') or ''
+    vlivery_name = l.get('name') or ''
+
+    return vfleet, vreg, vtype, vlivery, vlivery_name
+
+
+# -------------------------
+# Main job
+# -------------------------
+
+def run_import_job(job_id, policy='skip'):
     job = ImportJob.objects.filter(pk=job_id).first()
     if not job:
         return
 
-    logger.info("[import-job %s] starting, file=%s", job.pk, job.filepath)
+    logger.info("[import-job %s] starting", job.pk)
+
     job.status = ImportJob.STATUS_RUNNING
     job.started_at = timezone.now()
     job.save()
@@ -78,7 +168,7 @@ def run_import_job(job_id, policy='skip'):
 
     try:
         if not os.path.exists(job.filepath):
-            raise FileNotFoundError(f"Import file not found: {job.filepath}")
+            raise FileNotFoundError(job.filepath)
 
         with open(job.filepath, 'r', encoding='utf8') as fh:
             data = json.load(fh)
@@ -87,75 +177,49 @@ def run_import_job(job_id, policy='skip'):
         job.total = total
         job.save()
 
-        from django.utils.dateparse import parse_date, parse_time
+        from django.utils.dateparse import parse_time
 
         for i, svc in enumerate(data):
-            svc_id = ''
             try:
-                svc_id = str(svc.get('id') or svc.get('service_id') or svc.get('service_name') or '')[:80]
-            except Exception:
-                pass
-            logger.debug("[import-job %s] processing %s/%s id=%s", job.pk, i + 1, total, svc_id)
-
-            try:
-                stops = svc.get('stops', []) or []
+                # -------------------------
+                # Stops
+                # -------------------------
+                stops = _detect_stops(svc)
                 if not stops:
                     failed += 1
-                    errors.append({'index': i, 'error': 'no stops'})
-                    logger.warning("[import-job %s] item %s has no stops; skipping", job.pk, i)
                     continue
 
-                origin = stops[0].get('stop_name') or stops[0].get('name') or ''
-                destination = stops[-1].get('stop_name') or stops[-1].get('name') or ''
+                origin = _get_name(stops[0])
+                destination = _get_name(stops[-1])
 
-                departure = stops[0].get('departure_time') or stops[0].get('departure') or ''
-                arrival = stops[-1].get('departure_time') or stops[-1].get('departure') or ''
-
+                # -------------------------
+                # Time
+                # -------------------------
                 service_date = None
                 scheduled_departure = None
                 scheduled_arrival = None
 
-                try:
-                    if not departure:
-                        departure = stops[0].get('departure_date') or svc.get('departure_date') or departure
+                ts = _get_key(stops[0], 'fromTime')
+                if ts:
+                    service_date, scheduled_departure = _parse_timestamp(ts)
 
-                    if isinstance(departure, str) and 'T' in departure:
-                        date_part, time_part = departure.split('T', 1)
-                        service_date = parse_date(date_part)
-                        scheduled_departure = parse_time(time_part)
-                    elif isinstance(departure, str) and ' ' in departure:
-                        date_part, time_part = departure.split(' ', 1)
-                        service_date = parse_date(date_part)
-                        scheduled_departure = parse_time(time_part)
-                    elif isinstance(departure, str) and ':' in departure:
-                        scheduled_departure = parse_time(departure)
-                    elif isinstance(departure, str):
-                        d = parse_date(departure)
-                        if d:
-                            service_date = d
-                            scheduled_departure = parse_time('00:00')
-                except Exception:
-                    pass
+                ts_arr = _get_key(stops[-1], 'fromTime')
+                if ts_arr:
+                    _, scheduled_arrival = _parse_timestamp(ts_arr)
 
-                try:
-                    if not arrival:
-                        arrival = stops[-1].get('arrival_date') or svc.get('arrival_date') or arrival
+                if not scheduled_departure:
+                    dep = stops[0].get('departure_time') or stops[0].get('departure')
+                    if isinstance(dep, str) and ':' in dep:
+                        scheduled_departure = parse_time(dep)
 
-                    if isinstance(arrival, str) and 'T' in arrival:
-                        _, time_part2 = arrival.split('T', 1)
-                        scheduled_arrival = parse_time(time_part2)
-                    elif isinstance(arrival, str) and ' ' in arrival:
-                        _, time_part2 = arrival.split(' ', 1)
-                        scheduled_arrival = parse_time(time_part2)
-                    elif isinstance(arrival, str) and ':' in arrival:
-                        scheduled_arrival = parse_time(arrival)
-                    elif isinstance(arrival, str):
-                        da = parse_date(arrival)
-                        if da:
-                            scheduled_arrival = parse_time('00:00')
-                except Exception:
-                    pass
+                if not scheduled_arrival:
+                    arr = stops[-1].get('departure_time') or stops[-1].get('departure')
+                    if isinstance(arr, str) and ':' in arr:
+                        scheduled_arrival = parse_time(arr)
 
+                # -------------------------
+                # Duplicate check
+                # -------------------------
                 existing_qs = TripLog.objects.filter(
                     user=job.user,
                     origin_name=origin,
@@ -163,175 +227,126 @@ def run_import_job(job_id, policy='skip'):
                     service_date=service_date,
                     scheduled_departure=scheduled_departure,
                 )
+
                 is_dup = existing_qs.exists()
 
                 if is_dup and policy == 'skip':
                     duplicates += 1
-                    logger.info("[import-job %s] item %s duplicate detected; skipping", job.pk, i)
                     continue
 
+                # -------------------------
+                # Locations
+                # -------------------------
                 full_locations = []
+
                 for st in stops:
-                    coords_raw = st.get('coordinates') or st.get('latlon') or st.get('location') or None
+                    coords_raw = (
+                        st.get('coordinates')
+                        or _get_key(st, 'position')
+                        or st.get('latlon')
+                    )
+
                     coords = _normalize_coords(coords_raw)
+
                     full_locations.append({
-                        'name': st.get('stop_name') or st.get('name') or '',
+                        'name': _get_name(st),
                         'crs': st.get('crs') or '',
                         'tiploc': st.get('tiploc') or '',
-                        'arrival': st.get('arrival_time') or st.get('departure_time') or st.get('arrival') or '',
-                        'departure': st.get('departure_time') or st.get('departure') or '',
+                        'arrival': st.get('arrival_time') or '',
+                        'departure': st.get('departure_time') or '',
                         'coordinates': coords,
                     })
 
+                # -------------------------
+                # Route geometry
+                # -------------------------
                 route_coords = []
-                poly_arr = svc.get('polyline_to_stop') or svc.get('polyline') or []
-                if poly_arr and isinstance(poly_arr, list):
-                    for segment in poly_arr:
-                        if isinstance(segment, list):
-                            for pair in segment:
-                                nc = _normalize_coords(pair)
-                                if nc:
-                                    route_coords.append(nc)
+
+                for st in stops:
+                    trace = _get_key(st, 'traceToBerth')
+                    if trace:
+                        for pair in trace.split(';'):
+                            c = _normalize_coords(pair)
+                            if c:
+                                route_coords.append(c)
 
                 if not route_coords:
-                    for loc in full_locations:
-                        c = loc.get('coordinates')
-                        if c:
-                            route_coords.append(c)
+                    poly = svc.get('polyline') or []
+                    for seg in poly:
+                        for p in seg:
+                            c = _normalize_coords(p)
+                            if c:
+                                route_coords.append(c)
 
-                veh = None
-                try:
-                    vehicles = svc.get('vehicle') or svc.get('vehicle_data') or []
-                    if isinstance(vehicles, list) and vehicles:
-                        veh = vehicles[0]
-                    elif isinstance(vehicles, dict):
-                        veh = vehicles
-                except Exception:
-                    veh = None
+                if not route_coords:
+                    route_coords = [l['coordinates'] for l in full_locations if l['coordinates']]
 
-                vfleet = ''
-                vreg = ''
-                vtype = ''
-                vlivery = ''
-                vlivery_name = ''
-                if veh:
-                    try:
-                        vfleet = veh.get('fleet_name') or (veh.get('vehicle_data') or {}).get('fleet_name') or ''
-                    except Exception:
-                        vfleet = ''
-                    try:
-                        vreg = veh.get('fleet_reg') or (veh.get('vehicle_data') or {}).get('reg') or ''
-                    except Exception:
-                        vreg = ''
-                    try:
-                        vtype = (veh.get('vehicle_data') or {}).get('vehicle_type', {})
-                        if isinstance(vtype, dict):
-                            vtype = vtype.get('name') or ''
-                        else:
-                            vtype = str(vtype)
-                    except Exception:
-                        vtype = ''
-                    try:
-                        l = (veh.get('vehicle_data') or {}).get('livery') or {}
-                        vlivery = l.get('left') or l.get('colour') or l.get('hex') or ''
-                        vlivery_name = l.get('name') or ''
-                    except Exception:
-                        vlivery = ''
-                        vlivery_name = ''
+                # -------------------------
+                # Vehicle
+                # -------------------------
+                vfleet, vreg, vtype, vlivery, vlivery_name = _detect_vehicle(svc)
 
+                # -------------------------
+                # Headcode
+                # -------------------------
+                svc_head = (
+                    svc.get('service_name')
+                    or svc.get('service')
+                    or svc.get('trip')
+                    or _get_key(svc, 'traverseName')
+                    or ''
+                )
+
+                # -------------------------
+                # Save
+                # -------------------------
                 if is_dup and policy == 'overwrite':
                     trip = existing_qs.first()
-                    svc_head = svc.get('service_name') or svc.get('service') or svc.get('trip') or svc.get('id') or ''
-                    trip.headcode = _trim_headcode(svc_head)
-                    trip.origin_name = origin
-                    trip.destination_name = destination
-                    trip.service_date = service_date
-                    trip.scheduled_departure = scheduled_departure
-                    trip.scheduled_arrival = scheduled_arrival
-                    trip.full_locations = full_locations
-                    trip.full_route_geometry = route_coords
-                    trip.route_geometry = route_coords
-                    try:
-                        trip.bus_fleet_number = vfleet or trip.bus_fleet_number
-                        trip.bus_registration = vreg or trip.bus_registration
-                        trip.bus_type = vtype or trip.bus_type
-                        trip.bus_livery = vlivery or trip.bus_livery
-                        trip.bus_livery_name = vlivery_name or trip.bus_livery_name
-                    except Exception:
-                        pass
-                    with transaction.atomic():
-                        trip.save()
-                    inserted += 1
-                    logger.info("[import-job %s] item %s overwritten existing trip id=%s", job.pk, i, trip.pk)
                 else:
-                    svc_head = svc.get('service_name') or svc.get('service') or svc.get('trip') or svc.get('id') or ''
-                    trip = TripLog(
-                        user=job.user,
-                        headcode=_trim_headcode(svc_head),
-                        operator=svc.get('operator') or '',
-                        service_date=service_date,
-                        transport_type=svc.get('transport_type') or TripLog.TRANSPORT_BUS,
-                        origin_name=origin,
-                        destination_name=destination,
-                        scheduled_departure=scheduled_departure,
-                        scheduled_arrival=scheduled_arrival,
-                        bus_fleet_number=vfleet,
-                        bus_registration=vreg,
-                        bus_type=vtype,
-                        bus_livery=vlivery,
-                        bus_livery_name=vlivery_name,
-                        full_locations=full_locations,
-                        full_route_geometry=route_coords,
-                        route_geometry=route_coords,
-                    )
-                    with transaction.atomic():
-                        trip.save()
-                    inserted += 1
-                    logger.info("[import-job %s] item %s created trip id=%s", job.pk, i, trip.pk)
+                    trip = TripLog(user=job.user)
 
-                if (i + 1) % 10 == 0:
-                    job.inserted = inserted
-                    job.duplicates = duplicates
-                    job.failed_count = failed
-                    job.save()
-                    logger.info(
-                        "[import-job %s] progress %s/%s inserted=%s dupes=%s failed=%s",
-                        job.pk,
-                        i + 1,
-                        total,
-                        inserted,
-                        duplicates,
-                        failed,
-                    )
+                trip.headcode = _trim_headcode(svc_head)
+                trip.origin_name = origin
+                trip.destination_name = destination
+                trip.service_date = service_date
+                trip.scheduled_departure = scheduled_departure
+                trip.scheduled_arrival = scheduled_arrival
+                trip.full_locations = full_locations
+                trip.route_geometry = route_coords
+                trip.full_route_geometry = route_coords
+
+                trip.bus_fleet_number = vfleet
+                trip.bus_registration = vreg
+                trip.bus_type = vtype
+                trip.bus_livery = vlivery
+                trip.bus_livery_name = vlivery_name
+
+                with transaction.atomic():
+                    trip.save()
+
+                inserted += 1
 
             except Exception as e:
                 failed += 1
-                try:
-                    sample = json.dumps(svc if isinstance(svc, dict) else {'value': str(svc)})[:800]
-                except Exception:
-                    sample = '<unserializable service>'
-                errors.append({'index': i, 'error': str(e), 'sample': sample})
-                logger.exception(
-                    "[import-job %s] ERROR processing item %s: %s; sample=%s",
-                    job.pk,
-                    i,
-                    e,
-                    sample,
-                )
+                errors.append({'index': i, 'error': str(e)})
+                logger.exception("[import-job %s] error on item %s", job.pk, i)
 
         job.inserted = inserted
         job.duplicates = duplicates
         job.failed_count = failed
         job.status = ImportJob.STATUS_COMPLETED
         job.completed_at = timezone.now()
-        job.result_log = job.result_log or {}
-        job.result_log.update({'inserted': inserted, 'duplicates': duplicates, 'failed': failed, 'errors': errors[:50]})
+        job.result_log = {
+            'inserted': inserted,
+            'duplicates': duplicates,
+            'failed': failed,
+            'errors': errors[:50],
+        }
         job.save()
-        logger.info("[import-job %s] completed inserted=%s dupes=%s failed=%s", job.pk, inserted, duplicates, failed)
 
     except Exception as exc:
         job.status = ImportJob.STATUS_FAILED
         job.completed_at = timezone.now()
         job.result_log = {'error': str(exc)}
         job.save()
-        logger.exception("[import-job %s] FAILED: %s", job.pk, exc)
+        logger.exception("[import-job %s] FAILED", job.pk)

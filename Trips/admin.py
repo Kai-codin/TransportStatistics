@@ -2,16 +2,33 @@ from django.contrib import admin, messages
 from django.db import transaction
 from .models import TripLog
 from .models import ImportJob
+from django.utils.html import format_html
  
 @admin.register(TripLog)
 class TripLogAdmin(admin.ModelAdmin):
     list_display  = ['user', 'headcode', 'operator', 'transport_type', 'origin_name',
-                     'destination_name', 'service_date',]
+                     'destination_name', 'service_date', 'livery_preview']
     list_filter   = ['transport_type', 'service_date', 'user']
     search_fields = ['headcode', 'origin_name', 'destination_name', 'operator', 'bus_registration', 'bus_fleet_number', 'train_fleet_number']
-    readonly_fields = ['logged_at']
+    readonly_fields = ['logged_at', 'livery_preview']
     autocomplete_fields = ['user']
     actions = ['flip_lat_lon']
+
+    def livery_preview(self, obj):
+        if not obj:
+            return ''
+        css = (obj.bus_livery or '').strip()
+        name = obj.bus_livery_name or ''
+        if not css:
+            # fallback: show placeholder and name
+            return format_html('<div style="display:inline-block;vertical-align:middle;color:#666">{}</div>', name or '—')
+        # show swatch and name; inline style ensures admin shows correctly without extra JS
+        return format_html(
+            '<div style="display:inline-block;vertical-align:middle;margin-right:8px;">'
+            '<div class="ts-livery-box" data-livery-bg="{}" style="width: 36px;aspect-ratio: 18 / 12;border:1px solid #ccc;background:{}"></div>', css, css
+        )
+
+    livery_preview.short_description = 'Livery'
 
     def _swap_pair(self, pair):
         try:

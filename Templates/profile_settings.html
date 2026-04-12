@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Profile Settings — Transport Statistics{% endblock %}
+{% block title %}Profile Settings - Transport Statistics{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <link rel="stylesheet" href="{% static 'css/pages/profile_settings.css' %}" data-ts-theme />
@@ -61,7 +61,7 @@
               <path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
             </svg>
           </div>
-          <span class="ts-settings-card-title">Import services.json</span>
+          <span class="ts-settings-card-title">Import TranitTracker</span>
         </div>
         <div class="ts-settings-card-body">
           <form method="post" enctype="multipart/form-data">
@@ -88,7 +88,7 @@
                   <option value="import_all">Import all</option>
                 </select>
               {% endif %}
-
+                <small>Look for a file like, services.json, stages.json, jaunts.json</small>
               <button class="ts-btn-primary ts-btn-sm ts-btn-push-right" type="submit">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 5l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Upload and scan
@@ -127,7 +127,7 @@
                       {% if job.duplicates %}
                         <span class="ts-num-muted">{{ job.duplicates }}</span>
                       {% else %}
-                        <span class="ts-cell-empty">—</span>
+                        <span class="ts-cell-empty">-</span>
                       {% endif %}
                     </td>
                     <td>
@@ -162,6 +162,50 @@
               </table>
             </div>
           </div>
+          {% endif %}
+
+        </div>
+      </div>
+
+      {# ── Export / Import user data card ── #}
+      <div class="ts-settings-card">
+        <div class="ts-settings-card-header">
+          <div class="ts-settings-card-icon">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 1v8M5 6l3 3 3-3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <span class="ts-settings-card-title">Export / Import Data</span>
+        </div>
+        <div class="ts-settings-card-body">
+          <div class="ts-export-row">
+            <a class="ts-btn-primary ts-btn-sm" href="{% url 'profile_export' %}">
+              Export my data
+            </a>
+            <small>Download a JSON file containing trip logs.</small>
+          </div>
+          <form method="post" class="ts-import-table-wrap" enctype="multipart/form-data" action="{% url 'profile_import' %}">
+            {% csrf_token %}
+            <div class="ts-upload-row">
+              <div class="ts-file-input-wrapper">
+                <label class="ts-file-label">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 5l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Choose file
+                  <input type="file" name="user_data_file" />
+                </label>
+              </div>
+              <span class="ts-file-name" id="ts-userdata-file-display">No file selected</span>
+              <button class="ts-btn-primary ts-btn-sm ts-btn-push-right" type="submit">Import</button>
+            </div>
+          </form>
+          {% if import_message %}
+          <br>
+            <div class="ts-notice ts-notice-success">{{ import_message }}</div>
+          {% endif %}
+          {% if import_error %}
+          <br>
+            <div class="ts-notice ts-notice-error">{{ import_error }}</div>
           {% endif %}
 
         </div>

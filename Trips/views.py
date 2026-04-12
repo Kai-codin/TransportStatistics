@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.db.models import Q
 from django.shortcuts import render, redirect, get_object_or_404
+from django.http import HttpResponse, JsonResponse
 from django.utils.dateparse import parse_time, parse_date
 
 from Social.forms import ProfileForm
@@ -313,6 +314,171 @@ def profile_settings(request):
         'upload_form': upload_form,
         'import_jobs': jobs,
     })
+
+
+@login_required
+def export_user_data(request):
+    """Export the requesting user's data (profile, friends, trips) as a JSON file."""
+    User = get_user_model()
+    user = request.user
+
+    profile_obj, _ = UserProfile.objects.get_or_create(user=user)
+
+    friends_qs = Friend.objects.filter(user=user)
+    friends = [
+        {'username': f.friend.username, 'status': f.status}
+        for f in friends_qs
+    ]
+
+    trips_qs = TripLog.objects.filter(user=user).order_by('logged_at')
+    trips = []
+    for t in trips_qs:
+        trips.append({
+            'headcode': t.headcode,
+            'operator': t.operator,
+            'service_date': str(t.service_date) if t.service_date else None,
+            'transport_type': t.transport_type,
+            'origin_name': t.origin_name,
+            'origin_crs': t.origin_crs,
+            'origin_tiploc': t.origin_tiploc,
+            'destination_name': t.destination_name,
+            'destination_crs': t.destination_crs,
+            'destination_tiploc': t.destination_tiploc,
+            'scheduled_departure': str(t.scheduled_departure) if t.scheduled_departure else None,
+            'scheduled_arrival': str(t.scheduled_arrival) if t.scheduled_arrival else None,
+            'boarded_stop_name': t.boarded_stop_name,
+            'boarded_stop_crs': t.boarded_stop_crs,
+            'boarded_stop_atco': t.boarded_stop_atco,
+            'route_geometry': t.route_geometry,
+            'full_route_geometry': t.full_route_geometry,
+            'full_locations': t.full_locations,
+            'train_fleet_number': t.train_fleet_number,
+            'train_type': t.train_type,
+            'bus_fleet_number': t.bus_fleet_number,
+            'bus_registration': t.bus_registration,
+            'bus_type': t.bus_type,
+            'bus_livery': t.bus_livery,
+            'bus_livery_name': t.bus_livery_name,
+            'notes': t.notes,
+            'on_trip_usernames': [u.username for u in t.on_trip_trip.all()],
+        })
+
+    # Export only the trips as a JSON array (no user, friends or profile data)
+    content = json.dumps(trips, ensure_ascii=False, indent=2)
+    filename = f"{user.username}-transport-data.json"
+    resp = HttpResponse(content, content_type='application/json; charset=utf-8')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+@login_required
+def import_user_data(request):
+    """Import a previously-exported user data JSON file.
+
+    The uploaded file must belong to the requesting user's username. Trips will be created
+    and profile/friends updated. Duplicate trips are skipped.
+    """
+    message = None
+    if request.method == 'POST' and 'user_data_file' in request.FILES:
+        fh = request.FILES['user_data_file']
+        try:
+            data = json.load(fh)
+        except Exception as e:
+            message = f'Failed to parse JSON: {e}'
+            return render(request, 'profile_settings.html', {'import_error': message})
+
+        # Accept either a raw list of trips, or an object containing a 'trips' key.
+        if isinstance(data, list):
+            trips_list = data
+        elif isinstance(data, dict) and 'trips' in data:
+            trips_list = data.get('trips') or []
+        else:
+            message = 'Uploaded file does not contain trips in a supported format.'
+            return render(request, 'profile_settings.html', {'import_error': message})
+
+        # Trips: create TripLog entries (skip duplicates)
+        created = 0
+        skipped = 0
+        for t in trips_list:
+            service_date = None
+            scheduled_departure = None
+            try:
+                if t.get('service_date'):
+                    service_date = parse_date(t.get('service_date'))
+                if t.get('scheduled_departure'):
+                    scheduled_departure = parse_time(t.get('scheduled_departure'))
+            except Exception:
+                service_date = None
+                scheduled_departure = None
+
+            dup_q = TripLog.objects.filter(
+                user=request.user,
+                origin_name=t.get('origin_name') or '',
+                destination_name=t.get('destination_name') or '',
+                service_date=service_date,
+                scheduled_departure=scheduled_departure,
+            )
+            if dup_q.exists():
+                skipped += 1
+                continue
+
+            trip = TripLog.objects.create(
+                user=request.user,
+                headcode=t.get('headcode') or '',
+                operator=t.get('operator') or '',
+                service_date=service_date,
+                transport_type=t.get('transport_type') or '',
+                origin_name=t.get('origin_name') or '',
+                origin_crs=t.get('origin_crs') or '',
+                origin_tiploc=t.get('origin_tiploc') or '',
+                destination_name=t.get('destination_name') or '',
+                destination_crs=t.get('destination_crs') or '',
+                destination_tiploc=t.get('destination_tiploc') or '',
+                scheduled_departure=scheduled_departure,
+                scheduled_arrival=t.get('scheduled_arrival') or None,
+                boarded_stop_name=t.get('boarded_stop_name') or '',
+                boarded_stop_crs=t.get('boarded_stop_crs') or '',
+                boarded_stop_atco=t.get('boarded_stop_atco') or '',
+                route_geometry=t.get('route_geometry'),
+                full_route_geometry=t.get('full_route_geometry'),
+                full_locations=t.get('full_locations'),
+                train_fleet_number=t.get('train_fleet_number') or '',
+                train_type=t.get('train_type') or '',
+                bus_fleet_number=t.get('bus_fleet_number') or '',
+                bus_registration=t.get('bus_registration') or '',
+                bus_type=t.get('bus_type') or '',
+                bus_livery=t.get('bus_livery') or '',
+                bus_livery_name=t.get('bus_livery_name') or '',
+                notes=t.get('notes') or '',
+            )
+
+            # attach on_trip users where possible
+            for uname in t.get('on_trip_usernames', []):
+                try:
+                    other = get_user_model().objects.get(username=uname)
+                except get_user_model().DoesNotExist:
+                    continue
+                trip.on_trip_trip.add(other)
+
+            created += 1
+
+        message = f'Import completed — created {created} trips, skipped {skipped} duplicates.'
+
+    # build the same context as profile_settings so template has required forms
+    profile_obj, _ = UserProfile.objects.get_or_create(user=request.user)
+    from Social.forms import ProfileForm
+    from .forms import UploadServicesForm
+    pf = ProfileForm(instance=profile_obj)
+    upload_form = UploadServicesForm()
+    jobs = ImportJob.objects.filter(user=request.user).order_by('-created_at')[:20]
+
+    ctx = {
+        'profile_form': pf,
+        'upload_form': upload_form,
+        'import_jobs': jobs,
+        'import_message': message,
+    }
+    return render(request, 'profile_settings.html', ctx)
 
 
 

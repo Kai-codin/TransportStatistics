@@ -21,7 +21,7 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from main import views_auth
-from Trips.views import log_trip, profile, trip_detail, trip_date_map, view_profile, edit_trip, profile_settings, delete_trip, join_trip
+from Trips.views import log_trip, profile, trip_detail, trip_date_map, view_profile, edit_trip, profile_settings, delete_trip, join_trip, export_user_data, import_user_data
 from Social import views
 
 urlpatterns = [
@@ -47,6 +47,8 @@ urlpatterns = [
     path('trips/<int:pk>/join/', join_trip, name='join_trip'),
     path('trips/<int:pk>/edit/', edit_trip, name='edit_trip'),
     path('profile/settings/', profile_settings, name='profile_settings'),
+    path('profile/export/', export_user_data, name='profile_export'),
+    path('profile/import/', import_user_data, name='profile_import'),
     path('manage/', TemplateView.as_view(template_name='manage.html'), name='manage'),
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('accounts/register/', views_auth.register, name='register'),

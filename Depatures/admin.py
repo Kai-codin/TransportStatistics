@@ -11,6 +11,7 @@ from .models import (
     TrainCategory,
     PathType,
     TimingLoad,
+    Route,
 )
 from Stops.models import Stop
 
@@ -48,6 +49,77 @@ class TimetableAdmin(admin.ModelAdmin):
     def safe_schedule_end_date(self, obj):
         return self._coerce_date(getattr(obj, 'schedule_end_date'))
 
+@admin.register(Route)
+class RouteAdmin(admin.ModelAdmin):
+    list_display = (
+        'route_display',
+        'timetable_uid',
+        'path_type',
+        'run_by',
+        'date_range',
+        'headcode',
+    )
+    list_filter = (
+        'path_type',
+        'run_by',
+        ('start_date', admin.DateFieldListFilter),
+    )
+    search_fields = (
+        'from_location',
+        'to_location',
+        'timetable__CIF_train_uid',
+        'run_by',
+        'headcode',
+    )
+    date_hierarchy = 'start_date'
+    show_full_result_count = False
+    list_per_page = 25
+    
+    fieldsets = (
+        ('Route Information', {
+            'fields': ('timetable', 'path_type', 'from_location', 'to_location')
+        }),
+        ('Service Details', {
+            'fields': ('run_by', 'headcode', 'start_date', 'end_date')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'modified_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('created_at', 'modified_at')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Defer problematic datetime fields from both Route and related Timetable
+        return qs.select_related('timetable').defer(
+            'created_at', 
+            'modified_at',
+            'timetable__created_at',
+            'timetable__modified_at'
+        )
+    
+    @admin.display(description='Route', ordering='from_location')
+    def route_display(self, obj):
+        if obj.from_location and obj.to_location:
+            return f"{obj.from_location} → {obj.to_location}"
+        return "-"
+    
+    @admin.display(description='Timetable UID', ordering='timetable__CIF_train_uid')
+    def timetable_uid(self, obj):
+        return obj.timetable.CIF_train_uid if obj.timetable else "-"
+    
+    @admin.display(description='Date Range')
+    def date_range(self, obj):
+        if obj.start_date and obj.end_date:
+            return f"{obj.start_date.strftime('%d/%m/%Y')} - {obj.end_date.strftime('%d/%m/%Y')}"
+        elif obj.start_date:
+            return f"From {obj.start_date.strftime('%d/%m/%Y')}"
+        elif obj.end_date:
+            return f"Until {obj.end_date.strftime('%d/%m/%Y')}"
+        return "-"
+    
 @admin.register(ScheduleLocation)
 class ScheduleLocationAdmin(admin.ModelAdmin):
     list_display = ('timetable', 'stop', 'platform', 'position')

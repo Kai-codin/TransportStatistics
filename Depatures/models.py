@@ -85,7 +85,6 @@ class Timetable(models.Model):
     def __str__(self):
         return f"{self.headcode} {self.operator} - ({self.schedule_start_date} to {self.schedule_end_date})"
 
-
 class ScheduleLocation(models.Model):
     timetable = models.ForeignKey(Timetable, related_name='location_entries', on_delete=models.CASCADE, db_index=True)
     stop = models.ForeignKey(Stop, null=True, blank=True, on_delete=models.SET_NULL, related_name='schedule_locations', db_index=True)
@@ -138,3 +137,15 @@ class ScheduleLocation(models.Model):
         if self.pass_time:
             return f"{self.pass_time} | pass"
         return '-'
+    
+class Route(models.Model):
+    timetable = models.ForeignKey(Timetable, related_name='routes', on_delete=models.CASCADE, db_index=True)
+    path_type = models.CharField(max_length=16, null=True, blank=True)
+    from_location = models.CharField(max_length=64, null=True, blank=True)
+    to_location = models.CharField(max_length=64, null=True, blank=True)
+    run_by = models.CharField(max_length=64, null=True, blank=True, help_text='Operator code that runs this route, if different from timetable operator')
+    start_date = models.DateField(null=True, blank=True, db_index=True)
+    end_date = models.DateField(null=True, blank=True, db_index=True)
+    headcode = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)

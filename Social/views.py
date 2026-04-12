@@ -98,7 +98,7 @@ def decline_friend(request, user_id):
 def completion_home(request):
     trips = (
         TripLog.objects
-        .filter(user=request.user)
+        .filter(Q(user=request.user) | Q(on_trip_trip=request.user))
         .exclude(operator__isnull=True)
         .exclude(operator__exact='')
         .values_list('operator', flat=True)
@@ -700,7 +700,7 @@ def completion_update(request):
     # gather user's liveries
     qs = (
         TripLog.objects
-        .filter(user=request.user)
+        .filter(Q(user=request.user) | Q(on_trip_trip=request.user))
         .exclude(bus_livery__isnull=True)
         .exclude(bus_livery__exact='')
         .values('bus_livery_name', 'bus_livery')
@@ -755,7 +755,7 @@ def completion_update(request):
         elif action == 'fill_trains_missing':
             rail_rows = (
                 TripLog.objects
-                .filter(user=request.user, transport_type='rail')
+                .filter(Q(user=request.user) | Q(on_trip_trip=request.user), transport_type='rail')
                 .exclude(train_fleet_number__isnull=True)
                 .exclude(train_fleet_number__exact='')
             )
@@ -855,8 +855,8 @@ def completion_update_search(request):
 def completion_details(request, operator_name):
 
     qs = TripLog.objects.filter(
-        user=request.user,
-        operator__iexact=operator_name
+        (Q(user=request.user) | Q(on_trip_trip=request.user))
+        & Q(operator__iexact=operator_name)
     )
     vehicles = (
         qs.annotate(

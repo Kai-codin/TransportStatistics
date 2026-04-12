@@ -22,32 +22,21 @@ SCHEMAS = {
         'markers': ['stations', 'fleetItem', 'traverseName'],
         
         'fields': {
-            # Core structure
             'stops': ['stations'],
-            
-            # Stop-level fields
             'stop_name': ['berthName'],
             'from_time': ['fromTime'],
             'trace': ['traceToBerth'],
             'position': ['position'],
             'coordinates': ['position'],
-            
-            # Fleet / vehicle
             'fleet': ['fleetItem'],
             'unitReg': ['unitReg', 'fleetItemData.reg'],
             'unitName': ['unitName', 'fleetItemData.fleet_number', 'fleetItemData.fleet_code'],
             'fleetData': ['fleetItemData'],
-            
-            # Service info
             'service_name': ['traverseName'],
             'operator': ['agency'],
             'dataSources': ['dataSourcesId'],
-            
-            # Optional
             'node_platform': ['berthName'],
             'node_dispatch': ['fromTime'],
-            
-            # Service date
             'service_date': ['fromDate', 'createdAt'],
         },
         
@@ -72,7 +61,7 @@ SCHEMAS = {
             'fleet': ['fleetItem', 'vehicle', 'equipment'],
             'unitReg': ['unitReg'],
             'unitName': ['unitName'],
-            'fleetData': ['fleetItemData', 'equipmentData'],
+            'fleetData': ['equipmentData'],
             'service_name': ['excursionName', 'service', 'name'],
             'operator': ['undertaking', 'undertaking.name'],
             'dataSources': ['dataSources', 'dataSourcesId'],
@@ -419,7 +408,7 @@ def detect_vehicle(item, schema, stops=None, transport_type=''):
             if not isinstance(v, dict):
                 continue
             # Try known schema fleetData locations
-            vdata = _get_any(v, schema['fields'].get('fleetData', [])) or v.get('equipmentData') or v.get('fleetData') or v.get('vehicle_data') or {}
+            vdata = v.get('equipmentData78ca7f') or v.get('equipmentData') or _get_nested(v, 'equipmentData') or {}
             # Heuristics: prefer items with vehicle_type or fleetNumber or unitName/unitReg
             has_vehicle_type = isinstance(vdata, dict) and (vdata.get('vehicle_type') or vdata.get('type'))
             has_fleetnum = bool(v.get('fleetNumber') or v.get('fleet_number') or v.get('fleet'))
@@ -488,6 +477,7 @@ def detect_vehicle(item, schema, stops=None, transport_type=''):
                 l = vdata.get('livery') or {}
             vlivery = l.get('left') or l.get('colour') or ''
             vlivery_name = l.get('name') or ''
+
             return vfleet, vreg, vtype, vlivery, vlivery_name
 
     return '', '', '', '', ''

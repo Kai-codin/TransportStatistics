@@ -11,58 +11,119 @@ from .models import ImportJob, TripLog
 logger = logging.getLogger(__name__)
 
 
-# Schema registry: each schema lists candidate keys/prefixes for logical fields.
-# Add new versions by appending a new key here with any custom prefixes.
+# ============================================================================
+# SCHEMA CONFIGURATION
+# ============================================================================
+# Centralized schema definitions with field mappings and format flags
+# Field paths support dot notation for nested access (e.g., 'vehicle.vehicle_data.reg')
 SCHEMAS = {
-    'v1': {
-        'marker': ['service', 'stops', 'stations'],
-        'stops': ['stops', 'stations', 'stations41477f'],
-        'stop_name': ['stop_name', 'name', 'berthName', 'berthname', 'berth_name'],
-        'from_time': ['fromTime', 'from_time', 'fromTime3f4c51'],
-        'trace': ['traceToBerth', 'traceToBerth287925', 'trace_to_berth', 'trace'],
-        'position': ['position', 'positionA7bb39', 'positionA7bb39', 'position_a'],
-        'coordinates': ['coordinates', 'latlon', 'position'],
-        'fleet': ['fleetItem', 'fleetItemB232a1', 'vehicle', 'vehicles'],
-        'unitReg': ['unitReg', 'unitReg92b7f4'],
-        'unitName': ['unitName', 'unitName99cb2e'],
-        'fleetData': ['fleetItemData', 'fleetItemDataCad1db'],
-        'service_name': ['service_name', 'service', 'trip', 'traverseName', 'traverseName4bc328'],
-    },
-    'v2': {
-        'marker': ['excursion', 'runType', 'updatedAt', 'dataSourcesId'],
-        'stops': ['stops', 'stations', 'stops_list', 'nodes', 'nodes016d3d'],
-        'stop_name': ['excursionName', 'excursionName856488', 'platformName', 'platformName084055', 'name', 'stop_name'],
-        'from_time': ['fromTime', 'from_time', 'depart_at'],
-        'trace': ['traceToBerth', 'trace'],
-        'position': ['position', 'positionA7bb39'],
-        'coordinates': ['coordinates', 'latlon'],
-        'fleet': ['fleetItem', 'fleetItemB232a1', 'vehicle', 'equipment', 'equipment738677'],
-        'unitReg': ['unitReg'],
-        'unitName': ['unitName'],
-        'fleetData': ['fleetItemData', 'equipmentData78ca7f', 'equipmentData'],
-        'service_name': ['excursionName', 'service', 'name'],
-        'operator': ['undertaking', 'undertakingAec361'],
-        'dataSources': ['dataSources', 'dataSourcesId1e5d2c'],
-        'node_platform': ['platformName', 'platformName084055'],
-        'node_dispatch': ['dispatchTime', 'dispatchTime285346', 'alightTime02c3d3'],
-        'service_date': ['dispatchDate', 'dispatchDate5bacc7'],
-    },
     'v3': {
-        'marker': ['traverseName', 'traverseName4bc328'],
-        'stops': ['stations', 'stations41477f'],
-        'stop_name': ['traverseName', 'stop_name', 'berthName', 'berthName154523'],
-        'from_time': ['fromTime', 'fromTime3f4c51'],
-        'trace': ['traceToBerth', 'traceToBerth287925'],
-        'position': ['position', 'positionA7bb39'],
-        'coordinates': ['position', 'positionA7bb39', 'latlon'],
-        'fleet': ['fleetItem', 'fleetItemB232a1'],
-        'unitReg': ['unitReg', 'unitReg92b7f4'],
-        'unitName': ['unitName', 'unitName99cb2e'],
-        'fleetData': ['fleetItemData', 'fleetItemDataCad1db'],
-        'service_name': ['traverseName', 'traverseName4bc328', 'service'],
+        # De-obfuscated markers
+        'markers': ['stations', 'fleetItem', 'traverseName'],
+        
+        'fields': {
+            # Core structure
+            'stops': ['stations'],
+            
+            # Stop-level fields
+            'stop_name': ['berthName'],
+            'from_time': ['fromTime'],
+            'trace': ['traceToBerth'],
+            'position': ['position'],
+            'coordinates': ['position'],
+            
+            # Fleet / vehicle
+            'fleet': ['fleetItem'],
+            'unitReg': ['unitReg', 'fleetItemData.reg'],
+            'unitName': ['unitName', 'fleetItemData.fleet_number', 'fleetItemData.fleet_code'],
+            'fleetData': ['fleetItemData'],
+            
+            # Service info
+            'service_name': ['traverseName'],
+            'operator': ['agency'],
+            'dataSources': ['dataSourcesId'],
+            
+            # Optional
+            'node_platform': ['berthName'],
+            'node_dispatch': ['fromTime'],
+            
+            # Service date
+            'service_date': ['fromDate', 'createdAt'],
+        },
+        
+        'flags': {
+            'coord_order': 'lat_lon',
+            'datetime_format': 'epoch',
+            'date_format': None,
+            'time_format': None,
+        }
     },
+    
+    'v2': {
+        'markers': ['excursion', 'runType', 'updatedAt', 'dataSourcesId'],
+        
+        'fields': {
+            'stops': ['stops', 'stations', 'nodes'],
+            'stop_name': ['excursionName', 'platformName', 'name', 'stop_name'],
+            'from_time': ['fromTime', 'from_time', 'depart_at'],
+            'trace': ['traceToBerth', 'trace'],
+            'position': ['position'],
+            'coordinates': ['coordinates', 'latlon'],
+            'fleet': ['fleetItem', 'vehicle', 'equipment'],
+            'unitReg': ['unitReg'],
+            'unitName': ['unitName'],
+            'fleetData': ['fleetItemData', 'equipmentData'],
+            'service_name': ['excursionName', 'service', 'name'],
+            'operator': ['undertaking', 'undertaking.name'],
+            'dataSources': ['dataSources', 'dataSourcesId'],
+            'node_platform': ['platformName'],
+            'node_dispatch': ['dispatchTime', 'alightTime'],
+            'service_date': ['dispatchDate'],
+        },
+        
+        'flags': {
+            'coord_order': 'lat_lon',
+            'datetime_format': 'human',
+            'date_format': 'human',
+            'time_format': 'human',
+        }
+    },
+    
+    'v1': {
+        'markers': ['id', 'vehicle', 'data_sources_id'],
+        
+        'fields': {
+            'stops': ['stops'],
+            'stop_name': ['stop_name'],
+            'from_time': ['departure_time'],
+            'trace': ['polyline_to_stop'],
+            'position': ['coordinates'],
+            'coordinates': ['coordinates'],
+            'fleet': ['vehicle'],
+            'unitReg': ['fleet_reg', 'vehicle.vehicle_data.reg'],
+            'unitName': ['fleet_name', 'vehicle.vehicle_data.fleet_number', 'vehicle.vehicle_data.fleet_code'],
+            'fleetData': ['vehicle_data', 'vehicle.vehicle_data'],
+            'service_name': ['service_name'],
+            'operator': ['operator'],
+            'dataSources': ['data_sources_id'],
+            'node_platform': ['stop_name'],
+            'node_dispatch': ['departure_time'],
+            'service_date': ['departure_date'],
+        },
+        
+        'flags': {
+            'coord_order': 'lon_lat',
+            'datetime_format': 'iso',
+            'date_format': 'iso',
+            'time_format': 'iso',
+        }
+    }
 }
 
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
 def _trim_headcode(val):
     if not isinstance(val, str):
@@ -70,29 +131,83 @@ def _trim_headcode(val):
     return val[:20]
 
 
-def _get_key(obj, base):
-    """Case-insensitive prefix match for obfuscated keys."""
+def _get_nested(obj, path):
+    """
+    Get value from nested object using dot notation path.
+    
+    Examples:
+        _get_nested({'a': {'b': {'c': 1}}}, 'a.b.c') -> 1
+        _get_nested({'vehicle': {'vehicle_data': {'reg': 'ABC123'}}}, 'vehicle.vehicle_data.reg') -> 'ABC123'
+    
+    Args:
+        obj: Dictionary object
+        path: Dot-separated path string
+    
+    Returns:
+        Value at path or None
+    """
     if not isinstance(obj, dict):
         return None
-    base = base.lower()
-    for k, v in obj.items():
-        if k.lower().startswith(base):
-            return v
-    return None
+    
+    keys = path.split('.')
+    current = obj
+    
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        
+        # First try exact match
+        if key in current:
+            current = current[key]
+            continue
+        
+        # Try case-insensitive prefix match for obfuscated keys
+        key_lower = key.lower()
+        found = False
+        for k, v in current.items():
+            if k.lower().startswith(key_lower) or key_lower in k.lower():
+                current = v
+                found = True
+                break
+        
+        if not found:
+            return None
+    
+    return current
 
 
 def _get_any(obj, candidates):
-    """Try several candidate keys/prefixes and return the first found value."""
+    """
+    Try several candidate keys/paths and return the first found value.
+    Supports both simple keys and dot-notation nested paths.
+    
+    Args:
+        obj: Dictionary object
+        candidates: List of key strings or dot-notation paths
+    
+    Returns:
+        First found value or None
+    """
     if not isinstance(obj, dict):
         return None
-    for key in candidates:
-        # exact match
-        if key in obj:
-            return obj[key]
-        # prefix match for obfuscated keys
-        val = _get_key(obj, key)
-        if val is not None:
-            return val
+    
+    for path in candidates:
+        if '.' in path:
+            # Nested path
+            val = _get_nested(obj, path)
+            if val is not None:
+                return val
+        else:
+            # Simple key - exact match
+            if path in obj:
+                return obj[path]
+            
+            # Prefix match for obfuscated keys
+            path_lower = path.lower()
+            for k, v in obj.items():
+                if k.lower().startswith(path_lower):
+                    return v
+    
     return None
 
 
@@ -105,14 +220,28 @@ def _find_list_of_dicts(obj):
     return None
 
 
-def _normalize_coords(coords):
+def _normalize_coords(coords, coord_order='lat_lon'):
+    """
+    Normalize coordinates to [lon, lat] format.
+    
+    Args:
+        coords: Input coordinates (string, dict, list, or tuple)
+        coord_order: Either 'lat_lon' or 'lon_lat' to indicate input format
+    
+    Returns:
+        [lon, lat] or None
+    """
     if coords is None:
         return None
 
     if isinstance(coords, str) and ',' in coords:
         try:
-            lat, lon = coords.split(',')
-            return [float(lon), float(lat)]
+            a, b = coords.split(',')
+            a, b = float(a), float(b)
+            if coord_order == 'lat_lon':
+                return [b, a]  # input is lat,lon -> return lon,lat
+            else:
+                return [a, b]  # input is lon,lat -> return lon,lat
         except Exception:
             return None
 
@@ -128,158 +257,58 @@ def _normalize_coords(coords):
         try:
             a = float(coords[0])
             b = float(coords[1])
-            return [b, a] if abs(a) <= 90 else [a, b]
+            
+            if coord_order == 'lat_lon':
+                return [b, a]  # input is [lat, lon] -> return [lon, lat]
+            else:
+                # For lon_lat, data is already in correct format
+                return [a, b]  # input is [lon, lat] -> return [lon, lat]
         except Exception:
             return None
 
     return None
 
 
-def _parse_timestamp(ts):
+def _parse_timestamp(ts, datetime_format='epoch'):
+    """
+    Parse timestamp according to schema format specification.
+    
+    Args:
+        ts: Timestamp value
+        datetime_format: 'epoch', 'iso', or 'human'
+    
+    Returns:
+        (date, time) tuple or (None, None)
+    """
+    if datetime_format == 'epoch':
+        try:
+            dt = datetime.fromtimestamp(int(ts))
+            return dt.date(), dt.time()
+        except Exception:
+            pass
+    
+    if datetime_format == 'iso':
+        if isinstance(ts, str):
+            try:
+                dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                return dt.date(), dt.time()
+            except Exception:
+                pass
+    
+    if datetime_format == 'human':
+        if isinstance(ts, str):
+            return parse_human_datetime(ts)
+    
+    # Fallback: try all formats
+    if isinstance(ts, str) and any(c.isalpha() for c in ts):
+        return parse_human_datetime(ts)
+    
     try:
-        # Try epoch seconds
         dt = datetime.fromtimestamp(int(ts))
         return dt.date(), dt.time()
     except Exception:
-        # Try human readable parse as fallback
-        return parse_human_datetime(ts)
-
-
-def detect_schema(item):
-    """Pick a schema version for an item by looking for marker keys."""
-    if not isinstance(item, dict):
-        return 'v1'
-    keys = [k.lower() for k in item.keys()]
-    for name, schema in SCHEMAS.items():
-        for marker in schema.get('marker', []):
-            for k in keys:
-                if k.startswith(marker.lower()):
-                    return name
-    # fallback
-    return 'v1'
-
-
-def get_stops(item, schema):
-    """Return list of stop dicts for an item using schema hints."""
-    # try explicit candidates
-    stops = _get_any(item, schema.get('stops', []))
-    if isinstance(stops, list):
-        return stops
-
-    # sometimes stops are nested in a single top-level key
-    found = _find_list_of_dicts(item)
-    if isinstance(found, list):
-        return found
-
-    return []
-
-
-def get_stop_name(st, schema):
-    return (
-        _get_any(st, schema.get('stop_name', []))
-        or st.get('stop_name')
-        or st.get('name')
-        or ''
-    )
-
-
-def detect_vehicle(item, schema, stops=None, transport_type=''):
-    """Detect vehicle/equipment info. Search top-level, nested lists, and stops.
-    Prefer vehicle_type/fleetNumber for trains; keep livery mapping consistent."""
-    candidates = []
-    top = _get_any(item, schema.get('fleet', []))
-    if isinstance(top, list):
-        candidates.append(top)
-    found = _find_list_of_dicts(item)
-    if isinstance(found, list):
-        candidates.append(found)
-    if isinstance(stops, list):
-        candidates.append(stops)
-
-    # Also consider any dict values that are lists of dicts
-    for v in item.values() if isinstance(item, dict) else []:
-        if isinstance(v, list) and v and isinstance(v[0], dict):
-            candidates.append(v)
-
-    for lst in candidates:
-        if not isinstance(lst, list):
-            continue
-        for v in lst:
-            if not isinstance(v, dict):
-                continue
-            # Try known schema fleetData locations
-            vdata = _get_any(v, schema.get('fleetData', [])) or v.get('equipmentData') or v.get('fleetData') or v.get('vehicle_data') or {}
-            # Heuristics: prefer items with vehicle_type or fleetNumber or unitName/unitReg
-            has_vehicle_type = isinstance(vdata, dict) and (vdata.get('vehicle_type') or vdata.get('type'))
-            has_fleetnum = bool(v.get('fleetNumber') or v.get('fleet_number') or v.get('fleet'))
-            has_reg = bool(_get_any(v, schema.get('unitReg', [])) or v.get('unitReg') or v.get('vehicleRef'))
-
-            if not (has_vehicle_type or has_fleetnum or has_reg):
-                # keep searching
-                continue
-
-            vfleet = _get_any(v, schema.get('unitName', [])) or v.get('fleetNumber') or v.get('fleet') or ''
-            vreg = _get_any(v, schema.get('unitReg', [])) or v.get('unitReg') or v.get('vehicleRef') or ''
-            # For rail, broaden heuristics to find train fleet numbers / ids
-            if transport_type == TripLog.TRANSPORT_RAIL and (not vfleet or not vreg):
-                # look for fleet-like keys in v and vdata
-                import re
-                def find_fleet_candidate(d):
-                    for kk, vv in (d.items() if isinstance(d, dict) else []):
-                        kkl = kk.lower()
-                        if re.search(r'fleet|unit|vehicle|train', kkl) and isinstance(vv, (str, int)):
-                            s = str(vv)
-                            if len(s) > 0 and len(s) < 40:
-                                return s
-                    return None
-
-                if not vfleet:
-                    c = find_fleet_candidate(v) or find_fleet_candidate(vdata)
-                    if c:
-                        vfleet = c
-                if not vreg:
-                    # prefer explicit reg-like fields
-                    for cand in ('registration','reg','vehicle_ref','vehicleRef','unitRef'):
-                        if cand in v:
-                            vreg = str(v.get(cand))
-                            break
-                    if not vreg:
-                        c2 = find_fleet_candidate(vdata) or find_fleet_candidate(v)
-                        if c2:
-                            vreg = c2
-            vtype = ''
-            if isinstance(vdata, dict):
-                vtype = (vdata.get('vehicle_type') or {}).get('name') or vdata.get('type') or ''
-            # livery
-            l = {}
-            if isinstance(vdata, dict):
-                l = vdata.get('livery') or {}
-            vlivery = l.get('left') or l.get('colour') or ''
-            vlivery_name = l.get('name') or ''
-            return vfleet, vreg, vtype, vlivery, vlivery_name
-
-    return '', '', '', '', ''
-
-
-def extract_time_from_stop(st, schema):
-    # Try schema-specified from_time
-    ts = _get_any(st, schema.get('from_time', []))
-    if ts:
-        # if string like 'Wednesday, ...' parse human readable
-        if isinstance(ts, str) and any(c.isalpha() for c in ts):
-            return parse_human_datetime(ts)
-        return _parse_timestamp(ts)
-
-    # Try node dispatch candidates (human-readable)
-    nd = _get_any(st, schema.get('node_dispatch', []))
-    if nd and isinstance(nd, str):
-        return parse_human_datetime(nd)
-
-    # fallback to known fields
-    if st.get('fromTime'):
-        return _parse_timestamp(st.get('fromTime'))
-    if st.get('dispatchTime') and isinstance(st.get('dispatchTime'), str):
-        return parse_human_datetime(st.get('dispatchTime'))
+        pass
+    
     return None, None
 
 
@@ -314,11 +343,195 @@ def parse_human_datetime(s):
             return None, None
 
 
+# ============================================================================
+# SCHEMA DETECTION AND EXTRACTION
+# ============================================================================
+
+def detect_schema(item):
+    """Pick a schema version for an item by looking for marker keys."""
+    if not isinstance(item, dict):
+        return 'v1'
+    keys = [k.lower() for k in item.keys()]
+    
+    # Check for V1 specific markers first (most specific)
+    if 'data_sources_id' in keys or ('id' in keys and 'vehicle' in keys and 'departure_date' in keys):
+        return 'v1'
+    
+    # Check other schemas
+    for name, schema in SCHEMAS.items():
+        if name == 'v1':  # Already checked above
+            continue
+        for marker in schema.get('markers', []):
+            for k in keys:
+                if k.startswith(marker.lower()):
+                    return name
+    
+    # fallback
+    return 'v1'
+
+
+def get_stops(item, schema):
+    """Return list of stop dicts for an item using schema hints."""
+    # try explicit candidates
+    stops = _get_any(item, schema['fields'].get('stops', []))
+    if isinstance(stops, list):
+        return stops
+
+    # sometimes stops are nested in a single top-level key
+    found = _find_list_of_dicts(item)
+    if isinstance(found, list):
+        return found
+
+    return []
+
+
+def get_stop_name(st, schema):
+    return (
+        _get_any(st, schema['fields'].get('stop_name', []))
+        or st.get('stop_name')
+        or st.get('name')
+        or ''
+    )
+
+
+def detect_vehicle(item, schema, stops=None, transport_type=''):
+    """Detect vehicle/equipment info. Search top-level, nested lists, and stops.
+    Prefer vehicle_type/fleetNumber for trains; keep livery mapping consistent."""
+    candidates = []
+    top = _get_any(item, schema['fields'].get('fleet', []))
+    if isinstance(top, list):
+        candidates.append(top)
+    found = _find_list_of_dicts(item)
+    if isinstance(found, list):
+        candidates.append(found)
+    if isinstance(stops, list):
+        candidates.append(stops)
+
+    # Also consider any dict values that are lists of dicts
+    for v in item.values() if isinstance(item, dict) else []:
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            candidates.append(v)
+
+    for lst in candidates:
+        if not isinstance(lst, list):
+            continue
+        for v in lst:
+            if not isinstance(v, dict):
+                continue
+            # Try known schema fleetData locations
+            vdata = _get_any(v, schema['fields'].get('fleetData', [])) or v.get('equipmentData') or v.get('fleetData') or v.get('vehicle_data') or {}
+            # Heuristics: prefer items with vehicle_type or fleetNumber or unitName/unitReg
+            has_vehicle_type = isinstance(vdata, dict) and (vdata.get('vehicle_type') or vdata.get('type'))
+            has_fleetnum = bool(v.get('fleetNumber') or v.get('fleet_number') or v.get('fleet'))
+            has_reg = bool(_get_any(v, schema['fields'].get('unitReg', [])) or v.get('unitReg') or v.get('vehicleRef'))
+
+            if not (has_vehicle_type or has_fleetnum or has_reg):
+                # keep searching
+                continue
+
+            vfleet = (
+                _get_any(v, schema['fields'].get('unitName', []))
+                or v.get('fleetNumber')
+                or v.get('fleet_number')
+                or v.get('fleet')
+                or (vdata.get('fleet_number') if isinstance(vdata, dict) else None)
+                or (vdata.get('fleet_code') if isinstance(vdata, dict) else None)
+                or ''
+            )
+
+            vreg = (
+                _get_any(v, schema['fields'].get('unitReg', []))
+                or v.get('unitReg')
+                or v.get('vehicleRef')
+                or v.get('fleet_reg')
+                or (vdata.get('reg') if isinstance(vdata, dict) else None)
+                or ''
+            )
+            # For rail, broaden heuristics to find train fleet numbers / ids
+            if transport_type == TripLog.TRANSPORT_RAIL and (not vfleet or not vreg):
+                # look for fleet-like keys in v and vdata
+                import re
+                def find_fleet_candidate(d):
+                    for kk, vv in (d.items() if isinstance(d, dict) else []):
+                        kkl = kk.lower()
+                        if re.search(r'fleet|unit|vehicle|train', kkl) and isinstance(vv, (str, int)):
+                            s = str(vv)
+                            if len(s) > 0 and len(s) < 40:
+                                return s
+                    return None
+
+                if not vfleet:
+                    c = find_fleet_candidate(v) or find_fleet_candidate(vdata)
+                    if c:
+                        vfleet = c
+                if not vreg:
+                    # prefer explicit reg-like fields
+                    for cand in ('registration','reg','vehicle_ref','vehicleRef','unitRef'):
+                        if cand in v:
+                            vreg = str(v.get(cand))
+                            break
+                    if not vreg:
+                        c2 = find_fleet_candidate(vdata) or find_fleet_candidate(v)
+                        if c2:
+                            vreg = c2
+            vtype = ''
+            if isinstance(vdata, dict):
+                vtype_obj = vdata.get('vehicle_type')
+                if isinstance(vtype_obj, dict):
+                    vtype = vtype_obj.get('name') or ''
+                else:
+                    vtype = vdata.get('type') or ''
+            
+            # livery
+            l = {}
+            if isinstance(vdata, dict):
+                l = vdata.get('livery') or {}
+            vlivery = l.get('left') or l.get('colour') or ''
+            vlivery_name = l.get('name') or ''
+            return vfleet, vreg, vtype, vlivery, vlivery_name
+
+    return '', '', '', '', ''
+
+
+def extract_time_from_stop(st, schema):
+    """Extract datetime from stop using schema-specific format hints."""
+    datetime_format = schema['flags'].get('datetime_format', 'epoch')
+    
+    ts = _get_any(st, schema['fields'].get('from_time', []))
+
+    if ts:
+        if isinstance(ts, str):
+            # ISO datetime
+            if datetime_format == 'iso':
+                try:
+                    dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                    return dt.date(), dt.time()
+                except Exception:
+                    pass
+
+            # Human readable
+            if datetime_format == 'human' or any(c.isalpha() for c in ts):
+                return parse_human_datetime(ts)
+
+        return _parse_timestamp(ts, datetime_format)
+
+    nd = _get_any(st, schema['fields'].get('node_dispatch', []))
+    if nd and isinstance(nd, str):
+        if datetime_format == 'iso':
+            try:
+                dt = datetime.strptime(nd, "%Y-%m-%d %H:%M:%S")
+                return dt.date(), dt.time()
+            except Exception:
+                pass
+        return parse_human_datetime(nd)
+
+    return None, None
+
+
 def extract_latlon_from_stop(st):
     """Detect separate lat/lng fields and return [lon, lat] or None."""
     if not isinstance(st, dict):
         return None
-    import re
     lat_key = None
     lon_key = None
     # Prefer keys that explicitly end with 'lat' / 'lng' / 'lon' or contain '_lat'/'_lng'
@@ -352,7 +565,10 @@ def extract_latlon_from_stop(st):
 
 
 def extract_trace_coords(st, schema):
-    trace = _get_any(st, schema.get('trace', []))
+    """Extract trace/polyline coordinates using schema-specific coord order."""
+    coord_order = schema['flags'].get('coord_order', 'lat_lon')
+    
+    trace = _get_any(st, schema['fields'].get('trace', []))
     if not trace:
         # sometimes trace is empty string
         return []
@@ -360,14 +576,14 @@ def extract_trace_coords(st, schema):
         # list of pairs or strings
         coords = []
         for p in trace:
-            c = _normalize_coords(p)
+            c = _normalize_coords(p, coord_order)
             if c:
                 coords.append(c)
         return coords
     if isinstance(trace, str):
         coords = []
         for pair in trace.split(';'):
-            c = _normalize_coords(pair)
+            c = _normalize_coords(pair, coord_order)
             if c:
                 coords.append(c)
         return coords
@@ -384,6 +600,10 @@ def map_transport_type(ds):
         return TripLog.TRANSPORT_RAIL
     return ''
 
+
+# ============================================================================
+# MAIN IMPORT FUNCTION
+# ============================================================================
 
 def run_import_job(job_id, policy='skip'):
     job = ImportJob.objects.filter(pk=job_id).first()
@@ -418,6 +638,8 @@ def run_import_job(job_id, policy='skip'):
             try:
                 schema_name = detect_schema(item)
                 schema = SCHEMAS.get(schema_name, SCHEMAS['v1'])
+                coord_order = schema['flags'].get('coord_order', 'lat_lon')
+                date_format = schema['flags'].get('date_format', 'iso')
 
                 stops = get_stops(item, schema)
                 if not stops:
@@ -427,9 +649,18 @@ def run_import_job(job_id, policy='skip'):
                 origin = get_stop_name(stops[0], schema)
                 destination = get_stop_name(stops[-1], schema)
 
-                # Operator and transport type (schema-driven)
-                operator_name = _get_any(item, schema.get('operator', [])) or item.get('agency8e0347') or ''
-                transport_ds = _get_any(item, schema.get('dataSources', [])) or ''
+                # Operator (supports nested paths like 'operator.name')
+                operator_raw = _get_any(item, schema['fields'].get('operator', [])) or ''
+
+                if isinstance(operator_raw, dict):
+                    operator_name = operator_raw.get('name') or ''
+                else:
+                    operator_name = str(operator_raw) if operator_raw else ''
+
+                transport_ds = (
+                    _get_any(item, schema['fields'].get('dataSources', []))
+                    or ''
+                )
                 transport_type = map_transport_type(transport_ds)
 
                 # Time extraction
@@ -456,13 +687,23 @@ def run_import_job(job_id, policy='skip'):
                     if isinstance(arr, str) and ':' in arr:
                         scheduled_arrival = parse_time(arr)
 
-                # Fallback: top-level service date (e.g. dispatchDate for v2)
+                # Fallback: top-level service date
                 if not service_date:
-                    sd_val = _get_any(item, schema.get('service_date', []))
+                    sd_val = _get_any(item, schema['fields'].get('service_date', []))
+
                     if isinstance(sd_val, str):
-                        sd_parsed_date, _ = parse_human_datetime(sd_val)
-                        if sd_parsed_date:
-                            service_date = sd_parsed_date
+                        # ISO format
+                        if date_format == 'iso':
+                            try:
+                                service_date = datetime.strptime(sd_val, "%Y-%m-%d").date()
+                            except Exception:
+                                pass
+                        
+                        # Human readable
+                        if not service_date and (date_format == 'human' or any(c.isalpha() for c in sd_val)):
+                            sd_parsed_date, _ = parse_human_datetime(sd_val)
+                            if sd_parsed_date:
+                                service_date = sd_parsed_date
 
                 existing_qs = TripLog.objects.filter(
                     user=job.user,
@@ -481,11 +722,11 @@ def run_import_job(job_id, policy='skip'):
                 full_locations = []
                 for st in stops:
                     coords_raw = (
-                        _get_any(st, schema.get('coordinates', []))
-                        or _get_any(st, schema.get('position', []))
+                        _get_any(st, schema['fields'].get('coordinates', []))
+                        or _get_any(st, schema['fields'].get('position', []))
                         or st.get('latlon')
                     )
-                    coords = _normalize_coords(coords_raw)
+                    coords = _normalize_coords(coords_raw, coord_order)
                     if not coords:
                         coords = extract_latlon_from_stop(st)
                     full_locations.append({
@@ -493,7 +734,7 @@ def run_import_job(job_id, policy='skip'):
                         'crs': st.get('crs') or '',
                         'tiploc': st.get('tiploc') or '',
                         'arrival': st.get('arrival_time') or st.get('arrival') or '',
-                        'departure': st.get('departure_time') or st.get('departure') or _get_any(st, schema.get('node_dispatch', [])) or '',
+                        'departure': st.get('departure_time') or st.get('departure') or _get_any(st, schema['fields'].get('node_dispatch', [])) or '',
                         'coordinates': coords,
                     })
 
@@ -506,7 +747,7 @@ def run_import_job(job_id, policy='skip'):
                     poly = item.get('polyline') or []
                     for seg in poly:
                         for p in seg:
-                            c = _normalize_coords(p)
+                            c = _normalize_coords(p, coord_order)
                             if c:
                                 route_coords.append(c)
 
@@ -515,13 +756,7 @@ def run_import_job(job_id, policy='skip'):
 
                 vfleet, vreg, vtype, vlivery, vlivery_name = detect_vehicle(item, schema, stops=stops, transport_type=transport_type)
 
-                svc_head = (
-                    _get_any(item, schema.get('service_name', []))
-                    or item.get('service_name')
-                    or item.get('service')
-                    or item.get('trip')
-                    or ''
-                )
+                svc_head = _get_any(item, schema['fields'].get('service_name', [])) or ''
 
                 if is_dup and policy == 'overwrite':
                     trip = existing_qs.first()

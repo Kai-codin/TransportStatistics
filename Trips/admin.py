@@ -1,9 +1,30 @@
 from django.contrib import admin, messages
 from django.db import transaction
-from .models import TripLog
-from .models import ImportJob
+from .models import TripLog, ImportJob, SpottedLog
 from django.utils.html import format_html
  
+@admin.register(SpottedLog)
+class SpottedLogAdmin(admin.ModelAdmin):
+    list_display  = ['user', 'headcode', 'operator', 'livery_preview', 'service_date', 'logged_at_location', 'logged_at']
+    list_filter   = ['service_date', 'operator', 'user']
+    search_fields = ['headcode', 'logged_at_location', 'operator', 'notes', 'unit_number', 'reg']
+    readonly_fields = ['logged_at']
+    autocomplete_fields = ['user']
+
+    def livery_preview(self, obj):
+        if not obj:
+            return ''
+        css = (obj.livery or '').strip()
+        name = obj.livery_name or ''
+        if not css:
+            # fallback: show placeholder and name
+            return format_html('<div style="display:inline-block;vertical-align:middle;color:#666">{}</div>', name or '—')
+        # show swatch and name; inline style ensures admin shows correctly without extra JS
+        return format_html(
+            '<div style="display:inline-block;vertical-align:middle;margin-right:8px;">'
+            '<div class="ts-livery-box" data-livery-bg="{}" style="width: 36px;aspect-ratio: 18 / 12;border:1px solid #ccc;background:{}"></div>', css, css
+        )
+
 @admin.register(TripLog)
 class TripLogAdmin(admin.ModelAdmin):
     list_display  = ['user', 'headcode', 'operator', 'transport_type', 'origin_name',

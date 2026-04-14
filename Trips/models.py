@@ -1,6 +1,30 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+class SpottedLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='spotted_logs')
+    logged_at = models.DateTimeField(auto_now_add=True)
+    service_date = models.DateTimeField(null=True, blank=True)
+    headcode = models.CharField(max_length=20, blank=True)
+    logged_at_location = models.TextField(blank=True)
+    destination = models.CharField(max_length=200, blank=True)
+    operator = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+
+    #vehicle
+    unit_number = models.CharField(max_length=20, blank=True)
+    reg = models.CharField(max_length=12, blank=True)
+    vehicle_type = models.CharField(max_length=80, blank=True)
+    livery = models.CharField(max_length=80, blank=True)
+    livery_name = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        ordering = ['-logged_at']
+        verbose_name = 'Spotted log'
+        verbose_name_plural = 'Spotted logs'
+
+    def __str__(self):
+        return f"{self.user.username} spotted {self.headcode or '?'} | {self.unit_number or self.reg or '?'} on {self.service_date or 'no date'} at {self.logged_at_location or '?'}"
 
 class TripLog(models.Model):
     user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='trip_logs')

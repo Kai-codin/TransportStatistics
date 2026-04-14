@@ -10,8 +10,44 @@
 {% load static %}
 {% with map_theme=theme|default:"light" %}
 
+<style>
+  .vehicle-marker {
+    border: 1px solid var(--marker-border-color);
+    text-align: center;
+    color: #000;
+    fill: currentColor;
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke-width: 2px;
+    background: #fff;
+    width: 24px;
+    height: 18px;
+    margin: 1px;
+    line-height: 16px;
+    display: block;
+    overflow: hidden;
+  }
+
+  .maplibregl-popup-content.mapboxgl-popup-content {
+    background: var(--ts-bg);
+    color: var(--ts-text-1);
+    padding: 15px 15px;
+    text-align: center;
+  }
+  .maplibregl-popup-content.mapboxgl-popup-content a {
+    color: var(--ts-text-1);
+    text-decoration: none;
+  }
+  .mapboxgl-popup-close-button, .maplibregl-popup-close-button {
+    color: var(--ts-danger);
+    margin-right: 5px;
+    font-size: 16px;
+  }
+</style>
+
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
 <link rel="stylesheet" href="{% static 'css/shared/map.css' %}" data-ts-theme />
+<link rel="stylesheet" href="https://bustimes.org/liveries.1775980711.css">
 
 <div class="ts-map-wrapper">
 
@@ -39,6 +75,9 @@
 
   // ── constants ──────────────────────────────────────────────────────────────
   const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
+  const live_bus_location_url = 'https://bustimes.org/vehicles.json?'
+  // Expected coord format ymax=52.80565080572876&xmax=-1.6264230424873176&ymin=52.793894297834726&xmin=-1.649060537355183
+
   function styleFor(t) { return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
   // Read theme from localStorage so it matches the sidebar toggle regardless of Django context
   let _currentTheme = (function(){ try { return localStorage.getItem('ts_theme') || 'light'; } catch(e) { return 'light'; } })();
@@ -148,6 +187,7 @@
   // ── sheet state ────────────────────────────────────────────────────────────
   const sheet      = document.getElementById('ts-sheet');
   const sheetInner = document.getElementById('ts-sheet-inner');
+  const popup = document.getElementById('maplibregl-popup-content');
   let _activeProps    = null;
   let _sheetQueryTime = null;   // null = now
   // popup toggles state
@@ -322,6 +362,215 @@
       <div class="ts-popup-body"><div class="ts-popup-error">⚠ Could not load departures.</div></div></div>`;
   }
 
+  const BT_DOM_LIMIT = 1000; 
+  const btMarkers = [];
+  const DETAIL_ZOOM_THRESHOLD = 10;
+  let btVehicleData = [];
+  
+  function createLiveryIcon({ label = '', rotation = 0, bg = '#000', css = null, isColour = false, textColour = '#fff', textStroke = "#0000", strokeWidth = "0px", carriages = 1 } = {}) {
+    const normalisedRotation = ((rotation % 360) + 360) % 360;
+    const cellRotation = (normalisedRotation < 90 || normalisedRotation > 270) ? 0 : 180;
+    const backgroundStyle = css ? `background: ${css};` : `background: ${bg};`;
+    const html = document.createElement('div');
+    let localTextColour = textColour;
+    let localTextStroke = textStroke;
+
+    if (isColour) {
+      console.log('Using colour livery for', label, 'with base colour', bg);
+      localTextColour = '#000';
+      localTextStroke = '#fff';
+      strokeWidth = "2px";
+    }
+
+    console.log(css);
+
+    const numCarriages = Math.min(16, Math.max(1, parseInt(carriages) || 1));
+
+    let right = cellRotation + 90 < 180 ? 'right' : '';
+
+    let carriageSvgs = '';
+    for (let i = 0; i < numCarriages; i++) {
+      const isLastCarriage = i === numCarriages - 1;
+      const carriageLabel = isLastCarriage ? label : '';
+
+
+      carriageSvgs += `
+        <svg width="24" height="18" class="vehicle-marker livery-${css} ${right}" style="text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
+          <text x="12" y="12">${carriageLabel}</text>
+        </svg>
+      `;
+    }
+
+    html.innerHTML = `
+      <div style="display:inline-flex; transform: rotate(${rotation}deg); align-items: center;">
+        ${carriageSvgs}
+        <span style="display:flex; margin-left: -8px; color:black;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 6.65v10.69c0 .64.76.99 1.24.56l6.11-5.35c.34-.3.34-.83 0-1.13L9.24 6.07C8.76 5.65 8 5.99 8 6.63Z" />
+          </svg>
+        </span>
+      </div>
+    `;
+
+    return html;
+  }
+
+  function createSimpleCircle({ colour = '#000', borderColour = '#000' } = {}) {
+    const el = document.createElement('div');
+    el.style.cssText = `width: 10px; height: 10px; background: ${colour}; border-radius: 50%; border: 1px solid ${borderColour};`;
+    return el;
+  }
+
+  function logBTVehicle(vehicleOrId) {
+    let vehicle = vehicleOrId;
+    // If an id was passed, look up the vehicle in btVehicleData
+    if (!vehicle || !vehicle.service) {
+      const id = String(vehicleOrId);
+      vehicle = btVehicleData.find(v => String(v.id) === id) || {};
+    }
+    console.log('Logging BT vehicle', vehicle);
+    const p = new URLSearchParams({
+      headcode:       (vehicle.service && vehicle.service.line_name) || '',
+      date:           vehicle.datetime ? toDate(new Date(vehicle.datetime)) : '',
+      trip_id:        vehicle.trip_id || '',
+      scheduled_time: '',
+      stop:           '',
+      stop_crs:       '',
+      stop_atco:      '',
+      vehicle:        vehicle.vehicle.name || '',
+      operator:       '',
+      transport_type: 'bus',
+    });
+    window.location.href = '/log-trip/?' + p.toString();
+  }
+
+  // Expose for inline onclick handlers in popup HTML
+  window.logBTVehicle = logBTVehicle;
+
+  function updateBtGeojson(filteredVehicles) {
+    const src = map.getSource('btVehicles');
+    if (!src) return;
+    src.setData(btVehiclesToGeoJSON(filteredVehicles));
+  }
+
+  function renderBTDomMarkers(filteredVehicles) {
+    console.log('Rendering BT DOM markers', filteredVehicles.length);
+    clearMarkers(btMarkers);
+    const zoom = map.getZoom();
+    const showDetailedIcon = zoom >= DETAIL_ZOOM_THRESHOLD;
+
+    for (const v of filteredVehicles.slice(0, 50000)) {
+      const lng = v.coordinates[0];
+      const lat = v.coordinates[1];
+
+      let heading = v.heading ?? 0;
+      const line = v.service?.line_name || '';
+      const serviceLink = v.service?.url || '';
+      const vehicleLink = v.vehicle?.url || '';
+      const dest = v.destination || '';
+      const vehicleName = v.vehicle?.name || '';
+      const vehicleColour = v.vehicle?.colour || '#000';
+      const whiteText = v.vehicle?.white_text ?? false;
+      let textStroke = v.vehicle?.stroke_colour ?? false;
+      const livery = v.vehicle?.livery || null;
+      let isColour = false;
+
+      heading = heading + 180;
+      const rotation = heading;
+      heading = heading + 90;
+
+      let css = v.vehicle?.colour || null;
+
+      let textColour = '#000';
+      if (whiteText) textColour = '#fff';
+      if (v.vehicle?.text_colour) textColour = v.vehicle.text_colour;
+
+      let strokeWidth = "0px";
+      if (textStroke != false) strokeWidth = "2px";
+
+      if (livery == null) {
+        textColour = '#000';
+        css = "#fff";
+      }
+
+      if (v.vehicle?.livery) {
+        css = v.vehicle.livery;
+      } else {
+        css = v.vehicle.colour;
+      }
+
+      const zoomForCarriages = map.getZoom();
+
+      let el;
+      if (showDetailedIcon) {
+        el = createLiveryIcon({
+          label: line, css, isColour, textColour, rotation: heading, textStroke, strokeWidth
+        });
+      } else {
+        // "Small circles from the first version": simple coloured dot
+        el = createSimpleCircle({ colour: vehicleColour, borderColour: '#0000' });
+      }
+
+      const html = `
+        <a href="${serviceLink}">${line} to ${dest}</a><br>
+        ${vehicleName ? `<a href="${vehicleLink}">${vehicleName}</a>` : ''}<br>
+        <button class="ts-btn-primary ts-popup-action-btn" id="ts-log-${v.id}" onclick="logBTVehicle(${v.id})"
+          data-headcode="${v.service.line_name}"
+          data-trip-id="${v.trip_id || ''}"
+          data-date="${v.datetime ? toDate(new Date(v.datetime)) : ''}"
+          data-destination="${v.destination}"
+          data-vehicle="${v.name}"
+          data-transport-type="bus"
+          title="Log this service">Log this vehicle</button>
+        <button class="ts-btn-primary ts-popup-action-btn">Mark as spotted</button>
+      `;
+
+      const m = new maplibregl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .setPopup(new maplibregl.Popup({ offset: 6 }).setHTML(html))
+        .addTo(map);
+
+      btMarkers.push(m);
+    }
+  }
+
+  function clearMarkers(list) {
+    while (list.length) {
+      const m = list.pop();
+      m.remove();
+    }
+  }
+
+  function renderBusMarkers() {
+    let count = btVehicleData.length;
+    if (count < BT_DOM_LIMIT) {
+      updateBtGeojson([]);
+      renderBTDomMarkers(btVehicleData);
+    }
+  }
+
+  async function fetchLiveBuses() {
+    const b = map.getBounds();
+    const q = new URLSearchParams({
+      ymax: b.getNorth(),
+      ymin: b.getSouth(),
+      xmax: b.getEast(),
+      xmin: b.getWest()
+    });
+
+    try {
+      const res = await fetch(`${live_bus_location_url}${q.toString()}`);
+      const data = await res.json();
+
+
+      const vehicles = data;
+      btVehicleData = vehicles;
+      renderBusMarkers();
+    } catch (e) {
+      console.error('BT vehicle fetch failed', e);
+    }
+  }
+
   // ── bind controls after each render ───────────────────────────────────────
   function bindControls() {
     sheetInner.querySelector('.ts-sheet-close')
@@ -482,6 +731,8 @@
       });
   }
 
+  let map = null;
+
   // ── map init ───────────────────────────────────────────────────────────────
   window.initMap = function (opts) {
     opts = opts || {};
@@ -500,7 +751,7 @@
       if (saved) { initCenter = [saved.lon, saved.lat]; initZoom = saved.zoom; }
     }
 
-    const map = new maplibregl.Map({
+    map = new maplibregl.Map({
       container: containerId, style: STYLE_URL, center: initCenter, zoom: initZoom,
     });
 
@@ -720,6 +971,7 @@
         _currentTheme = theme;
         const next = styleFor(theme);
         if (next === STYLE_URL) return;
+        
         STYLE_URL = next;
         // setStyle wipes all sources/layers - re-add them once the new style loads
             map.once('styledata', function() {
@@ -737,9 +989,8 @@
                   'GAT','#c2410c','AIR','#ea580c',
                   'TXR','#ca8a04','STR','#eab308',
                   '#6b7280'],
-                // slightly larger circle when an `icon` property exists so the text fits
-                'circle-radius': ['case', ['has', 'icon'], 10, 6],
-                'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+                'circle-radius': ['case', ['has', 'icon'], 2, 1],
+                'circle-stroke-width':1, 'circle-stroke-color':'#fff',
               }
             });
             // style may not include glyphs for text; we'll render icons as DOM markers instead
@@ -767,7 +1018,7 @@
             'TXR','#ca8a04','STR','#eab308',
             '#6b7280'],
           // slightly larger circle when an `icon` property exists so the text fits
-          'circle-radius': ['case', ['has', 'icon'], 10, 6], 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+          'circle-radius': ['case', ['has', 'icon'], 7, 4], 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
         }
       });
       // We render icon text via DOM markers (updateIconMarkers) rather than a text symbol layer,
@@ -800,7 +1051,7 @@
       map.on('mouseenter','unclustered-point', ()=> map.getCanvas().style.cursor='pointer');
       map.on('mouseleave','unclustered-point', ()=> map.getCanvas().style.cursor='');
 
-      map.on('moveend', checkAndLoad);
+      map.on('moveend', checkAndLoad && fetchLiveBuses);
       // on zoomend: re-evaluate density immediately (no fetch needed if already loaded)
       // then also check if we need to load new data for the expanded viewport
       map.on('zoomend', () => { recheckDensity(); checkAndLoad(); });

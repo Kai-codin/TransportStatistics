@@ -20,8 +20,8 @@
     paint-order: stroke;
     stroke-width: 2px;
     background: #fff;
-    width: 24px;
-    height: 18px;
+    width: 30px;
+    height: 20px;
     margin: 1px;
     line-height: 16px;
     display: block;
@@ -395,8 +395,8 @@
 
 
       carriageSvgs += `
-        <svg width="24" height="18" class="vehicle-marker livery-${css} ${right}" style="text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
-          <text x="12" y="12">${carriageLabel}</text>
+        <svg width="30" height="20" class="vehicle-marker livery-${css} ${right}" style="text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
+          <text x="14" y="13">${carriageLabel}</text>
         </svg>
       `;
     }
@@ -522,8 +522,11 @@
           data-vehicle="${v.name}"
           data-transport-type="bus"
           title="Log this service">Log this vehicle</button>
-        <button class="ts-btn-primary ts-popup-action-btn">Mark as spotted</button>
+        
       `;
+
+      // coming soon cba to code this yet
+      //<button class="ts-btn-primary ts-popup-action-btn">Mark as spotted</button>
 
       const m = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])

@@ -1,5 +1,64 @@
 from django.db import models
 from django.utils.text import slugify
+from django.conf import settings
+from django.utils import timezone
+
+
+class TrainEditRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    train = models.ForeignKey('main.Trains', on_delete=models.CASCADE, related_name="edit_requests")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="train_edit_requests")
+
+    # Proposed values
+    proposed_operator = models.ForeignKey(
+        'main.Operator',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="proposed_in_requests",
+    )
+    proposed_type = models.CharField(max_length=255, blank=True, default="")
+    proposed_livery_name = models.CharField(max_length=255, blank=True, default="")
+    proposed_livery_css = models.TextField(blank=True, default="")
+
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_train_edit_requests",
+    )
+    rejection_reason = models.TextField(blank=True, default="")
+
+    # optional snapshot of original values for quick diff
+    original_values = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"EditRequest({self.train} by {self.user} status={self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.original_values:
+            self.original_values = {
+                "operator_id": self.train.operator_id,
+                "type": self.train.type,
+                "livery_name": self.train.livery_name,
+                "livery_css": self.train.livery_css,
+            }
+        super().save(*args, **kwargs)
 
 
 class Operator(models.Model):

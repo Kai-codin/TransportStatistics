@@ -6,10 +6,12 @@ __pycache__/
 *.pbf
 
 
-*/tools/*
+tools/*
+*/.playwright-profile/
 # C extensions
 *.so
 cookie.txt
+*/.playwright-transittracker-profile
 # Distribution / packaging
 .Python
 build/

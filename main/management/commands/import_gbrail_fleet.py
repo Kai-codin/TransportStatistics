@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import IntegrityError
 
 from main.models import Operator, Trains
 
@@ -233,7 +234,25 @@ class Command(BaseCommand):
             )
 
         if to_create:
-            Trains.objects.bulk_create(to_create, batch_size=1000)
+            # Deduplicate by fleetnumber in case input JSON contains duplicates
+            unique_map: dict[str, Trains] = {}
+            for obj in to_create:
+                if obj.fleetnumber in unique_map:
+                    # skip duplicate fleetnumber (keep first occurrence)
+                    continue
+                unique_map[obj.fleetnumber] = obj
+
+            uniques = list(unique_map.values())
+            try:
+                Trains.objects.bulk_create(uniques, batch_size=1000)
+            except IntegrityError:
+                # Fallback: create individually and ignore rows that violate uniqueness
+                for obj in uniques:
+                    try:
+                        obj.save()
+                    except IntegrityError:
+                        # another record with same fleetnumber exists; skip
+                        continue
         if to_update:
             Trains.objects.bulk_update(
                 to_update,

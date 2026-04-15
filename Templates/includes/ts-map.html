@@ -121,11 +121,11 @@
       isReplacement: true,
     };
   }
-  const STOP_TYPES    = ['BCE','BCQ','BCS','BCT','BST','CUS','FLX','HAR','MKD','RLS', 'FBT', 'FER', 'FTD'];
+  const STOP_TYPES    = ['BCE','BCQ','BCS','BCT','BST','CUS','FLX','HAR','MKD','RLS'];
   const BUFFER_FACTOR = 0.5;
   const DEBOUNCE_MS   = 350;
   const PAGE_LIMIT    = 5000;
-  const STOP_LIMIT    = 2500;   // hide stops and show hint above this count
+  const STOP_LIMIT    = 1000;   // hide stops and show hint above this count
 
   // ── zoom hint ──────────────────────────────────────────────────────────────
   const zoomHint = document.getElementById('ts-zoom-hint');

@@ -21,6 +21,7 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from main import views_auth
+from main import views_trains
 from Trips.views import log_trip, profile, trip_detail, trip_date_map, view_profile, edit_trip, profile_settings, delete_trip, join_trip, export_user_data, import_user_data
 from Social import views
 
@@ -58,6 +59,10 @@ urlpatterns = [
     path('log-trip/', log_trip, name='log_trip'),
     path('demo-map/', TemplateView.as_view(template_name='demo_map.html'), name='demo-map'),
     path('onboarding/import/', views_auth.onboarding_import, name='onboarding_import'),
+    path('trains/requests/', views_trains.train_edit_requests_list, name='trains_requests'),
+    path('trains/requests/new/<int:train_id>/', views_trains.train_edit_request_new, name='trains_request_new'),
+    path('trains/requests/<int:req_id>/approve/', views_trains.train_edit_request_approve, name='trains_request_approve'),
+    path('trains/requests/<int:req_id>/reject/', views_trains.train_edit_request_reject, name='trains_request_reject'),
 ]
 
 if settings.DEBUG:

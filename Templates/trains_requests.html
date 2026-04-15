@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Train Edit Requests - Transport Statistics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
+<link rel="stylesheet" href="{% static 'css/pages/completion_fleet.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Train Edit Requests</div>
+            </div>
+
+            <div class="ts-profile-body">
+
+                <!-- Pending edits -->
+                <div class="ts-section-label">Pending Edit Requests</div>
+                <div class="ts-card ts-card-requests">
+                    {% if pending %}
+                        {% for req in pending %}
+                            <div class="ts-request{% if not forloop.last %} ts-request--divider{% endif %}">
+                                <div class="ts-request-header">
+                                    <div class="ts-request-title">
+                                        <span class="ts-fleet-badge">{{ req.train.fleetnumber }}</span>
+                                        <span>{{ req.train.type }}</span>
+                                    </div>
+                                    <span class="ts-muted ts-request-meta">submitted by <strong>{{ req.user.username }}</strong> · {{ req.created_at }}</span>
+                                </div>
+
+                                <div class="ts-request-diff">
+                                    <table class="ts-diff-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Field</th>
+                                                <th>Current</th>
+                                                <th>Proposed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% if req.original_values.operator_id != req.proposed_operator_id %}
+                                            <tr>
+                                                <td class="ts-diff-field">Operator</td>
+                                                <td class="ts-diff-current">{% if req.train.operator %}{{ req.train.operator.name }}{% else %}<span class="ts-muted">—</span>{% endif %}</td>
+                                                <td class="ts-diff-proposed">{% if req.proposed_operator %}{{ req.proposed_operator.name }}{% else %}<span class="ts-muted">—</span>{% endif %}</td>
+                                            </tr>
+                                            {% endif %}
+                                            {% if req.original_values.type != req.proposed_type %}
+                                            <tr>
+                                                <td class="ts-diff-field">Type</td>
+                                                <td class="ts-diff-current">{{ req.original_values.type }}</td>
+                                                <td class="ts-diff-proposed ts-diff-changed">{{ req.proposed_type }}</td>
+                                            </tr>
+                                            {% endif %}
+                                            {% if req.original_values.livery_name != req.proposed_livery_name %}
+                                            <tr>
+                                                <td class="ts-diff-field">Livery Name</td>
+                                                <td class="ts-diff-current">{{ req.original_values.livery_name }}</td>
+                                                <td class="ts-diff-proposed ts-diff-changed">{{ req.proposed_livery_name }}</td>
+                                            </tr>
+                                            {% endif %}
+                                            {% if req.original_values.livery_css != req.proposed_livery_css %}
+                                            <tr>
+                                                <td class="ts-diff-field">Livery CSS</td>
+                                                <td class="ts-diff-current"><pre class="ts-code">{{ req.original_values.livery_css }}</pre></td>
+                                                <td class="ts-diff-proposed ts-diff-changed"><pre class="ts-code">{{ req.proposed_livery_css }}</pre></td>
+                                            </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {% if request.user.is_staff %}
+                                <div class="ts-request-actions">
+                                    <form method="post" action="{% url 'trains_request_approve' req.id %}" style="display:inline">
+                                        {% csrf_token %}
+                                        <button class="ts-btn ts-btn-approve">Approve</button>
+                                    </form>
+                                    <a class="ts-btn ts-btn-ghost ts-btn-reject" href="{% url 'trains_request_reject' req.id %}">Reject</a>
+                                </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="ts-empty">No pending edit requests.</div>
+                    {% endif %}
+                </div>
+
+                <!-- Search and train list -->
+                <div class="ts-section-label" style="margin-top:2rem">Train Fleet</div>
+                <div class="ts-search">
+                    <input id="ts-train-search" class="ts-input" placeholder="Search fleet by number, type or operator" value="{{ q }}">
+                </div>
+
+                <div class="ts-table-wrap">
+                    <div class="ts-table">
+                        <div class="ts-table-head">
+                            <div>Fleet Number</div>
+                            <div>Operator</div>
+                            <div>Type</div>
+                            <div>Livery</div>
+                            <div class="ts-right">Actions</div>
+                        </div>
+
+                        {% for t in trains %}
+                        <div class="ts-table-row">
+                            <div>{{ t.fleetnumber }}</div>
+                            <div>{% if t.operator %}{{ t.operator.name }}{% endif %}</div>
+                            <div>{{ t.type }}</div>
+                            <div style="display: inline-flex;align-items: center;"><div class="ts-livery-box" data-livery-bg="{{ t.livery_css }}"></div><span style="margin-left: 5px;">{{ t.livery_name }}</span></div>
+                            <div class="ts-right">
+                                <a class="ts-btn ts-btn-sm" href="{% url 'trains_request_new' t.id %}">Request Edit</a>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="ts-empty">No trains found.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="ts-pagination">
+                    {% if trains.has_previous %}
+                        <a class="ts-page-link" href="?page={{ trains.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">← Previous</a>
+                    {% else %}
+                        <span class="ts-page-link ts-page-link--disabled">← Previous</span>
+                    {% endif %}
+                    <span class="ts-page-current">Page {{ trains.number }}</span>
+                    {% if trains.has_next %}
+                        <a class="ts-page-link" href="?page={{ trains.next_page_number }}{% if q %}&q={{ q }}{% endif %}">Next →</a>
+                    {% else %}
+                        <span class="ts-page-link ts-page-link--disabled">Next →</span>
+                    {% endif %}
+                </div>
+
+            </div>
+        </div>
+    </main>
+</div>
+
+<style>
+/* ── Section labels ───────────────────────────────────────────── */
+.ts-section-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ts-muted, #8a9ab0);
+    margin-bottom: 0.75rem;
+}
+
+/* ── Request cards ────────────────────────────────────────────── */
+.ts-card-requests {
+    padding: 0;
+    overflow: hidden;
+}
+
+.ts-request {
+    padding: 1.25rem 1.5rem;
+}
+
+.ts-request--divider {
+    border-bottom: 1px solid var(--ts-border, rgba(255,255,255,0.08));
+}
+
+.ts-request-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.ts-request-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--ts-text, #e8edf2);
+}
+
+.ts-fleet-badge {
+    background: var(--ts-accent-subtle, rgba(74,222,128,0.12));
+    color: var(--ts-accent, #4ade80);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.2em 0.55em;
+    border-radius: 4px;
+}
+
+.ts-request-meta {
+    font-size: 0.8125rem;
+    white-space: nowrap;
+}
+
+/* ── Diff table ───────────────────────────────────────────────── */
+.ts-diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    margin-bottom: 1rem;
+}
+
+.ts-diff-table thead tr {
+    border-bottom: 1px solid var(--ts-border, rgba(255,255,255,0.1));
+}
+
+.ts-diff-table th {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ts-muted, #8a9ab0);
+    padding: 0.4rem 0.75rem 0.4rem 0;
+    text-align: left;
+}
+
+.ts-diff-table td {
+    padding: 0.5rem 0.75rem 0.5rem 0;
+    vertical-align: top;
+    border-bottom: 1px solid var(--ts-border, rgba(255,255,255,0.05));
+    color: var(--ts-text, #e8edf2);
+}
+
+.ts-diff-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.ts-diff-field {
+    color: var(--ts-muted, #8a9ab0) !important;
+    font-weight: 500;
+    width: 100px;
+    white-space: nowrap;
+}
+
+.ts-diff-current {
+    opacity: 0.6;
+}
+
+.ts-diff-changed {
+    color: var(--ts-accent, #4ade80) !important;
+    font-weight: 600;
+}
+
+.ts-code {
+    margin: 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--ts-input-bg, rgba(255,255,255,0.04));
+    border: 1px solid var(--ts-border, rgba(255,255,255,0.08));
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    max-width: 340px;
+}
+
+/* ── Request actions ──────────────────────────────────────────── */
+.ts-request-actions {
+    display: flex;
+    gap: 0.625rem;
+    align-items: center;
+}
+
+.ts-btn-approve {
+    background: var(--ts-accent, #4ade80);
+    color: #0d1f14;
+    border-color: transparent;
+    padding: 0.2rem 0.3rem;
+    border-radius: 5px;
+}
+
+.ts-btn-approve:hover {
+    opacity: 0.88;
+}
+
+.ts-btn-reject {
+    color: var(--ts-danger, #f87171);
+    border-color: var(--ts-danger, #f87171);
+}
+
+.ts-btn-reject:hover {
+    background: rgba(248, 113, 113, 0.1);
+}
+
+/* ── Search ───────────────────────────────────────────────────── */
+.ts-search {
+    margin-bottom: 0.75rem;
+}
+
+/* ── Pagination ───────────────────────────────────────────────── */
+.ts-pagination {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.25rem;
+    font-size: 0.8125rem;
+}
+
+.ts-page-link {
+    color: var(--ts-accent, #4ade80);
+    text-decoration: none;
+}
+
+.ts-page-link:hover {
+    text-decoration: underline;
+}
+
+.ts-page-link--disabled {
+    color: var(--ts-muted, #8a9ab0);
+    pointer-events: none;
+}
+
+.ts-page-current {
+    color: var(--ts-muted, #8a9ab0);
+}
+</style>
+
+<script>
+document.getElementById('ts-train-search').addEventListener('input', function (e) {
+  const q = e.target.value;
+  fetch(window.location.pathname + '?q=' + encodeURIComponent(q), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(r => r.json())
+    .then(data => {
+      const table = document.querySelector('.ts-table');
+      const rows = [
+        '<div class="ts-table-head"><div>Fleet Number</div><div>Operator</div><div>Type</div><div>Livery</div><div class="ts-right">Actions</div></div>'
+      ];
+      if (data.results.length === 0) {
+        rows.push('<div class="ts-empty">No trains found.</div>');
+      } else {
+        data.results.forEach(t => {
+          rows.push(
+            '<div class="ts-table-row">' +
+              '<div>' + (t.fleetnumber || '') + '</div>' +
+              '<div>' + (t.operator || '') + '</div>' +
+              '<div>' + (t.type || '') + '</div>' +
+              '<div><div class="ts-livery-box " data-livery-bg="' + (t.livery_css || '') + '"></div>' + (t.livery_name || '') + '</div>' +
+              '<div class="ts-right"><a class="ts-btn ts-btn-sm" href="/trains/requests/new/' + t.id + '/">Request Edit</a></div>' +
+            '</div>'
+          );
+        });
+      }
+            table.innerHTML = rows.join('');
+            // Re-apply livery background styles to new nodes
+            try {
+                if (window.tsApplyLiveryBackgrounds) window.tsApplyLiveryBackgrounds(table);
+                // add default class for empty swatches
+                table.querySelectorAll('.ts-livery-box').forEach(function(el){
+                    if (!el.getAttribute('data-livery-bg') || !el.getAttribute('data-livery-bg').trim()) el.classList.add('ts-livery-default');
+                    else el.classList.remove('ts-livery-default');
+                });
+            } catch (e) { console.debug('livery apply err', e); }
+    });
+});
+</script>
+
+{% endblock %}

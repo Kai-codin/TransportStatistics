@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Reject Request{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
+{% endblock %}
+
+{% block body_class %}ts-app-page{% endblock %}
+
+{% block content %}
+<div class="ts-app">
+    {% include "includes/sidebar.html" %}
+    <main class="ts-main">
+        <div class="ts-profile-layout">
+            <div class="ts-profile-header">
+                <div class="ts-profile-title">Reject Edit Request</div>
+            </div>
+            <div class="ts-profile-body">
+                <div class="ts-card">
+                    <p>Rejecting request for <strong>{{ request_obj.train.fleetnumber }}</strong> by {{ request_obj.user.username }}</p>
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form.rejection_reason.label_tag }}
+                        {{ form.rejection_reason }}
+                        <div style="margin-top:1rem">
+                            <button class="ts-btn">Reject</button>
+                            <a class="ts-btn ts-btn-ghost" href="{% url 'trains_requests' %}">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

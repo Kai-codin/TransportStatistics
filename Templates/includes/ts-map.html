@@ -512,8 +512,8 @@
       }
 
       const html = `
-        <a href="${serviceLink}">${line} to ${dest}</a><br>
-        ${vehicleName ? `<a href="${vehicleLink}">${vehicleName}</a>` : ''}<br>
+        <a href="https://bustimes.org${serviceLink}">${line} to ${dest}</a><br>
+        ${vehicleName ? `<a href="https://bustimes.org${vehicleLink}">${vehicleName}</a>` : ''}<br>
         <button class="ts-btn-primary ts-popup-action-btn" id="ts-log-${v.id}" onclick="logBTVehicle(${v.id})"
           data-headcode="${v.service.line_name}"
           data-trip-id="${v.trip_id || ''}"

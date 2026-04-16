@@ -257,6 +257,7 @@ def completion_fleet(request, operator_name):
 
         vehicles = []
         seen_fleets = set()
+        
         for t in fleet_rows:
             fleet = str(t.fleetnumber).strip()
             seen_fleets.add(fleet)
@@ -311,11 +312,15 @@ def completion_fleet(request, operator_name):
         )
         .exclude(vehicle_id__isnull=True)
         .exclude(vehicle_id__exact='')
-        .values('vehicle_id', 'bus_livery_name', 'bus_livery')
+        .values('vehicle_id', 'bus_livery_name', 'bus_livery', 'transport_type', 'bus_type', 'train_type', 'bus_fleet_number')
         .annotate(count=Count('id'), last_seen=Max('service_date'))
     )
 
     ridden_map = {}
+    # track the most-recent transport_type and vehicle_type observed for each vehicle id
+    transport_by_vid = {}
+    vehicle_type_by_vid = {}
+    fleet_by_vid = {}
     for r in ridden_qs:
         vid = normalise_reg(r['vehicle_id'])
         livery_name = r['bus_livery_name'] or None
@@ -328,6 +333,22 @@ def completion_fleet(request, operator_name):
             'css': livery_css,
         }
 
+        # derive a candidate vehicle_type from TripLog fields
+        cand_type = ''
+        ttype = (r.get('transport_type') or '').strip()
+        if ttype == 'rail':
+            cand_type = (r.get('train_type') or '').strip()
+        else:
+            cand_type = (r.get('bus_type') or '').strip()
+
+        prev = transport_by_vid.get(vid)
+        if prev is None or (r['last_seen'] and (prev[0] is None or r['last_seen'] > prev[0])):
+            transport_by_vid[vid] = (r['last_seen'], ttype or 'bus')
+            vehicle_type_by_vid[vid] = cand_type or ''
+            # capture bus_fleet_number seen most recently for this vid
+            fleet_val = (r.get('bus_fleet_number') or '')
+            fleet_by_vid[vid] = str(fleet_val).strip()
+
     for k, v in ridden_map.items():
         best = max(v.values(), key=lambda d: d['last_seen'])
     operator_api = requests.get(
@@ -336,23 +357,27 @@ def completion_fleet(request, operator_name):
     ).json()
 
     if not operator_api["results"]:
-        vehicles = [
-            {
-                "vehicle_id": k,
-                "vehicle_id_final": k,
-                "fleet_number": "",
-                "vehicle_type": "",
-                "current_livery_name": None,
-                "current_livery_css": None,
-                "count": sum(d['count'] for d in v.values()),
-                "ridden": True,
-                "transport_type": "bus",
-                "withdrawn": False,
-                "ridden_liveries": v,
-                "previous_regs": [],
-            }
-            for k, v in ridden_map.items()
-        ]
+        # Operator not found in bustimes — include any ridden vehicles but
+        # mark them as withdrawn since they don't appear in the external API.
+        vehicles = []
+        if show_withdrawn:
+            for k, v in ridden_map.items():
+                tt = transport_by_vid.get(k, (None, 'bus'))[1]
+                vtype = vehicle_type_by_vid.get(k, '')
+                vehicles.append({
+                    "vehicle_id": k,
+                    "vehicle_id_final": k,
+                    "fleet_number": "",
+                    "vehicle_type": vtype,
+                    "current_livery_name": None,
+                    "current_livery_css": None,
+                    "count": sum(d['count'] for d in v.values()),
+                    "ridden": True,
+                    "transport_type": tt or 'bus',
+                    "withdrawn": True,
+                    "ridden_liveries": v,
+                    "previous_regs": [],
+                })
         return render(request, "completion_fleet.html", {
             "vehicles": vehicles,
             "operator_name": operator_name,
@@ -513,6 +538,39 @@ def completion_fleet(request, operator_name):
             )
         current = normalise_reg(v["vehicle_id"])
         v["previous_regs"] = [r for r in v["previous_regs"] if normalise_reg(r) != current]
+    # Include any ridden registrations that weren't present in the API/fleet
+    # data. Mark these as withdrawn so they're still visible to the user but
+    # clearly indicated as missing from bustimes.
+    known_regs = set(reg_index.keys())
+    for reg, liveries in ridden_map.items():
+        nreg = normalise_reg(reg)
+        if not nreg or nreg in known_regs:
+            continue
+        # don't append missing/withdrawn regs unless the user requested withdrawn
+        if not show_withdrawn:
+            continue
+        total_count = sum(d['count'] for d in liveries.values())
+        sorted_liveries = dict(sorted(liveries.items(), key=lambda x: x[1]['last_seen'], reverse=True))
+        tt = transport_by_vid.get(nreg, (None, 'bus'))[1]
+        vtype = vehicle_type_by_vid.get(nreg, '')
+        fleet_no = fleet_by_vid.get(nreg, '')
+        # debug output to help trace missing-reg handling
+        print(f"Appending missing reg {nreg}: transport={tt!r}, fleet={fleet_no!r}, type={vtype!r}")
+        vehicles.append({
+            "vehicle_id": nreg,
+            "vehicle_id_final": nreg,
+            "fleet_number": fleet_no,
+            "vehicle_type": vtype,
+            "count": total_count,
+            "ridden": True,
+            "transport_type": tt,
+            "withdrawn": True,
+            "current_livery_name": next(iter(sorted_liveries)) if sorted_liveries else None,
+            "current_livery_css": sorted_liveries[next(iter(sorted_liveries))]['css'] if sorted_liveries else None,
+            "ridden_liveries": sorted_liveries,
+            "previous_regs": [],
+        })
+
     vehicles.sort(key=lambda x: (-x["ridden"], fleet_sort_key(x), -x["count"]))
 
     return render(request, "completion_fleet.html", {

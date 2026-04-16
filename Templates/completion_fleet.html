@@ -90,9 +90,9 @@
                         <!-- TYPE -->
                         <div>
                             {% if v.transport_type == "rail" %}
-                            {{ v.vehicle_type|default:"Unknown class" }}
+                            {{ v.vehicle_type|default:"???" }}
                             {% else %}
-                            {{ v.vehicle_type|default:"Unknown type" }}
+                            {{ v.vehicle_type|default:"???" }}
                             {% endif %}
                         </div>
 

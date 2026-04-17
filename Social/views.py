@@ -635,17 +635,26 @@ def completion_route(request, operator_name):
             "operator_name": operator_name
         })
 
+    # Build ridden counts preferring explicit bustimes service IDs. Only
+    # fall back to headcode (line name) counts for trips that lack a
+    # `bustimes_service_id` value.
     ridden_qs = (
         TripLog.objects
         .filter(user=request.user, operator__iexact=operator_name)
-        .exclude(headcode__isnull=True)
-        .values('headcode')
+        .values('bustimes_service_id', 'headcode')
         .annotate(count=Count('id'))
     )
 
-    ridden_map = {
-        v['headcode'].upper(): v['count']
-    }
+    ridden_by_service = {}   # service_id (str) -> count
+    ridden_by_headcode = {}  # headcode (upper) -> count (only for trips without service_id)
+    for v in ridden_qs:
+        sid = v.get('bustimes_service_id')
+        hc = (v.get('headcode') or '').strip()
+        cnt = v['count'] or 0
+        if sid:
+            ridden_by_service[str(sid)] = ridden_by_service.get(str(sid), 0) + cnt
+        elif hc:
+            ridden_by_headcode[hc.upper()] = ridden_by_headcode.get(hc.upper(), 0) + cnt
 
     # operator lookup
     operator_api = requests.get(
@@ -662,6 +671,7 @@ def completion_route(request, operator_name):
     # full service list
     services = fetch_full_services(noc)
 
+    # Group services by line_name to detect duplicates
     line_groups = {}
     for s in services:
         line = (s.get("line_name") or "").upper()
@@ -682,14 +692,47 @@ def completion_route(request, operator_name):
             if count == 0:
                 count = ridden_by_headcode.get(line, 0)
             routes.append({
+                "line_name": line,
                 "description": s.get("description") or "",
                 "service_id": s["id"],
                 "count": count,
+                "ridden": count > 0,
+            })
+        else:
+            # Multiple services share this line name.
+            # Show each as a separate entry with its description.
+            # We can't perfectly attribute rides without more data,
+            # so we distribute the total ride count to ALL matching
             # services (conservative: mark all ridden if any were ridden).
+            # If any services have explicit service-id matches, prefer
+            # those counts per-service. Otherwise fall back to headcode
+            # totals for all services sharing this line name.
+            service_counts = [ridden_by_service.get(str(s.get('id')), 0) for s in group]
+            if any(service_counts):
+                for s in group:
+                    desc = s.get("description") or ""
+                    cnt = ridden_by_service.get(str(s.get('id')), 0)
+                    routes.append({
+                        "line_name": line,
+                        "description": desc,
+                        "service_id": s["id"],
+                        "count": cnt,
+                        "ridden": cnt > 0,
+                        "ambiguous": True,
+                    })
+            else:
+                total_count = ridden_by_headcode.get(line, 0)
+                for s in group:
+                    desc = s.get("description") or ""
+                    routes.append({
+                        "line_name": line,
+                        "description": desc,
+                        "service_id": s["id"],
+                        "count": total_count,
+                        "ridden": total_count > 0,
+                        "ambiguous": True,  # flag for template use
+                    })
 
-    for r in route_map.values():
-        r["ridden"] = r["count"] > 0
-        routes.append(r)
     def route_sort_key(name):
         try:
             return (0, int(name))
@@ -703,7 +746,6 @@ def completion_route(request, operator_name):
             -x["count"],
         )
     )
-
     return render(request, "completion_route.html", {
         "routes": routes,
         "operator_name": operator_name

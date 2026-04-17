@@ -253,7 +253,6 @@ body.ts-app-page { overflow: hidden; }
   display: flex;
   align-items: baseline;
   gap: 10px;
-  margin-bottom: 10px;
   position: sticky;
   top: 0;
   background: var(--ts-bg);

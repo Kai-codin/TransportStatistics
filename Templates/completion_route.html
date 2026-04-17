@@ -24,6 +24,13 @@
 
             <!-- ── body ────────────────────────────────────────────────── -->
             <div class="ts-profile-body">
+                <br>
+                <form method="get" class="ts-toggle-form">
+                    <label>
+                        Show withdrawn routes
+                        <input type="checkbox" name="show_missing" onchange="this.form.submit()" {% if show_missing %}checked{% endif %} />
+                    </label>
+                </form>
               <div class="ts-table-wrap">
                 <div class="ts-table">
                     <div class="ts-table-head">
@@ -42,7 +49,7 @@
 
                         <!-- DESCRIPTION -->
                         <div>
-                            {{ r.description|default:"—" }}
+                            {{ r.description|default:"??? - ???" }}
                         </div>
 
                         <!-- JOURNEYS -->
@@ -51,6 +58,9 @@
 
                             {% if r.ridden %}
                                 <span class="ts-badge ts-ridden">ridden</span>
+                                {% if r.missing %}
+                                    <span style="margin-top: 10px;" class="ts-badge ts-withdrawn">withdrawn</span>
+                                {% endif %}
                             {% else %}
                                 <span class="ts-badge ts-not-ridden">not ridden</span>
                             {% endif %}

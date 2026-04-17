@@ -28,11 +28,40 @@
 .ts-table-row {
   border-bottom: 1px solid var(--ts-border);
   transition: background 0.15s;
-  min-height: 64px; /* consistent row height */
+  align-items: start;
 }
 
-.ts-table-row:hover {
-  background: var(--ts-bg-2);
+.ts-table-head.ts-table-rail,
+.ts-table-row.ts-table-rail {
+  grid-template-columns: 2fr 1fr 2fr 1fr;
+}
+
+.ts-table-row > div {
+  padding-top: 4px;
+}
+
+.ts-livery-box {
+  width: 36px;
+  aspect-ratio: 18 / 12;
+  height: auto;
+  border: 1px solid var(--ts-border);
+  border-radius: 0;
+  flex-shrink: 0;/
+}
+
+.ts-prev-reg {
+  font-size: 11px;
+  color: var(--ts-text-3);
+  background: var(--ts-surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.ts-prev-regs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 /* ── livery ───────────────────────────── */
@@ -40,10 +69,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 2px;
 }
 
 .ts-livery-box {
-  width: 30px;
+  width: 36px;
   aspect-ratio: 18 / 12;
   height: auto;
   border: 1px solid var(--ts-border);
@@ -57,6 +87,34 @@
 .ts-livery-name {
   font-weight: 600;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ts-livery-prev {
+  background: var(--ts-bg-3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-right: 3px;
+}
+
+.ts-livery-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.ts-livery-current {
+  font-size: 10px;
+  font-weight: 500;
+  background: #1a3a2a;
+  color: #6ee7b7;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
 }
 
 /* ── right aligned ───────────────────────── */
@@ -76,9 +134,28 @@
   border-radius: 999px;
 }
 
+.ts-badge:hover {
+  opacity: 0.9;
+  background: #1f7a4d !important;
+  color: #d1fae5 !important;
+}
+
 .ts-ridden {
   background: #1f7a4d;
   color: #d1fae5;
+}
+
+.ts-withdrawn {
+  margin-left: 5px;
+  border-color: var(--ts-danger);
+  color: white;
+  background: #9e4848;
+}
+
+.ts-badge:hover.ts-withdrawn {
+  background: #9e4848 !important;
+  color: white !important;
+  border-color: var(--ts-danger) !important;
 }
 
 /* ── empty state ───────────────────────── */
@@ -86,7 +163,6 @@
   padding: 20px;
   color: var(--ts-text-3);
 }
-
 
 /* ── scroll container ───────────────────── */
 .ts-table-wrap {

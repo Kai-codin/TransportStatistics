@@ -603,6 +603,7 @@ def completion_fleet(request, operator_name):
 @login_required
 def completion_route(request, operator_name):
     operator_name = get_canonical_operator(request.user, operator_name)
+    show_missing = request.GET.get("show_missing") == "on"
     transport_type = (
         TripLog.objects
         .filter(user=request.user, operator__iexact=operator_name)
@@ -661,10 +662,37 @@ def completion_route(request, operator_name):
         "https://bustimes.org/api/operators/",
         params={"name": operator_name}
     ).json()
-    if not operator_api["results"]:
+    if not operator_api.get("results"):
+        # If the operator isn't known to bustimes, optionally allow showing
+        # any routes the user has logged that no longer appear in the API.
+        if not show_missing:
+            return render(request, "completion_route.html", {
+                "routes": [],
+                "operator_name": operator_name,
+                "show_missing": show_missing,
+            })
+        # Build routes from headcodes the user has logged (missing from API)
+        routes = []
+        for line, cnt in ridden_by_headcode.items():
+            routes.append({
+                "line_name": line,
+                "description": "",
+                "service_id": None,
+                "count": cnt,
+                "ridden": True,
+                "missing": True,
+            })
+        routes.sort(
+            key=lambda x: (
+                -x["ridden"],
+                (0, int(x["line_name"])) if x["line_name"].isdigit() else (1, x["line_name"]),
+                -x["count"],
+            )
+        )
         return render(request, "completion_route.html", {
-            "routes": [],
-            "operator_name": operator_name
+            "routes": routes,
+            "operator_name": operator_name,
+            "show_missing": show_missing,
         })
     noc = operator_api["results"][0]["noc"]
 
@@ -675,7 +703,6 @@ def completion_route(request, operator_name):
     line_groups = {}
     for s in services:
         line = (s.get("line_name") or "").upper()
-        print(f"Processing service {s['id']} with line {line!r}")
         if not line:
             continue
         line_groups.setdefault(line, []).append(s)
@@ -718,6 +745,7 @@ def completion_route(request, operator_name):
                         "service_id": s["id"],
                         "count": cnt,
                         "ridden": cnt > 0,
+                        "missing": False,
                         "ambiguous": True,
                     })
             else:
@@ -730,7 +758,8 @@ def completion_route(request, operator_name):
                         "service_id": s["id"],
                         "count": total_count,
                         "ridden": total_count > 0,
-                        "ambiguous": True,  # flag for template use
+                            "ambiguous": True,  # flag for template use
+                            "missing": False,
                     })
 
     def route_sort_key(name):
@@ -746,9 +775,32 @@ def completion_route(request, operator_name):
             -x["count"],
         )
     )
+    # Include any ridden headcodes that weren't present in the API
+    if show_missing:
+        present = {r["line_name"] for r in routes}
+        for line, cnt in ridden_by_headcode.items():
+            if line in present:
+                continue
+            routes.append({
+                "line_name": line,
+                "description": "",
+                "service_id": None,
+                "count": cnt,
+                "ridden": True,
+                "missing": True,
+            })
+        # re-sort after appending
+        routes.sort(
+            key=lambda x: (
+                -x["ridden"],
+                route_sort_key(x["line_name"]),
+                -x["count"],
+            )
+        )
     return render(request, "completion_route.html", {
         "routes": routes,
-        "operator_name": operator_name
+        "operator_name": operator_name,
+        "show_missing": show_missing,
     })
 
 

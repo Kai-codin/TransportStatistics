@@ -51,6 +51,9 @@ class TripLog(models.Model):
         default=TRANSPORT_RAIL, blank=True,
     )
 
+    bustimes_service_id = models.IntegerField(null=True, blank=True)
+    bustimes_service_slug = models.CharField(max_length=200, blank=True)
+
     origin_name         = models.CharField(max_length=200, blank=True)
     origin_crs          = models.CharField(max_length=10,  blank=True)
     origin_tiploc       = models.CharField(max_length=20,  blank=True)

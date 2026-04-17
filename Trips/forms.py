@@ -26,7 +26,7 @@ class TripLogForm(forms.ModelForm):
             'train_fleet_number', 'train_type',
             'bus_fleet_number', 'bus_registration', 'bus_type',
             'bus_livery', 'bus_livery_name',
-            'notes',
+            'notes', 'bustimes_service_slug', 'bustimes_service_id',
             'route_geometry', 'full_route_geometry', 'full_locations',
         ]
 
@@ -45,6 +45,8 @@ class TripLogForm(forms.ModelForm):
             'destination_crs':   forms.HiddenInput(),
             'boarded_stop_crs':  forms.HiddenInput(),
             'boarded_stop_atco': forms.HiddenInput(),
+            'bustimes_service_slug': forms.HiddenInput(),
+            'bustimes_service_id': forms.HiddenInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -78,6 +80,8 @@ class TripLogForm(forms.ModelForm):
                 "bus_type",
                 "bus_livery",
                 "bus_livery_name",
+                'bustimes_service_slug',
+                'bustimes_service_id',
             ])
 
     def _hide_fields(self, field_names):

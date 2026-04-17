@@ -542,7 +542,7 @@ def log_trip(request):
         headcode, date, scheduled_time,
         origin, origin_crs, origin_tiploc,
         destination, destination_crs, destination_tiploc,
-        stop, stop_crs, stop_atco,
+        stop, stop_crs, stop_atco, 'bustimes_service_slug', 'bustimes_service_id',
         operator, transport_type,
         vehicle   (bus: "fleet - REG", populated from the vehicle field)
     """
@@ -553,6 +553,7 @@ def log_trip(request):
         if route_number and not (post_data.get('headcode') or '').strip():
             post_data['headcode'] = route_number
         form = TripLogForm(post_data)
+        print(post_data)
         if form.is_valid():
             trip = form.save(commit=False)
             trip.user = request.user
@@ -592,6 +593,9 @@ def log_trip(request):
             'boarded_stop_name':  p.get('boarded_stop_name', '') or p.get('stop', ''),
             'boarded_stop_crs':   p.get('boarded_stop_crs', '')  or p.get('stop_crs', ''),
             'boarded_stop_atco':  p.get('boarded_stop_atco', '') or p.get('stop_atco', ''),
+            
+            'bustimes_service_slug': p.get('bustimes_service_slug', ''),
+            'bustimes_service_id': p.get('bustimes_service_id', ''),
 
             'bus_fleet_number':   bus_fleet,
             'bus_registration':   bus_reg,

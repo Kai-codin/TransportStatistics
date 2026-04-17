@@ -16,6 +16,15 @@ from itertools import groupby
 
 User = get_user_model()
 
+# Global operator name corrections: if bustimes lookup fails for a given
+# operator label we can try a corrected form from this map. Keys should be
+# the operator name as it appears in TripLog.operator; values are the exact
+# string to send to the bustimes `operators` endpoint.
+OPERATOR_NAME_CORRECTIONS = {
+    # Example: bustimes has a leading space for this operator name.
+    "Select Bus Services": " Select Bus Services",
+}
+
 def friends_page(request):
     form = FriendSearchForm(request.POST or None)
     results = []
@@ -356,7 +365,18 @@ def completion_fleet(request, operator_name):
         params={"name": operator_name.strip()}
     ).json()
 
-    if not operator_api["results"]:
+    # If bustimes returns no results for the operator, consult the
+    # OPERATOR_NAME_CORRECTIONS map and retry the lookup with the
+    # corrected operator name before giving up.
+    if not operator_api.get("results"):
+        corrected = OPERATOR_NAME_CORRECTIONS.get(operator_name) or OPERATOR_NAME_CORRECTIONS.get(operator_name.strip())
+        if corrected:
+            operator_api = requests.get(
+                "https://bustimes.org/api/operators/",
+                params={"name": corrected}
+            ).json()
+
+    if not operator_api.get("results"):
         # Operator not found in bustimes — include any ridden vehicles but
         # mark them as withdrawn since they don't appear in the external API.
         vehicles = []
@@ -615,19 +635,16 @@ def completion_route(request, operator_name):
             "operator_name": operator_name
         })
 
-    # user rides
     ridden_qs = (
         TripLog.objects
         .filter(user=request.user, operator__iexact=operator_name)
         .exclude(headcode__isnull=True)
-        .exclude(headcode__exact='')
         .values('headcode')
         .annotate(count=Count('id'))
     )
 
     ridden_map = {
         v['headcode'].upper(): v['count']
-        for v in ridden_qs
     }
 
     # operator lookup
@@ -635,34 +652,40 @@ def completion_route(request, operator_name):
         "https://bustimes.org/api/operators/",
         params={"name": operator_name}
     ).json()
-
     if not operator_api["results"]:
         return render(request, "completion_route.html", {
             "routes": [],
             "operator_name": operator_name
         })
-
     noc = operator_api["results"][0]["noc"]
 
     # full service list
     services = fetch_full_services(noc)
-    route_map = {}
 
+    line_groups = {}
     for s in services:
         line = (s.get("line_name") or "").upper()
-        desc = s.get("description") or ""
-
+        print(f"Processing service {s['id']} with line {line!r}")
         if not line:
             continue
-
-        if line not in route_map:
-            route_map[line] = {
-                "line_name": line,
-                "description": desc,
-                "count": ridden_map.get(line, 0),
-            }
+        line_groups.setdefault(line, []).append(s)
 
     routes = []
+    for line, group in line_groups.items():
+        if len(group) == 1:
+            # No ambiguity — match rides by line name as before
+            s = group[0]
+            # Prefer explicit bustimes service matches, otherwise fall back
+            # to headcode-based counts for trips without a service id.
+            sid = str(s.get('id'))
+            count = ridden_by_service.get(sid, 0)
+            if count == 0:
+                count = ridden_by_headcode.get(line, 0)
+            routes.append({
+                "description": s.get("description") or "",
+                "service_id": s["id"],
+                "count": count,
+            # services (conservative: mark all ridden if any were ridden).
 
     for r in route_map.values():
         r["ridden"] = r["count"] > 0

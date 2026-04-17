@@ -122,6 +122,10 @@
                 <label class="ts-panel-label" for="lf-livery-hex">Livery colour</label>
                 <input type="text" id="lf-livery-hex" name="bus_livery" class="ts-panel-input mono" placeholder="CSS gradient / hex" />
               </div>
+              <div class="hidden">
+                <input type="hidden" name="bustimes_service_slug" id="lf-bustimes-service-slug" />
+                <input type="hidden" name="bustimes_service_id" id="lf-bustimes-service-id" />
+              </div>
             </div>
           </div>
 
@@ -326,6 +330,9 @@
         const days = data.schedule_days_runs || '';
         const from = _locations[0]?.stop.name || '';
         const to   = _locations[_locations.length - 1]?.stop.name || '';
+
+        document.getElementById('lf-bustimes-service-slug').value   = data.bustimes_slug || '';
+        document.getElementById('lf-bustimes-service-id').value = data.bustimes_id || '';
 
         serviceCard.innerHTML = `
           <span class="ts-headcode-chip">${hc}</span>
@@ -789,6 +796,8 @@
       bus_livery:          document.getElementById('lf-livery-hex').value,
       bus_livery_name:     document.getElementById('lf-livery-name').value,
       notes:               document.getElementById('lf-notes').value,
+      bustimes_service_slug: document.getElementById('lf-bustimes-service-slug').value,
+      bustimes_service_id: document.getElementById('lf-bustimes-service-id').value,
       route_number:        routeNumberValue,
       route_geometry:      JSON.stringify(segCoords),
       full_route_geometry: JSON.stringify(_locations && _locations.length ? _locations.map(l => [l.stop.lon, l.stop.lat]) : segCoords),

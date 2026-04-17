@@ -936,6 +936,8 @@ class BusServiceView(APIView):
 
         return Response({
             "trip_id":   trip.get("id"),
+            "bustimes_slug": service.get("slug"),
+            "bustimes_id": service.get("id"),
             "headcode":  service.get("line_name"),
             "headsign":  trip.get("headsign"),
             "mode":      service.get("mode", "bus"),

@@ -27,13 +27,20 @@ class SpottedLogAdmin(admin.ModelAdmin):
 
 @admin.register(TripLog)
 class TripLogAdmin(admin.ModelAdmin):
-    list_display  = ['user', 'headcode', 'operator', 'transport_type', 'origin_name',
-                     'destination_name', 'service_date', 'livery_preview']
+    list_display  = ['user', 'headcode', 'operator', 
+                     'origin_name', 'destination_name', 
+                     'service_date', 'livery_preview', 'service_link']
     list_filter   = ['transport_type', 'service_date', 'user']
     search_fields = ['headcode', 'origin_name', 'destination_name', 'operator', 'bus_registration', 'bus_fleet_number', 'train_fleet_number']
     readonly_fields = ['logged_at', 'livery_preview']
     autocomplete_fields = ['user']
     actions = ['flip_lat_lon']
+
+    def service_link(self, obj):
+        if obj.transport_type == TripLog.TRANSPORT_BUS and obj.bustimes_service_id:
+            url = f"https://bustimes.org/services/{obj.bustimes_service_slug or obj.bustimes_service_id}"
+            return format_html('<a href="{}" target="_blank">{}</a>', url, obj.bustimes_service_slug or obj.bustimes_service_id)
+        return ''
 
     def livery_preview(self, obj):
         if not obj:

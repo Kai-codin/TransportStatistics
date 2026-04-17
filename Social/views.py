@@ -231,7 +231,10 @@ def completion_fleet(request, operator_name):
     if transport_type == "rail":
         ridden_trip_rows = (
             TripLog.objects
-            .filter(user=request.user, operator__iexact=operator_name)
+            .filter(
+                (Q(user=request.user) | Q(on_trip_trip=request.user)),
+                operator__iexact=operator_name,
+            )
             .exclude(train_fleet_number__isnull=True)
             .exclude(train_fleet_number__exact='')
             .values('train_fleet_number', 'service_date', 'train_type')
@@ -315,7 +318,10 @@ def completion_fleet(request, operator_name):
     # Build ridden map: normalised_reg -> {livery_name -> {count, last_seen, css}}
     ridden_qs = (
         TripLog.objects
-        .filter(user=request.user, operator__iexact=operator_name)
+        .filter(
+            (Q(user=request.user) | Q(on_trip_trip=request.user)),
+            operator__iexact=operator_name,
+        )
         .annotate(
             vehicle_id=Coalesce('bus_registration', 'bus_fleet_number')
         )
@@ -613,7 +619,10 @@ def completion_route(request, operator_name):
     if transport_type == "rail":
         routes = (
             TripLog.objects
-            .filter(user=request.user, operator__iexact=operator_name)
+            .filter(
+                (Q(user=request.user) | Q(on_trip_trip=request.user)),
+                operator__iexact=operator_name,
+            )
             .exclude(headcode__isnull=True)
             .exclude(headcode__exact='')
             .values('headcode')
@@ -641,7 +650,10 @@ def completion_route(request, operator_name):
     # `bustimes_service_id` value.
     ridden_qs = (
         TripLog.objects
-        .filter(user=request.user, operator__iexact=operator_name)
+        .filter(
+            (Q(user=request.user) | Q(on_trip_trip=request.user)),
+            operator__iexact=operator_name,
+        )
         .values('bustimes_service_id', 'headcode')
         .annotate(count=Count('id'))
     )

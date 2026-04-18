@@ -119,16 +119,12 @@
 /* ── right aligned ───────────────────────── */
 .ts-right {
   text-align: right;
-  display: inline-flex;
-  align-items: center;
-  margin-left: auto;
 }
 
 /* ── journeys ───────────────────────────── */
 .ts-journey-count {
   font-weight: 600;
-  margin-right: 5px;
-  margin-left: -7px;
+  margin-right: 6px;
 }
 
 .ts-badge {

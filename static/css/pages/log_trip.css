@@ -316,8 +316,10 @@ textarea.ts-panel-input {
     border-top: 1.5px solid var(--ts-border);
   }
 
+  #lf-notes { margin-bottom: 75px; }
+  
   .ts-log-panel-header { flex-shrink: 0; }
   .ts-log-panel-body   { flex: 1; min-height: 0; }
-  .ts-log-actions      { flex-shrink: 0; position: fixed; bottom: 0; left: 0; right: 0; }
+  .ts-log-actions      { flex-shrink: 0; position: fixed;bottom: 0;left: 0;right: 0;}
   .ts-log-panel-sub {left: calc(100% - 100px);}
 }

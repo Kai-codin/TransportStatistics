@@ -7,7 +7,7 @@ from django.http import JsonResponse, Http404
 from .forms import FriendSearchForm
 from .models import Friend
 from Trips.models import TripLog
-from main.models import Trains, Operator
+from main.models import Trains, HistoricalRoutes
 import requests
 import re
 
@@ -790,18 +790,33 @@ def completion_route(request, operator_name):
     # Include any ridden headcodes that weren't present in the API
     if show_missing:
         present = {r["line_name"] for r in routes}
-        for line, cnt in ridden_by_headcode.items():
-            if line in present:
-                continue
+        missing_lines = [line for line in ridden_by_headcode if line not in present]
+
+        # Look up any missing lines in HistoricalRoutes in one query
+        historical_qs = HistoricalRoutes.objects.filter(
+            name__in=missing_lines
+        ).filter(
+            Q(operators__icontains=operator_name) | Q(operators="")
+        )
+        historical_map = {h.name.upper(): h for h in historical_qs}
+
+        for line in missing_lines:
+            cnt = ridden_by_headcode[line]
+            h = historical_map.get(line)
             routes.append({
                 "line_name": line,
-                "description": "",
+                "description": h.description if h else "",
+                "inbound_destination": h.inbound_destination if h else "",
+                "outbound_destination": h.outbound_destination if h else "",
+                "historical_start": h.start_date if h else None,
+                "historical_end": h.end_date if h else None,
                 "service_id": None,
                 "count": cnt,
                 "ridden": True,
                 "missing": True,
+                "withdrawn": True,
             })
-        # re-sort after appending
+
         routes.sort(
             key=lambda x: (
                 -x["ridden"],

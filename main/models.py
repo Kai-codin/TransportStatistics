@@ -83,6 +83,23 @@ class Operator(models.Model):
             self.slug = slug
         super().save(*args, **kwargs)
 
+class HistoricalRoutes(models.Model):
+    name = models.CharField(max_length=255)
+    operators = models.TextField(blank=True, default="")  # Comma-separated list of operator names
+    description = models.TextField(blank=True, default="")
+    inbound_destination = models.CharField(max_length=255)
+    outbound_destination = models.CharField(max_length=255)
+    route_data = models.JSONField(blank=True, default=list)
+    stops = models.JSONField(blank=True, default=list, null=True)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['start_date']
+
+    def __str__(self) -> str:
+        return f"{self.name} | {self.description} | ({self.start_date} - {self.end_date or 'Present'})"
+
 
 class Trains(models.Model):
     operator = models.ForeignKey(

@@ -1,11 +1,15 @@
 import datetime
+import json
+import os
+import tempfile
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from Trips.forms import TripLogForm
-from Trips.models import TripLog
+from Trips.models import ImportJob, TripLog
+from Trips.tasks import run_import_job
 from Social.models import Friend
 
 
@@ -139,3 +143,228 @@ class TripViewsTests(TestCase):
         response = self.client.get(reverse("trip_detail", args=[self.trip.pk]))
 
         self.assertEqual(response.status_code, 403)
+
+
+class TripImportTaskTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="importer", password="pass12345")
+        self.tempfiles = []
+
+    def tearDown(self):
+        for path in self.tempfiles:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def _write_import_file(self, payload):
+        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump(payload, handle)
+        handle.close()
+        self.tempfiles.append(handle.name)
+        return handle.name
+
+    def test_run_import_job_supports_v4_obfuscated_payload(self):
+        payload = [
+            {
+                "AGENCY_TIMEZONE_69BA37": "Europe/London",
+                "ORGANISATION_CC0F85": "Gosport-Portsmouth Ferry",
+                "ID_DC8DC0": "019b6f69-e456-71c0-83b1-0f3373fa2b61",
+                "LEG_NAME_C7909D": "Gosport Ferry",
+                "DATA_SOURCES_ID_42CA97": "BODSUK",
+                "VEHICLE_FD401C": [
+                    {
+                        "ALLOCATION_NAME_6F8A9F": "FERRY",
+                        "ALLOCATION_REG_D36C42": "",
+                        "VEHICLE_DATA_3E273F": {
+                            "livery": {
+                                "ID_DC8DC0": "2934",
+                                "left": "linear-gradient(#fff 25%,#2a6b31 25% 50%,#fff 50% 75%,#2a6b31 75%)",
+                                "name": "Dews",
+                            }
+                        },
+                    }
+                ],
+                "PORTS_9DEA7E": [
+                    {
+                        "STAND_NAME_BD7CF1": "Gosport Ferry Terminal",
+                        "PIN_4EAEC9": "50.79484914811,-1.11612399657",
+                        "DISPATCH_TIME_EF9FF7": "2025-12-30T10:45:00+00:00",
+                        "STAND_ID_8B2187": "9300GOS1",
+                    },
+                    {
+                        "STAND_ID_8B2187": "9300PMH1",
+                        "ARRIVE_TIME_07587C": "2025-12-30T10:52:00+00:00",
+                        "STAND_NAME_BD7CF1": "Portsea Portsmouth Harbour Station Pier",
+                        "PIN_4EAEC9": "50.79701826163,-1.10927223367",
+                        "LINESTRING_TO_STAND_B2D391": "50.79484914811,-1.11612399657;50.79701826163,-1.10927223367",
+                    },
+                ],
+                "DISPATCH_DATE_FF0F0A": "2025-12-30T00:00:00+00:00",
+            }
+        ]
+
+        job = ImportJob.objects.create(
+            user=self.user,
+            filepath=self._write_import_file(payload),
+            status=ImportJob.STATUS_UPLOADED,
+        )
+
+        run_import_job(job.pk)
+
+        job.refresh_from_db()
+        trip = TripLog.objects.get(user=self.user)
+
+        self.assertEqual(job.status, ImportJob.STATUS_COMPLETED)
+        self.assertEqual(job.inserted, 1)
+        self.assertEqual(trip.transport_type, TripLog.TRANSPORT_FERRY)
+        self.assertEqual(trip.headcode, "Gosport Ferry")
+        self.assertEqual(trip.operator, "Gosport-Portsmouth Ferry")
+        self.assertEqual(trip.service_date, datetime.date(2025, 12, 30))
+        self.assertEqual(trip.scheduled_departure, datetime.time(10, 45))
+        self.assertEqual(trip.scheduled_arrival, datetime.time(10, 52))
+        self.assertEqual(trip.boarded_stop_atco, "9300GOS1")
+        self.assertEqual(trip.bus_fleet_number, "FERRY")
+        self.assertEqual(trip.bus_livery_name, "Dews")
+        self.assertEqual(len(trip.route_geometry), 2)
+        self.assertAlmostEqual(trip.route_geometry[0][0], -1.11612399657)
+        self.assertAlmostEqual(trip.route_geometry[0][1], 50.79484914811)
+
+    def test_run_import_job_supports_v2_obfuscated_livery_payload(self):
+        payload = [
+            {
+                "updatedAtB3cc7b": "Wednesday, January 21st 2026 at 7:47 AM",
+                "createdAt2c8103": "Wednesday, January 21st 2026 at 7:47 AM",
+                "excursionName856488": "7",
+                "dispatchDate5bacc7": "Wednesday, January 21st 2026 at 12:00 AM",
+                "undertakingAec361": "Arriva Midlands North",
+                "dataSourcesId1e5d2c": "BODSUK",
+                "equipment738677": [
+                    {
+                        "equipmentDatasourceBe1b6f": "BUSTIM",
+                        "unitRegE0afbc": "MX59JZF",
+                        "equipmentData78ca7f": {
+                            "fleet_code": "3705",
+                            "fleet_number": 3705,
+                            "reg": "MX59JZF",
+                            "livery": {
+                                "left": "radial-gradient(circle at -20% 25%,#25b0cf 48%,#64cde5 48% 56%,#fff 56% 62%,#25b0cf 62%)",
+                                "name": "Arriva Journey Mark",
+                                "id5c7259": "28",
+                            },
+                            "vehicle_type": {
+                                "name": "VDL SB200 Wright Pulsar 2",
+                            },
+                        },
+                        "unitName37b907": "3705",
+                    }
+                ],
+                "agencyTimezone7e18e2": "Europe/London",
+                "nodes016d3d": [
+                    {
+                        "platformName084055": "Donnington Parade",
+                        "location66899e_lng": -2.439988,
+                        "location66899e_lat": 52.717232,
+                        "dispatchTime285346": "Wednesday, January 21st 2026 at 7:53 AM",
+                        "platformIdCcc4be": "3590E056900",
+                    },
+                    {
+                        "platformName084055": "Telford Bus Station",
+                        "location66899e_lng": -2.447896,
+                        "location66899e_lat": 52.675526,
+                        "trailToPlatformDc7c3e": [
+                            [-2.439903, 52.717257],
+                            [-2.447896, 52.675526],
+                        ],
+                        "alightTime02c3d3": "Wednesday, January 21st 2026 at 8:22 AM",
+                        "platformIdCcc4be": "3590E105300",
+                    },
+                ],
+            }
+        ]
+
+        job = ImportJob.objects.create(
+            user=self.user,
+            filepath=self._write_import_file(payload),
+            status=ImportJob.STATUS_UPLOADED,
+        )
+
+        run_import_job(job.pk)
+
+        job.refresh_from_db()
+        trip = TripLog.objects.get(user=self.user)
+
+        self.assertEqual(job.status, ImportJob.STATUS_COMPLETED)
+        self.assertEqual(job.inserted, 1)
+        self.assertEqual(trip.transport_type, TripLog.TRANSPORT_BUS)
+        self.assertEqual(trip.headcode, "7")
+        self.assertEqual(trip.operator, "Arriva Midlands North")
+        self.assertEqual(trip.bus_fleet_number, "3705")
+        self.assertEqual(trip.bus_registration, "MX59JZF")
+        self.assertEqual(trip.bus_type, "VDL SB200 Wright Pulsar 2")
+        self.assertEqual(trip.bus_livery_name, "Arriva Journey Mark")
+        self.assertTrue(trip.bus_livery.startswith("radial-gradient("))
+        self.assertEqual(trip.service_date, datetime.date(2026, 1, 21))
+        self.assertEqual(trip.scheduled_departure, datetime.time(7, 53))
+        self.assertEqual(trip.scheduled_arrival, datetime.time(8, 22))
+        self.assertEqual(trip.boarded_stop_atco, "3590E056900")
+        self.assertEqual(len(trip.route_geometry), 2)
+
+    def test_run_import_job_keeps_legacy_v1_payload_working(self):
+        payload = [
+            {
+                "id": "legacy-1",
+                "data_sources_id": "BODSUK",
+                "service_name": "22",
+                "agency": "Stagecoach South",
+                "agency_timezone": "Europe/London",
+                "departure_date": "2026-01-18",
+                "vehicle": [
+                    {
+                        "fleet_name": "27869",
+                        "fleet_reg": "GX13AOO",
+                        "vehicle_data": {
+                            "fleet_number": 27869,
+                            "reg": "GX13AOO",
+                            "vehicle_type": {"name": "ADL/TransBus Enviro300"},
+                            "livery": {"left": "#0f6db4", "name": "Portsmouth 20"},
+                        },
+                    }
+                ],
+                "stops": [
+                    {
+                        "stop_name": "Leigh Park Crabwood Court",
+                        "departure_time": "2026-01-18 13:35:00",
+                        "coordinates": "-0.99888,50.87882",
+                    },
+                    {
+                        "stop_name": "Havant Bus Station",
+                        "arrival_time": "2026-01-18 13:55:00",
+                        "coordinates": "-0.9839,50.85239",
+                        "polyline_to_stop": "-0.99888,50.87882;-0.9839,50.85239",
+                    },
+                ],
+            }
+        ]
+
+        job = ImportJob.objects.create(
+            user=self.user,
+            filepath=self._write_import_file(payload),
+            status=ImportJob.STATUS_UPLOADED,
+        )
+
+        run_import_job(job.pk)
+
+        job.refresh_from_db()
+        trip = TripLog.objects.get(user=self.user)
+
+        self.assertEqual(job.status, ImportJob.STATUS_COMPLETED)
+        self.assertEqual(job.inserted, 1)
+        self.assertEqual(trip.transport_type, TripLog.TRANSPORT_BUS)
+        self.assertEqual(trip.headcode, "22")
+        self.assertEqual(trip.operator, "Stagecoach South")
+        self.assertEqual(trip.bus_registration, "GX13AOO")
+        self.assertEqual(trip.bus_type, "ADL/TransBus Enviro300")
+        self.assertEqual(trip.bus_livery_name, "Portsmouth 20")
+        self.assertEqual(trip.service_date, datetime.date(2026, 1, 18))
+        self.assertEqual(trip.scheduled_departure, datetime.time(13, 35))
+        self.assertEqual(trip.scheduled_arrival, datetime.time(13, 55))
+        self.assertEqual(trip.route_geometry, [[-0.99888, 50.87882], [-0.9839, 50.85239]])

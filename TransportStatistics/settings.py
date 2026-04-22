@@ -174,6 +174,9 @@ if REDIS_URL:
             }
         }
     }
+    # Keep session storage out of MySQL when Redis is available.
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'default'
 else:
     CACHES = {
         'default': {

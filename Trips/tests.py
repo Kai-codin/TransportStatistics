@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from Trips.forms import TripLogForm
 from Trips.models import ImportJob, TripLog
-from Trips.tasks import run_import_job
+from Trips.tasks import detect_schema, run_import_job
 from Social.models import Friend
 
 
@@ -287,6 +287,8 @@ class TripImportTaskTests(TestCase):
             status=ImportJob.STATUS_UPLOADED,
         )
 
+        self.assertEqual(detect_schema(payload[0]), "v2")
+
         run_import_job(job.pk)
 
         job.refresh_from_db()
@@ -307,6 +309,53 @@ class TripImportTaskTests(TestCase):
         self.assertEqual(trip.scheduled_arrival, datetime.time(8, 22))
         self.assertEqual(trip.boarded_stop_atco, "3590E056900")
         self.assertEqual(len(trip.route_geometry), 2)
+        self.assertEqual(trip.full_locations[0]["coordinates"], [-2.439988, 52.717232])
+        self.assertEqual(trip.route_geometry, [[-2.439903, 52.717257], [-2.447896, 52.675526]])
+        self.assertEqual(trip.full_route_geometry, [[-2.439903, 52.717257], [-2.447896, 52.675526]])
+
+    def test_run_import_job_supports_v2_flipped_trace_coordinates(self):
+        payload = [
+            {
+                "updatedAtB3cc7b": "Wednesday, January 21st 2026 at 7:47 AM",
+                "excursionName856488": "7",
+                "dispatchDate5bacc7": "Wednesday, January 21st 2026 at 12:00 AM",
+                "undertakingAec361": "Arriva Midlands North",
+                "dataSourcesId1e5d2c": "BODSUK",
+                "nodes016d3d": [
+                    {
+                        "platformName084055": "Donnington Parade",
+                        "location66899e_lng": -2.439988,
+                        "location66899e_lat": 52.717232,
+                        "dispatchTime285346": "Wednesday, January 21st 2026 at 7:53 AM",
+                        "platformIdCcc4be": "3590E056900",
+                    },
+                    {
+                        "platformName084055": "Telford Bus Station",
+                        "location66899e_lng": -2.447896,
+                        "location66899e_lat": 52.675526,
+                        "trailToPlatformDc7c3e": [
+                            [52.717257, -2.439903],
+                            [52.675526, -2.447896],
+                        ],
+                        "alightTime02c3d3": "Wednesday, January 21st 2026 at 8:22 AM",
+                        "platformIdCcc4be": "3590E105300",
+                    },
+                ],
+            }
+        ]
+
+        job = ImportJob.objects.create(
+            user=self.user,
+            filepath=self._write_import_file(payload),
+            status=ImportJob.STATUS_UPLOADED,
+        )
+
+        run_import_job(job.pk)
+
+        trip = TripLog.objects.get(user=self.user)
+
+        self.assertEqual(trip.route_geometry, [[-2.439903, 52.717257], [-2.447896, 52.675526]])
+        self.assertEqual(trip.full_route_geometry, [[-2.439903, 52.717257], [-2.447896, 52.675526]])
 
     def test_run_import_job_keeps_legacy_v1_payload_working(self):
         payload = [

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # keys do not require another round of hand-mapping.
 SCHEMAS = {
     'v4': {
-        'markers': ['ports', 'vehicle', 'leg_name', 'dispatch_date'],
+        'markers': ['ports', 'vehicle', 'leg_name', 'organisation'],
         'flags': {
             'coord_order': 'lat_lon',
         },
@@ -35,7 +35,7 @@ SCHEMAS = {
     'v2': {
         'markers': ['excursion', 'run_type', 'updated_at', 'data_sources_id'],
         'flags': {
-            'coord_order': 'lat_lon',
+            'coord_order': 'lon_lat',
         },
     },
     'v1': {
@@ -52,7 +52,7 @@ FIELD_ALIASES = {
     'stop_name': ['stand_name', 'berth_name', 'platform_name', 'excursion_name', 'stop_name', 'name'],
     'departure_time': ['dispatch_time', 'from_time', 'departure_time', 'departure', 'depart_at'],
     'arrival_time': ['arrive_time', 'arrival_time', 'arrival', 'alight_time'],
-    'trace': ['linestring_to_stand', 'trace_to_berth', 'polyline_to_stop', 'trace'],
+    'trace': ['linestring_to_stand', 'trail_to_platform', 'trace_to_berth', 'polyline_to_stop', 'trace'],
     'position': ['pin', 'position', 'coordinates', 'latlon'],
     'coordinates': ['pin', 'coordinates', 'position', 'latlon'],
     'fleet': ['vehicle', 'fleet_item', 'equipment'],
@@ -111,12 +111,17 @@ def _trim_headcode(val):
         return str(val)[:20]
     return val[:20]
 
+V4_SUFFIX_RE = re.compile(r'_[0-9A-Fa-f]{6,8}$')
 
 def _canonicalize_key(key):
     if not isinstance(key, str):
         return ''
 
     key = key.strip()
+    # Strip V4-style obfuscation suffix (e.g. PORTS_9DEA7E, LEG_NAME_C7909D)
+    # Must happen before camelCase splitting so the suffix isn't mangled first.
+    key = V4_SUFFIX_RE.sub('', key)
+
     key = CAMEL_BOUNDARY_RE_1.sub(r'\1_\2', key)
     key = CAMEL_BOUNDARY_RE_2.sub(r'\1_\2', key)
     key = TRAILING_DIGIT_HEX_RE.sub(r'\1_\2', key)
@@ -203,11 +208,22 @@ def _normalize_coords(coords, coord_order='lat_lon'):
     if coords is None:
         return None
 
+    def resolve_pair(a, b):
+        if coord_order == 'auto':
+            # UK-focused heuristic for mixed upstream exports:
+            # latitudes are typically ~50-60, longitudes usually much smaller.
+            if abs(a) >= 20 and abs(b) < 20:
+                return [b, a]
+            if abs(a) < 20 and abs(b) >= 20:
+                return [a, b]
+            return [a, b]
+        return [b, a] if coord_order == 'lat_lon' else [a, b]
+
     if isinstance(coords, str) and ',' in coords:
         try:
             a, b = coords.split(',', 1)
             a, b = float(a.strip()), float(b.strip())
-            return [b, a] if coord_order == 'lat_lon' else [a, b]
+            return resolve_pair(a, b)
         except Exception:
             return None
 
@@ -223,7 +239,7 @@ def _normalize_coords(coords, coord_order='lat_lon'):
         try:
             a = float(coords[0])
             b = float(coords[1])
-            return [b, a] if coord_order == 'lat_lon' else [a, b]
+            return resolve_pair(a, b)
         except Exception:
             return None
 
@@ -319,7 +335,6 @@ def _parse_temporal_value(value):
 # ============================================================================
 
 def detect_schema(item):
-    """Pick a schema version using canonicalized keys."""
     if not isinstance(item, dict):
         return 'v1'
 
@@ -327,8 +342,12 @@ def detect_schema(item):
 
     if {'departure_date', 'vehicle'}.issubset(keys):
         return 'v1'
-    if 'ports' in keys:
+    if 'ports' in keys or 'leg_name' in keys or 'organisation' in keys:
         return 'v4'
+    if 'nodes' in keys or 'excursion_name' in keys or 'equipment' in keys:
+        return 'v2'
+    if 'stations' in keys or 'fleet_item' in keys or 'traverse_name' in keys:
+        return 'v3'
 
     for name, schema in SCHEMAS.items():
         if name == 'v1':
@@ -431,9 +450,9 @@ def extract_latlon_from_stop(stop):
     lon_key = None
     for key in stop.keys():
         canonical = _canonicalize_key(key)
-        if canonical in {'lat', 'latitude', 'y'}:
+        if canonical in {'lat', 'latitude', 'y'} or canonical.endswith('_lat'):
             lat_key = key
-        if canonical in {'lon', 'lng', 'longitude', 'x'}:
+        if canonical in {'lon', 'lng', 'longitude', 'x'} or canonical.endswith('_lng') or canonical.endswith('_lon'):
             lon_key = key
 
     if lat_key and lon_key:
@@ -680,6 +699,18 @@ def run_import_job(job_id, policy='skip'):
             'errors': errors[:50],
         }
         job.save()
+
+        if inserted > 0:
+            try:
+                from django.core.management import call_command
+                call_command(
+                    'backfill_bustimes_service_id',
+                    user=[job.user.pk],
+                    update_all=True,
+                )
+                print(f"[import-job %s] backfill_bustimes_service_id completed", job.pk)
+            except Exception as exc:
+                print(f"[import-job %s] backfill_bustimes_service_id failed: %s", job.pk, exc)
 
     except Exception as exc:
         job.status = ImportJob.STATUS_FAILED

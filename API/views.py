@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.core.cache import cache
 from django.http import JsonResponse
-from django.views import View
+from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
 from django.db.models import F
 
@@ -310,7 +310,7 @@ def _background_enrich_and_cache(data: "dict | list", cache_key: str, cache_time
  
 # ── view ───────────────────────────────────────────────────────────────────────
  
-class live_trains_proxy(View):
+class live_trains_proxy(APIView):
     API_URL       = _SB_LOCATIONS_URL
     CACHE_KEY     = "live_trains_data"
     CACHE_TIMEOUT = 10   # seconds
@@ -320,7 +320,7 @@ class live_trains_proxy(View):
 
         cached = cache.get(self.CACHE_KEY)
         if cached and not force_refresh:
-            return JsonResponse(cached, safe=False)
+            return Response(cached)
  
         # ── fetch raw locations from Signalbox ─────────────────────────────
         try:
@@ -328,7 +328,7 @@ class live_trains_proxy(View):
             res.raise_for_status()
             data = res.json()
         except requests.RequestException:
-            return JsonResponse({"error": "Failed to fetch train data"}, status=502)
+            return Response({"error": "Failed to fetch train data"}, status=502)
  
         # ── enrich synchronously up to the timeout ─────────────────────────
         deadline = time.monotonic() + _ENRICH_TIMEOUT
@@ -351,7 +351,7 @@ class live_trains_proxy(View):
                 daemon=True,
             ).start()
  
-        return JsonResponse(data, safe=False)
+        return Response(data)
 
 
 @api_view(["GET"])

@@ -35,7 +35,7 @@ SCHEMAS = {
     'v2': {
         'markers': ['excursion', 'run_type', 'updated_at', 'data_sources_id'],
         'flags': {
-            'coord_order': 'lon_lat',
+            'coord_order': 'auto',
         },
     },
     'v1': {
@@ -85,7 +85,7 @@ FIELD_ALIASES = {
     'service_date': ['dispatch_date', 'from_date', 'departure_date', 'created_at'],
     'polyline': ['polyline'],
     'origin_departure': ['annotations.origin_departure'],
-    'stop_code': ['stand_id', 'atco_code', 'stop_id'],
+    'stop_code': ['stand_id', 'atco_code', 'stop_id', 'platform_id'],
     'stop_crs': ['crs'],
     'stop_tiploc': ['tiploc'],
     'vehicle_type': ['vehicle_type', 'type'],

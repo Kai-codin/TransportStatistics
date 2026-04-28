@@ -7,6 +7,8 @@ __pycache__/
 
 
 tools/*
+trains.md
+trains.py
 */.playwright-profile/
 # C extensions
 *.so

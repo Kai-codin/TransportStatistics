@@ -43,6 +43,65 @@
     margin-right: 5px;
     font-size: 16px;
   }
+
+  .livery-dc2626 {
+    color: #fff;
+    stroke: #dc2626;
+    background: #dc2626;
+  }
+  
+  .livery-16a34a {
+    color: #000;
+    stroke: #16a34a;
+    background: #16a34a;
+  }
+
+  .livery-f59e0b {
+    color: #000;
+    stroke: #f59e0b;
+    background: #f59e0b;
+  }
+
+  .ts-map-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+  }
+
+  .ts-control-btn {
+    background: var(--ts-bg, #fff);
+    border: 1px solid #ccc;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+  }
+
+  .ts-filter-menu {
+    background: var(--ts-bg, #fff);
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+
+  .ts-filter-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .ts-hidden {
+    display: none;
+  }
 </style>
 
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
@@ -50,6 +109,17 @@
 <link rel="stylesheet" href="https://bustimes.org/liveries.1775980711.css">
 
 <div class="ts-map-wrapper">
+  <div class="ts-map-controls">
+    <button id="ts-filter-toggle" class="ts-control-btn" aria-label="Toggle Filters">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 3H2m3.38 5.09L10 13.91V21l4-2v-5.09l4.62-5.82z"/></svg>
+    </button>
+    <div id="ts-filter-menu" class="ts-filter-menu ts-hidden">
+      <label><input type="checkbox" data-filter="bus_stops"> Bus Stops</label>
+      <label><input type="checkbox" data-filter="train_stations"> Train Stations</label>
+      <label><input type="checkbox" data-filter="live_buses"> Live Buses</label>
+      <label><input type="checkbox" data-filter="live_trains"> Live Trains</label>
+    </div>
+  </div>
 
   <!-- ── map canvas ────────────────────────────────────────────────── -->
   <div id="ts-map"></div>
@@ -75,18 +145,101 @@
 
   // ── constants ──────────────────────────────────────────────────────────────
   const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
+  const TRAIN_API_URL = '/api/live-trains/';
+  const VISIBILITY_STORAGE_KEY = 'ts_map_visibility';
+  const trainMarkers = [];
+  let trainData = [];
   const live_bus_location_url = 'https://bustimes.org/vehicles.json?'
+  const visibility = (function() {
+    try {
+      const saved = localStorage.getItem(VISIBILITY_STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) { console.warn("Could not load filters", e); }
+    return {
+      bus_stops: true,
+      train_stations: true,
+      live_buses: true,
+      live_trains: true
+    };
+  })();
+
+  function updateVisibility(save = true) {
+    if (save) {
+      localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify(visibility));
+    }
+
+    // Sync Checkboxes to state (important for page load)
+    filterMenu.querySelectorAll('input').forEach(input => {
+      input.checked = !!visibility[input.dataset.filter];
+    });
+
+    // Update Live Markers
+    if (!visibility.live_trains) {
+      clearMarkers(trainMarkers);
+    } else {
+      fetchTrains();
+    }
+
+    if (!visibility.live_buses) {
+      clearMarkers(btMarkers);
+      updateBtGeojson([]);
+    } else {
+      fetchLiveBuses();
+    }
+
+    // Update Static Map Layers
+    applyStopFilters();
+  }
+
+  const filterToggle = document.getElementById('ts-filter-toggle');
+  const filterMenu = document.getElementById('ts-filter-menu');
+
+  filterToggle.addEventListener('click', () => filterMenu.classList.toggle('ts-hidden'));
+
+  // 3. Handle checkbox changes
+  filterMenu.querySelectorAll('input').forEach(input => {
+    input.addEventListener('change', (e) => {
+      visibility[e.target.dataset.filter] = e.target.checked;
+      updateVisibility();
+    });
+  });
+
+  // 4. Update applyStopFilters to handle layer visibility
+  function applyStopFilters() {
+    if (!map || !map.getLayer('stops')) return;
+    
+    // This logic assumes your vector source has 'stop_type_code' 
+    // or you can use your BUS_TYPE_CODES set logic here
+    const filters = ['any'];
+    
+    if (visibility.bus_stops) {
+      filters.push(['in', ['get', 'stop_type_code'], ['literal', Array.from(BUS_TYPE_CODES)]]);
+    }
+    if (visibility.train_stations) {
+      filters.push(['!', ['in', ['get', 'stop_type_code'], ['literal', Array.from(BUS_TYPE_CODES)]]]);
+    }
+    
+    // If nothing selected, filter everything out
+    map.setFilter('stops', filters.length > 1 ? filters : ['==', ['id'], 'none']);
+  }
   // Expected coord format ymax=52.80565080572876&xmax=-1.6264230424873176&ymin=52.793894297834726&xmin=-1.649060537355183
 
   function styleFor(t) { return STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json'; }
   // Read theme from localStorage so it matches the sidebar toggle regardless of Django context
   let _currentTheme = (function(){ try { return localStorage.getItem('ts_theme') || 'light'; } catch(e) { return 'light'; } })();
   let STYLE_URL = styleFor(_currentTheme);
+  const TOC_LOOKUP = {};
   const STORAGE_KEY   = 'ts_map_view';
   const SHEET_DATETIME_KEY = 'ts_sheet_datetime';
   const STOPS_API      = '/api/stops/';
   const TRAIN_DEPS_API = '/api/train-departures/';
   const BUS_DEPS_API   = '/api/bus-departures/';
+
+  function getTrainColour(delay) {
+    if (delay <= 0) return '16a34a';        // green
+    if (delay <= 5) return 'f59e0b';        // orange
+    return 'dc2626';                        // red
+  }
 
   // stop_type_codes that should hit the bus API
   const BUS_TYPE_CODES = new Set([
@@ -238,6 +391,12 @@
       </div>`;
   }
 
+  function popupShell(p, qt, body) {
+    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
+      <div class="ts-popup-body">${body}</div>
+    </div>`;
+  }
+
   function timeControlsHTML(qt) {
     const now   = new Date();
     const diff  = qt ? Math.round((qt - now) / 60000) : 0;
@@ -324,11 +483,11 @@
   }
 
   function sheetHTML_loading(p, qt) {
-    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
-      <div class="ts-popup-body">
-        <div class="ts-popup-spinner"><span class="ts-spinner"></span>Fetching departures…</div>
-      </div>
-      </div>`;
+    return popupShell(
+      p,
+      qt,
+      `<div class="ts-popup-spinner"><span class="ts-spinner"></span>Fetching departures…</div>`
+    );
   }
 
   function sheetHTML_loaded(p, results, qt) {
@@ -344,8 +503,10 @@
          </div>`
       : `<div class="ts-no-departures">No departures found for this time.</div>`;
 
-    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
-      <div class="ts-popup-body">${body}
+    return popupShell(
+      p,
+      qt,
+      `${body}
         <div class="ts-popup-actions">
           <button id="ts-departures-action" data-action="custom-service"
             data-stop-atco="${p ? (p.atco_code||'') : ''}"
@@ -353,49 +514,71 @@
             data-date="${qt ? toDate(qt) : toDate(new Date())}"
             data-transport-type="${p ? (BUS_TYPE_CODES.has(p.stop_type_code)?'bus':'rail') : 'rail'}"
             class="ts-btn-primary ts-popup-action-btn">Log custom trip</button>
-        </div>
-      </div></div>`;
+        </div>`
+    );
   }
 
   function sheetHTML_error(p, qt) {
-    return `<div class="ts-popup">${headerHTML(p)}${timeControlsHTML(qt)}${toggleControlsHTML()}
-      <div class="ts-popup-body"><div class="ts-popup-error">⚠ Could not load departures.</div></div></div>`;
+    return popupShell(p, qt, `<div class="ts-popup-error">⚠ Could not load departures.</div>`);
   }
 
   const BT_DOM_LIMIT = 1000; 
   const btMarkers = [];
-  const DETAIL_ZOOM_THRESHOLD = 10;
+  const SIMPLE_ICON_THRESHOLD = 2500;
   let btVehicleData = [];
+
+  function useSimpleIcons(totalCount) {
+    return totalCount > SIMPLE_ICON_THRESHOLD;
+  }
   
+  function getTrainRotation(from, to) {
+    if (!from || !to) return 0;
+
+    const lat1 = from.lat * Math.PI / 180;
+    const lat2 = to.lat * Math.PI / 180;
+    const dLon = (to.lon - from.lon) * Math.PI / 180;
+
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x =
+      Math.cos(lat1) * Math.sin(lat2) -
+      Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+
+    let bearing = Math.atan2(y, x) * (180 / Math.PI);
+
+    return (bearing + 360) % 360; // normalize 0–360
+  }
+
+  function createTrainMarker(train) {
+    const colour = getTrainColour(train.delay);
+    const rotation = getTrainRotation(train.location, train.predicted_location);
+
+    return createLiveryIcon({
+      label: train.headcode,          // no text for trains (or use headcode later)
+      css: colour,        // THIS is the important bit
+      isColour: true,     // tells it to treat as flat colour
+      rotation: rotation + 90, // rotate to point in direction of travel (icon faces right by default)
+      carriages: 1        // keep it small like a dot
+    });
+  }
+
   function createLiveryIcon({ label = '', rotation = 0, bg = '#000', css = null, isColour = false, textColour = '#fff', textStroke = "#0000", strokeWidth = "0px", carriages = 1 } = {}) {
     const normalisedRotation = ((rotation % 360) + 360) % 360;
     const cellRotation = (normalisedRotation < 90 || normalisedRotation > 270) ? 0 : 180;
-    const backgroundStyle = css ? `background: ${css};` : `background: ${bg};`;
     const html = document.createElement('div');
-    let localTextColour = textColour;
-    let localTextStroke = textStroke;
 
     if (isColour) {
-      console.log('Using colour livery for', label, 'with base colour', bg);
-      localTextColour = '#000';
-      localTextStroke = '#fff';
       strokeWidth = "2px";
     }
 
-    console.log(css);
-
     const numCarriages = Math.min(16, Math.max(1, parseInt(carriages) || 1));
-
-    let right = cellRotation + 90 < 180 ? 'right' : '';
+    const carriageSideClass = cellRotation + 90 < 180 ? 'right' : '';
 
     let carriageSvgs = '';
     for (let i = 0; i < numCarriages; i++) {
-      const isLastCarriage = i === numCarriages - 1;
-      const carriageLabel = isLastCarriage ? label : '';
-
+      const carriageLabel = i === numCarriages - 1 ? label : '';
 
       carriageSvgs += `
-        <svg width="30" height="20" class="vehicle-marker livery-${css} ${right}" style="text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
+        <svg width="30" height="20" class="vehicle-marker livery-${css} ${carriageSideClass}" style="text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
           <text x="14" y="13">${carriageLabel}</text>
         </svg>
       `;
@@ -415,6 +598,33 @@
     return html;
   }
 
+  // ── URL builder – strips empty params so log-trip URLs stay clean ──────────
+  function buildLogUrl(params) {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== null && v !== undefined && String(v).trim() !== '') {
+        p.set(k, String(v));
+      }
+    }
+    return '/log-trip/?' + p.toString();
+  }
+
+  async function fetchOperators() {
+    try {
+      const res = await fetch('/api/get_train_operators/');
+      const data = await res.json();
+
+      data.forEach(op => {
+        if (op.code) {
+          TOC_LOOKUP[op.code.toUpperCase()] = op.name;
+        }
+      });
+
+    } catch (e) {
+      console.error('Failed to load operators', e);
+    }
+  }
+
   function createSimpleCircle({ colour = '#000', borderColour = '#000' } = {}) {
     const el = document.createElement('div');
     el.style.cssText = `width: 10px; height: 10px; background: ${colour}; border-radius: 50%; border: 1px solid ${borderColour};`;
@@ -428,20 +638,13 @@
       const id = String(vehicleOrId);
       vehicle = btVehicleData.find(v => String(v.id) === id) || {};
     }
-    console.log('Logging BT vehicle', vehicle);
-    const p = new URLSearchParams({
+    window.location.href = buildLogUrl({
       headcode:       (vehicle.service && vehicle.service.line_name) || '',
       date:           vehicle.datetime ? toDate(new Date(vehicle.datetime)) : '',
       trip_id:        vehicle.trip_id || '',
-      scheduled_time: '',
-      stop:           '',
-      stop_crs:       '',
-      stop_atco:      '',
-      vehicle:        vehicle.vehicle.name || '',
-      operator:       '',
+      vehicle:        (vehicle.vehicle && vehicle.vehicle.name) || '',
       transport_type: 'bus',
     });
-    window.location.href = '/log-trip/?' + p.toString();
   }
 
   // Expose for inline onclick handlers in popup HTML
@@ -453,11 +656,56 @@
     src.setData(btVehiclesToGeoJSON(filteredVehicles));
   }
 
+  function renderTrainMarkers() {
+    clearMarkers(trainMarkers);
+    const showSimpleIcons = useSimpleIcons(trainData.length);
+
+    for (const t of trainData) {
+      if (!t.location) continue;
+
+      const operatorName = TOC_LOOKUP[t.toc_code?.toUpperCase()] || t.toc_code || '-';
+      const colour = getTrainColour(t.delay ?? 0);
+      const colourHex = colour === '16a34a' ? '#16a34a' : colour === 'f59e0b' ? '#f59e0b' : '#dc2626';
+
+      let el;
+      if (showSimpleIcons) {
+        el = createSimpleCircle({ colour: colourHex, borderColour: '#0000' });
+      } else {
+        el = createTrainMarker(t);
+      }
+
+      const logUrl = buildLogUrl({
+        headcode:       t.headcode || '',
+        date:           toDate(new Date()),
+        rid:            t.rid || '',
+        trip_id:        t.trip_id || '',
+        origin:         (t.origin && t.origin.name) || '',
+        destination:    (t.destination && t.destination.name) || '',
+        operator:       operatorName,
+        transport_type: 'rail',
+      });
+
+      const popupHtml = `
+        <b>${t.headcode || 'Train'}</b><br>
+        ${t.destination ? `To: ${t.destination.name}<br>` : ''}
+        Delay: ${t.delay ?? 0} min<br>
+        Operator: ${operatorName}<br>
+        RID: ${t.rid || '-'}<br>
+        <a href="${logUrl}" class="ts-btn-primary ts-popup-action-btn" style="display:inline-block;margin-top:6px;">Log this train</a>
+      `;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([t.location.lon, t.location.lat])
+        .setPopup(new maplibregl.Popup({ offset: 6 }).setHTML(popupHtml))
+        .addTo(map);
+
+      trainMarkers.push(marker);
+    }
+  }
+
   function renderBTDomMarkers(filteredVehicles) {
-    console.log('Rendering BT DOM markers', filteredVehicles.length);
     clearMarkers(btMarkers);
-    const zoom = map.getZoom();
-    const showDetailedIcon = zoom >= DETAIL_ZOOM_THRESHOLD;
+    const showSimpleIcons = useSimpleIcons(filteredVehicles.length);
 
     for (const v of filteredVehicles.slice(0, 50000)) {
       const lng = v.coordinates[0];
@@ -465,31 +713,18 @@
 
       let heading = v.heading ?? 0;
       const line = v.service?.line_name || '';
-      const serviceLink = v.service?.url || '';
       const vehicleLink = v.vehicle?.url || '';
       const dest = v.destination || '';
       const vehicleName = v.vehicle?.name || '';
       const vehicleColour = v.vehicle?.colour || '#000';
-      const whiteText = v.vehicle?.white_text ?? false;
-      let textStroke = v.vehicle?.stroke_colour ?? false;
       const livery = v.vehicle?.livery || null;
-      let isColour = false;
 
       heading = heading + 180;
-      const rotation = heading;
-      heading = heading + 90;
+      const iconRotation = heading + 90;
 
       let css = v.vehicle?.colour || null;
 
-      let textColour = '#000';
-      if (whiteText) textColour = '#fff';
-      if (v.vehicle?.text_colour) textColour = v.vehicle.text_colour;
-
-      let strokeWidth = "0px";
-      if (textStroke != false) strokeWidth = "2px";
-
       if (livery == null) {
-        textColour = '#000';
         css = "#fff";
       }
 
@@ -499,16 +734,12 @@
         css = v.vehicle.colour;
       }
 
-      const zoomForCarriages = map.getZoom();
-
       let el;
-      if (showDetailedIcon) {
-        el = createLiveryIcon({
-          label: line, css, isColour, textColour, rotation: heading, textStroke, strokeWidth
-        });
-      } else {
+      if (showSimpleIcons) {
         // "Small circles from the first version": simple coloured dot
         el = createSimpleCircle({ colour: vehicleColour, borderColour: '#0000' });
+      } else {
+        el = createLiveryIcon({ label: line, css, rotation: iconRotation });
       }
 
       const html = `
@@ -545,14 +776,32 @@
   }
 
   function renderBusMarkers() {
-    let count = btVehicleData.length;
+    const count = btVehicleData.length;
     if (count < BT_DOM_LIMIT) {
       updateBtGeojson([]);
       renderBTDomMarkers(btVehicleData);
     }
   }
 
+  async function fetchTrains() {
+    if (!visibility.live_trains) return;
+    try {
+      const res = await fetch(TRAIN_API_URL);
+      const data = await res.json();
+
+      trainData = data.train_locations || [];
+      renderTrainMarkers();
+
+    } catch (e) {
+      console.error('Train fetch failed', e);
+    }
+  }
+
   async function fetchLiveBuses() {
+    if (!visibility.live_buses) {
+      clearMarkers(btMarkers);
+      return;
+    }
     const b = map.getBounds();
     const q = new URLSearchParams({
       ymax: b.getNorth(),
@@ -616,10 +865,10 @@
 
     sheetInner.querySelectorAll('.ts-log-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const p = new URLSearchParams({
+        const params = {
           headcode:       btn.dataset.headcode       || '',
           date:           btn.dataset.date           || '',
-          trip_id:        btn.dataset.tripId        || '',
+          trip_id:        btn.dataset.tripId         || '',
           scheduled_time: btn.dataset.scheduled      || '',
           stop:           btn.dataset.stop           || '',
           stop_crs:       btn.dataset.stopCrs        || '',
@@ -627,10 +876,9 @@
           vehicle:        btn.dataset.vehicle        || '',
           operator:       btn.dataset.operator       || '',
           transport_type: btn.dataset.transportType  || 'rail',
-        });
-        // include cif_train_uid when available for the route map
-        if (btn.dataset.cifUid) p.set('cif_train_uid', btn.dataset.cifUid);
-        window.location.href = '/log-trip/?' + p.toString();
+        };
+        if (btn.dataset.cifUid) params.cif_train_uid = btn.dataset.cifUid;
+        window.location.href = buildLogUrl(params);
       });
     });
 
@@ -640,22 +888,16 @@
       depBtn.addEventListener('click', () => {
         try {
           const dt = _sheetQueryTime || new Date();
-          const params = new URLSearchParams();
-          params.set('headcode', '');
-          params.set('date', toDate(dt));
-          params.set('trip_id', '');
-          params.set('scheduled_time', '');
           const stopName = _activeProps ? (_activeProps.long_name || _activeProps.name || '') : (depBtn.dataset.origin || '');
-          params.set('stop', stopName);
-          params.set('stop_crs', _activeProps ? (_activeProps.crs || '') : '');
-          params.set('stop_atco', _activeProps ? (_activeProps.atco_code || '') : (depBtn.dataset.stopAtco || ''));
-          params.set('vehicle', '');
-          params.set('operator', '');
           const ttype = depBtn.dataset.transportType || (_activeProps ? (BUS_TYPE_CODES.has(_activeProps.stop_type_code)?'bus':'rail') : 'rail');
-          params.set('transport_type', ttype);
-          // indicate this should open the custom-trip flow
-          params.set('custom', '1');
-          window.location.href = '/log-trip/?' + params.toString();
+          window.location.href = buildLogUrl({
+            date:           toDate(dt),
+            stop:           stopName,
+            stop_crs:       _activeProps ? (_activeProps.crs || '') : '',
+            stop_atco:      _activeProps ? (_activeProps.atco_code || '') : (depBtn.dataset.stopAtco || ''),
+            transport_type: ttype,
+            custom:         '1',
+          });
         } catch (e) { console.debug('departures action click', e); }
       });
     }
@@ -967,7 +1209,7 @@
 
     // ── map load ───────────────────────────────────────────────────────────────
     map.on('load', () => {
-
+      fetchOperators();
       // ── runtime theme swap ───────────────────────────────────────────────────
       document.addEventListener('ts:themechange', function(e) {
         const theme = (e && e.detail && e.detail.theme) ? e.detail.theme : _currentTheme;
@@ -1054,10 +1296,14 @@
       map.on('mouseenter','unclustered-point', ()=> map.getCanvas().style.cursor='pointer');
       map.on('mouseleave','unclustered-point', ()=> map.getCanvas().style.cursor='');
 
-      map.on('moveend', checkAndLoad && fetchLiveBuses);
+      map.on('moveend', () => {
+        checkAndLoad();
+        fetchLiveBuses();
+        fetchTrains();
+      });
       // on zoomend: re-evaluate density immediately (no fetch needed if already loaded)
       // then also check if we need to load new data for the expanded viewport
-      map.on('zoomend', () => { recheckDensity(); checkAndLoad(); });
+      map.on('zoomend', () => { recheckDensity(); checkAndLoad(); renderTrainMarkers(); renderBusMarkers(); });
 
       if (initBbox) {
         map.fitBounds([[initBbox[0],initBbox[1]],[initBbox[2],initBbox[3]]],{padding:20});
@@ -1082,6 +1328,7 @@
       } else {
         if (wantStops) fetchStops(expandBbox(mapBbox(map), BUFFER_FACTOR));
       }
+      updateVisibility(false);
     });
 
     return map;

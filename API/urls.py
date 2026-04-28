@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import StopViewSet, enrich_stop, fleet_search, train_fleet
+from .views import StopViewSet, enrich_stop, fleet_search, train_fleet, live_trains_proxy, GetTrainOperatorsViewSet
 from Depatures.api import ServiceLocationsViewSet, TrainDeparturesViewSet, BusDeparturesViewSet, BusServiceViewSet
 
 router = DefaultRouter()
@@ -9,6 +9,7 @@ router.register(r'train-service', ServiceLocationsViewSet, basename='service-loc
 router.register(r'train-departures', TrainDeparturesViewSet, basename='train-departures')
 router.register(r'bus-departures', BusDeparturesViewSet, basename='bus-departures')
 router.register(r'bus-service', BusServiceViewSet, basename='bus-service')
+router.register(r'get_train_operators', GetTrainOperatorsViewSet, basename='train-operatos')
 
 urlpatterns = [
     # Place the explicit enrich route before the router to avoid it being
@@ -17,5 +18,6 @@ urlpatterns = [
     path('fleet', fleet_search, name='fleet-search'),
     path('fleet/', fleet_search, name='fleet-search-slash'),
     path('train-fleet/', train_fleet, name='train-fleet'),
+    path('live-trains/', live_trains_proxy.as_view(), name='live-trains'),
     path('', include(router.urls)),
 ]

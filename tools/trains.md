@@ -35,7 +35,7 @@ Install Chromium for Playwright:
 Run in headed mode and open login first:
 
 ```bash
-./venv/bin/python tools/scrape_gbrail_fleet.py \
+./venv/bin/python tools/trains.py \
   --start-id 1 \
   --end-id 50 \
   --output gbrail_fleet.json \

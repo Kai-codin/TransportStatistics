@@ -1,7 +1,6 @@
 from django.contrib import admin
 
-from .models import Operator, Trains, HistoricalRoutes, TrainEditRequest
-
+from .models import Operator, Trains, HistoricalRoutes, TrainEditRequest, TrainRID
 
 @admin.register(Operator)
 class OperatorAdmin(admin.ModelAdmin):
@@ -24,6 +23,11 @@ class TrainEditRequestAdmin(admin.ModelAdmin):
     search_fields = ('train__fleetnumber', 'user__username')
     list_filter = ('status', 'created_at')
     readonly_fields = ('original_values',)
+
+@admin.register(TrainRID)
+class TrainRIDAdmin(admin.ModelAdmin):
+    list_display = ('rid', 'headcode', 'origin_name', 'destination_name')
+    search_fields = ('rid', 'headcode', 'origin_name', 'destination_name')
 
 @admin.register(HistoricalRoutes)
 class HistoricalRoutesAdmin(admin.ModelAdmin):

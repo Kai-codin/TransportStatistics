@@ -100,7 +100,37 @@ class HistoricalRoutes(models.Model):
     def __str__(self) -> str:
         return f"{self.name} | {self.description} | ({self.start_date} - {self.end_date or 'Present'})"
 
-
+class TrainRID(models.Model):
+    """
+    Caches per-RID service details fetched from the Signalbox train-information API.
+    One row per RID - updated in-place if we ever re-fetch.
+    """
+ 
+    rid = models.CharField(max_length=64, primary_key=True)
+    headcode = models.CharField(max_length=16, blank=True, default="")
+    uid = models.CharField(max_length=16, blank=True, default="")
+    toc_code = models.CharField(max_length=8, blank=True, default="")
+    train_operator = models.CharField(max_length=128, blank=True, default="")
+ 
+    origin_crs = models.CharField(max_length=8, blank=True, default="")
+    origin_name = models.CharField(max_length=128, blank=True, default="")
+    origin_departure = models.DateTimeField(null=True, blank=True)
+ 
+    destination_crs = models.CharField(max_length=8, blank=True, default="")
+    destination_name = models.CharField(max_length=128, blank=True, default="")
+    destination_arrival = models.DateTimeField(null=True, blank=True)
+ 
+    # Housekeeping
+    fetched_at = models.DateTimeField(auto_now=True)
+ 
+    class Meta:
+        db_table = "train_rid"
+        verbose_name = "Train RID"
+        verbose_name_plural = "Train RIDs"
+ 
+    def __str__(self):
+        return f"{self.rid} - {self.headcode} {self.origin_name} → {self.destination_name}"
+    
 class Trains(models.Model):
     operator = models.ForeignKey(
         Operator,

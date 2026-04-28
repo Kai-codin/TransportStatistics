@@ -1,6 +1,9 @@
 import logging
 from django.db.models import Q
 from urllib.parse import urlencode
+import time
+from datetime import timedelta
+import threading
 
 import requests
 from django.db import transaction
@@ -11,10 +14,16 @@ from rest_framework.decorators import api_view
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
+from django.utils import timezone
+from django.core.cache import cache
+from django.http import JsonResponse
+from django.views import View
+from rest_framework.viewsets import ViewSet
+from django.db.models import F
 
 from .serializers import StopSerializer, FleetSerializer, TrainFleetVehicleSerializer
 from Stops.models import Stop
-from main.models import Trains
+from main.models import Operator, Trains, TrainRID
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +109,224 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
 
+# ── Signalbox endpoints ────────────────────────────────────────────────────────
+_SB_LOCATIONS_URL = "https://map-api.production.signalbox.io/api/locations"
+_SB_TRAIN_INFO_URL = "https://map-api.production.signalbox.io/api/train-information/{rid}"
+ 
+RID_MAX_AGE_HOURS = 6
+_RATE_LIMIT_DELAY = 0.5   # 2 req/s
+_ENRICH_TIMEOUT   = 5.0   # seconds before we give up waiting and return what we have
+ 
+ 
+# ── helpers ────────────────────────────────────────────────────────────────────
+ 
+def _parse_rid_payload(data: dict) -> dict:
+    return dict(
+        headcode=data.get("headcode") or "",
+        uid=data.get("uid") or "",
+        toc_code=data.get("toc_code") or "",
+        train_operator=data.get("train_operator") or "",
+        origin_crs=data.get("origin_crs") or "",
+        origin_name=data.get("origin_name") or "",
+        origin_departure=data.get("origin_departure") or None,
+        destination_crs=data.get("destination_crs") or "",
+        destination_name=data.get("destination_name") or "",
+        destination_arrival=data.get("destination_arrival") or None,
+    )
+ 
+ 
+def _fetch_and_cache_rid(rid: str) -> "TrainRID | None":
+    url = _SB_TRAIN_INFO_URL.format(rid=rid)
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("Failed to fetch RID %s from Signalbox: %s", rid, exc)
+        return None
+ 
+    defaults = _parse_rid_payload(data)
+    obj, _ = TrainRID.objects.update_or_create(rid=rid, defaults=defaults)
+    return obj
+ 
+ 
+def _dt_to_str(value) -> "str | None":
+    """
+    Safely convert a datetime field value to an ISO string.
+    Django DateTimeField values are datetime objects when freshly queried,
+    but may already be strings if they were stored as raw ISO strings
+    (e.g. the Signalbox API returns '2026-04-28T19:49:00+01:00').
+    Returns None for falsy values.
+    """
+    if not value:
+        return None
+    if isinstance(value, str):
+        return value
+    return value.isoformat()
+ 
+ 
+def _apply_detail_to_locations(train_locations: list, cached_map: dict) -> list:
+    """Merge whatever is in cached_map into the location dicts in-place."""
+    for train in train_locations:
+        rid = train.get("rid")
+        if not rid:
+            continue
+        detail = cached_map.get(rid)
+        if not detail:
+            continue
+        train.update(
+            headcode=detail.headcode,
+            toc_code=detail.toc_code,
+            train_operator=detail.train_operator,
+            origin={
+                "crs": detail.origin_crs,
+                "name": detail.origin_name,
+                "departure": _dt_to_str(detail.origin_departure),
+            },
+            destination={
+                "crs": detail.destination_crs,
+                "name": detail.destination_name,
+                "arrival": _dt_to_str(detail.destination_arrival),
+            },
+        )
+    return train_locations
+ 
+ 
+def _enrich_train_locations(train_locations: list, deadline: float) -> list:
+    """
+    Enrich train_locations with RID detail.
+ 
+    - Already-cached RIDs are merged immediately.
+    - Missing RIDs are fetched from Signalbox at ≤ 2 req/s, but only until
+      `deadline` (a time.monotonic() value) is reached – after which we return
+      whatever has been enriched so far and let the background thread finish.
+    """
+    if not train_locations:
+        return train_locations
+ 
+    rids = [t["rid"] for t in train_locations if t.get("rid")]
+    if not rids:
+        return train_locations
+ 
+    # ── 1. pull what we already have in the DB ─────────────────────────────
+    stale_cutoff = timezone.now() - timedelta(hours=RID_MAX_AGE_HOURS)
+    cached_qs = TrainRID.objects.filter(rid__in=rids, fetched_at__gte=stale_cutoff)
+    cached_map: dict = {obj.rid: obj for obj in cached_qs}
+ 
+    missing_rids = [r for r in rids if r not in cached_map]
+    logger.debug(
+        "RID enrich: %d total, %d cached, %d to fetch",
+        len(rids), len(cached_map), len(missing_rids),
+    )
+ 
+    # ── 2. fetch missing RIDs – stop if we're past the deadline ────────────
+    for i, rid in enumerate(missing_rids):
+        if time.monotonic() >= deadline:
+            logger.info(
+                "RID enrich: deadline reached after %d/%d fetches – handing off to background",
+                i, len(missing_rids),
+            )
+            break
+        if i > 0:
+            time.sleep(_RATE_LIMIT_DELAY)
+        obj = _fetch_and_cache_rid(rid)
+        if obj:
+            cached_map[rid] = obj
+ 
+    # ── 3. merge whatever we managed to fetch ──────────────────────────────
+    return _apply_detail_to_locations(train_locations, cached_map)
+ 
+ 
+def _background_enrich_and_cache(data: "dict | list", cache_key: str, cache_timeout: int) -> None:
+    """
+    Runs in a daemon thread after the response has already been sent.
+    Finishes enriching any remaining missing RIDs (no deadline), then
+    overwrites the Django cache so the next request gets complete data.
+    """
+    try:
+        locations = data.get("train_locations", []) if isinstance(data, dict) else data
+ 
+        rids = [t["rid"] for t in locations if t.get("rid")]
+        if not rids:
+            return
+ 
+        stale_cutoff = timezone.now() - timedelta(hours=RID_MAX_AGE_HOURS)
+        cached_qs = TrainRID.objects.filter(rid__in=rids, fetched_at__gte=stale_cutoff)
+        cached_map: dict = {obj.rid: obj for obj in cached_qs}
+        missing_rids = [r for r in rids if r not in cached_map]
+ 
+        for i, rid in enumerate(missing_rids):
+            if i > 0:
+                time.sleep(_RATE_LIMIT_DELAY)
+            obj = _fetch_and_cache_rid(rid)
+            if obj:
+                cached_map[rid] = obj
+ 
+        _apply_detail_to_locations(locations, cached_map)
+ 
+        # Overwrite the cache with the now-fully-enriched payload
+        cache.set(cache_key, data, cache_timeout)
+        logger.debug(
+            "Background RID enrich complete – cache updated (%d RIDs, %d were missing)",
+            len(rids), len(missing_rids),
+        )
+ 
+    except Exception:
+        logger.exception("Background RID enrich thread raised an exception")
+ 
+ 
+# ── view ───────────────────────────────────────────────────────────────────────
+ 
+class live_trains_proxy(View):
+    API_URL       = _SB_LOCATIONS_URL
+    CACHE_KEY     = "live_trains_data"
+    CACHE_TIMEOUT = 10   # seconds
+ 
+    def get(self, request, *args, **kwargs):
+        cached = cache.get(self.CACHE_KEY)
+        if cached:
+            return JsonResponse(cached, safe=False)
+ 
+        # ── fetch raw locations from Signalbox ─────────────────────────────
+        try:
+            res = requests.get(self.API_URL, timeout=5)
+            res.raise_for_status()
+            data = res.json()
+        except requests.RequestException:
+            return JsonResponse({"error": "Failed to fetch train data"}, status=502)
+ 
+        # ── enrich synchronously up to the timeout ─────────────────────────
+        deadline = time.monotonic() + _ENRICH_TIMEOUT
+ 
+        if isinstance(data, dict) and "train_locations" in data:
+            data["train_locations"] = _enrich_train_locations(
+                data["train_locations"], deadline
+            )
+        elif isinstance(data, list):
+            data = _enrich_train_locations(data, deadline)
+ 
+        # ── cache whatever we have so concurrent requests don't pile in ────
+        cache.set(self.CACHE_KEY, data, self.CACHE_TIMEOUT)
+ 
+        # ── if deadline fired, finish the rest in the background ───────────
+        if time.monotonic() >= deadline:
+            threading.Thread(
+                target=_background_enrich_and_cache,
+                args=(data, self.CACHE_KEY, self.CACHE_TIMEOUT),
+                daemon=True,
+            ).start()
+ 
+        return JsonResponse(data, safe=False)
+ 
+class GetTrainOperatorsViewSet(ViewSet):
+    def list(self, request):
+        operators = (
+            Operator.objects
+            .values("slug", "name", "code")
+            .order_by("name")
+        )
+        return Response(operators, status=status.HTTP_200_OK)
+    
 @api_view(['GET', 'POST'])
 def enrich_stop(request):
     """Fetch bustimes.org for a single stop (by ATCO) and persist updates.

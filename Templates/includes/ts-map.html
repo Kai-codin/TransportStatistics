@@ -70,33 +70,70 @@
   }
 
   .ts-control-btn {
-    background: var(--ts-bg, #fff);
-    border: 1px solid #ccc;
-    padding: 8px;
-    border-radius: 4px;
+    background: var(--ts-surface);
+    color: var(--ts-text-2);
+    border: 1.5px solid var(--ts-border);
+    padding: 4px;
+    border-radius: 10px;
     cursor: pointer;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--ts-shadow);
+    transition: background 0.15s var(--ts-ease), color 0.15s var(--ts-ease), transform 0.15s var(--ts-ease);
+    margin-top: 143px;
+  }
+
+  .ts-control-btn:hover {
+    background: var(--ts-surface-2);
+    color: var(--ts-text-2);
+  }
+
+  .ts-control-btn:active {
+    transform: translateY(0);
   }
 
   .ts-filter-menu {
-    background: var(--ts-bg, #fff);
-    border: 1px solid #ccc;
-    padding: 10px;
-    border-radius: 4px;
-    margin-top: 5px;
+    margin-top: 6px;
+    padding: 8px;
+    min-width: 180px;
+    background: var(--ts-surface);
+    border: 1.5px solid var(--ts-border);
+    border-radius: var(--ts-r);
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    gap: 6px;
+    box-shadow: var(--ts-shadow);
+    margin-left: -150px;
   }
 
   .ts-filter-menu label {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    white-space: nowrap;
+    gap: 10px;
+    font-family: var(--ts-font);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--ts-text-1);
     cursor: pointer;
+    white-space: nowrap;
+    border-radius: var(--ts-r-sm);
+    padding: 7px 8px;
+    background: var(--ts-surface-2);
+    border: 1px solid transparent;
+    transition: background 0.15s var(--ts-ease), border-color 0.15s var(--ts-ease), color 0.15s var(--ts-ease);
+  }
+
+  .ts-filter-menu label:hover {
+    background: var(--ts-surface-3);
+    border-color: var(--ts-border-soft);
+    color: var(--ts-text-1);
+  }
+
+  .ts-filter-menu input {
+    cursor: pointer;
+    accent-color: var(--ts-accent);
   }
 
   .ts-hidden {
@@ -146,6 +183,7 @@
   // ── constants ──────────────────────────────────────────────────────────────
   const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
   const TRAIN_API_URL = '/api/live-trains/';
+  const TRAIN_DETAIL_REFRESH_URL = '/api/train-detail/refresh/';
   const VISIBILITY_STORAGE_KEY = 'ts_map_visibility';
   const trainMarkers = [];
   let trainData = [];
@@ -530,6 +568,14 @@
   function useSimpleIcons(totalCount) {
     return totalCount > SIMPLE_ICON_THRESHOLD;
   }
+
+  function getStopRequestContext(props) {
+    const isBus = BUS_TYPE_CODES.has(props.stop_type_code);
+    return {
+      isBus,
+      refKey: isBus ? props.atco_code : props.crs,
+    };
+  }
   
   function getTrainRotation(from, to) {
     if (!from || !to) return 0;
@@ -554,21 +600,16 @@
 
     return createLiveryIcon({
       label: train.headcode,          // no text for trains (or use headcode later)
-      css: colour,        // THIS is the important bit
-      isColour: true,     // tells it to treat as flat colour
+      css: colour,        // Use the colour as the icon tint.
       rotation: rotation + 90, // rotate to point in direction of travel (icon faces right by default)
       carriages: 1        // keep it small like a dot
     });
   }
 
-  function createLiveryIcon({ label = '', rotation = 0, bg = '#000', css = null, isColour = false, textColour = '#fff', textStroke = "#0000", strokeWidth = "0px", carriages = 1 } = {}) {
+  function createLiveryIcon({ label = '', rotation = 0, css = null, carriages = 1 } = {}) {
     const normalisedRotation = ((rotation % 360) + 360) % 360;
     const cellRotation = (normalisedRotation < 90 || normalisedRotation > 270) ? 0 : 180;
     const html = document.createElement('div');
-
-    if (isColour) {
-      strokeWidth = "2px";
-    }
 
     const numCarriages = Math.min(16, Math.max(1, parseInt(carriages) || 1));
     const carriageSideClass = cellRotation + 90 < 180 ? 'right' : '';
@@ -674,27 +715,25 @@
         el = createTrainMarker(t);
       }
 
-      const logUrl = buildLogUrl({
-        headcode:       t.headcode || '',
-        date:           toDate(new Date()),
-        rid:            t.rid || '',
-        trip_id:        t.trip_id || '',
-        origin:         (t.origin && t.origin.name) || '',
-        destination:    (t.destination && t.destination.name) || '',
-        operator:       operatorName,
-        transport_type: 'rail',
-      });
+      let marker;
 
-      const popupHtml = `
-        <b>${t.headcode || 'Train'}</b><br>
-        ${t.destination ? `To: ${t.destination.name}<br>` : ''}
-        Delay: ${t.delay ?? 0} min<br>
-        Operator: ${operatorName}<br>
-        RID: ${t.rid || '-'}<br>
-        <a href="${logUrl}" class="ts-btn-primary ts-popup-action-btn" style="display:inline-block;margin-top:6px;">Log this train</a>
-      `;
+      if (!t.headcode) {
+        el.addEventListener('click', () => {
+          if (t.rid) {
+            refreshTrainDetailByRid(t, marker, operatorName)
+              .catch(e => console.debug('Train RID refresh failed on marker click', e));
+          } else {
+            refreshLiveTrainsProxy().catch(e => console.debug('Train refresh failed on marker click', e));
+          }
+        });
+      }
 
-      const marker = new maplibregl.Marker({ element: el })
+      const popupHtml = buildTrainPopupHtml(t, operatorName);
+
+      //Operator: ${operatorName}<br>
+      //RID: ${t.rid || '-'}<br>
+
+      marker = new maplibregl.Marker({ element: el })
         .setLngLat([t.location.lon, t.location.lat])
         .setPopup(new maplibregl.Popup({ offset: 6 }).setHTML(popupHtml))
         .addTo(map);
@@ -717,26 +756,13 @@
       const dest = v.destination || '';
       const vehicleName = v.vehicle?.name || '';
       const vehicleColour = v.vehicle?.colour || '#000';
-      const livery = v.vehicle?.livery || null;
 
-      heading = heading + 180;
-      const iconRotation = heading + 90;
-
-      let css = v.vehicle?.colour || null;
-
-      if (livery == null) {
-        css = "#fff";
-      }
-
-      if (v.vehicle?.livery) {
-        css = v.vehicle.livery;
-      } else {
-        css = v.vehicle.colour;
-      }
+      const iconRotation = heading + 270;
+      const css = v.vehicle?.livery || v.vehicle?.colour || '#fff';
 
       let el;
       if (showSimpleIcons) {
-        // "Small circles from the first version": simple coloured dot
+        // Fallback to the small circle marker used at lower detail.
         el = createSimpleCircle({ colour: vehicleColour, borderColour: '#0000' });
       } else {
         el = createLiveryIcon({ label: line, css, rotation: iconRotation });
@@ -753,11 +779,7 @@
           data-vehicle="${v.name}"
           data-transport-type="bus"
           title="Log this service">Log this vehicle</button>
-        
       `;
-
-      // coming soon cba to code this yet
-      //<button class="ts-btn-primary ts-popup-action-btn">Mark as spotted</button>
 
       const m = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])
@@ -784,7 +806,10 @@
   }
 
   async function fetchTrains() {
-    if (!visibility.live_trains) return;
+    if (!visibility.live_trains) {
+      clearMarkers(trainMarkers);
+      return;
+    }
     try {
       const res = await fetch(TRAIN_API_URL);
       const data = await res.json();
@@ -796,6 +821,102 @@
       console.error('Train fetch failed', e);
     }
   }
+
+  function buildTrainLogPayload(train, operatorName) {
+    return {
+      headcode: train.headcode || '',
+      uid: train.uid || '',
+      rid: train.rid || '',
+      trip_id: train.trip_id || '',
+      originName: (train.origin && train.origin.name) || '',
+      destinationName: (train.destination && train.destination.name) || '',
+      operator: train.train_operator || operatorName || '',
+    };
+  }
+
+  function buildTrainPopupHtml(train, operatorName) {
+    const payload = buildTrainLogPayload(train, operatorName);
+    return `
+      ${train.headcode || 'Train'} to ${train.destination ? `${train.destination.name}<br>` : ''}
+      Delay: ${train.delay ?? 0} min<br>
+      <button type="button" class="ts-btn-primary ts-popup-action-btn" style="color: var(--ts-text-inv); display:inline-block;margin-top:6px;" onclick='openTrainLog(${JSON.stringify(payload)})'>Log this train</button>
+    `;
+  }
+
+  async function refreshTrainDetailByRid(train, marker, operatorName) {
+    if (!train.rid) return null;
+
+    const res = await fetch(`${TRAIN_DETAIL_REFRESH_URL}?rid=${encodeURIComponent(train.rid)}`);
+    if (!res.ok) {
+      throw new Error(`Failed to refresh RID ${train.rid}: ${res.status}`);
+    }
+
+    const payload = await res.json();
+    const detail = payload.detail || {};
+
+    train.headcode = detail.headcode || train.headcode || '';
+    train.uid = detail.uid || train.uid || '';
+    train.toc_code = detail.toc_code || train.toc_code || '';
+    train.train_operator = detail.train_operator || train.train_operator || '';
+    train.origin = {
+      crs: detail.origin_crs || '',
+      name: detail.origin_name || '',
+      departure: detail.origin_departure || null,
+    };
+    train.destination = {
+      crs: detail.destination_crs || '',
+      name: detail.destination_name || '',
+      arrival: detail.destination_arrival || null,
+    };
+
+    if (marker) {
+      const popupHtml = buildTrainPopupHtml(train, operatorName);
+      setTimeout(() => {
+        const popup = marker.getPopup();
+        if (!popup) return;
+        popup.setHTML(popupHtml);
+        const popupElement = popup.getElement();
+        const popupContent = popupElement?.querySelector('.maplibregl-popup-content');
+        if (popupContent) {
+          popupContent.innerHTML = popupHtml;
+        }
+      }, 0);
+    }
+
+    return payload;
+  }
+
+  async function refreshLiveTrainsProxy() {
+    const res = await fetch(`${TRAIN_API_URL}?refresh=1`);
+    if (!res.ok) {
+      throw new Error(`Failed to refresh live trains: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async function openTrainLog(train) {
+    if (!train.rid) {
+      try {
+        await refreshLiveTrainsProxy();
+      } catch (e) {
+        console.debug('Train refresh failed before logging', e);
+      }
+    }
+
+    window.location.href = buildLogUrl({
+      headcode:       train.headcode || '',
+      cif_train_uid:  train.uid || '',
+      date:           toDate(new Date()),
+      rid:            train.rid || '',
+      trip_id:        train.trip_id || '',
+      origin:         train.originName || '',
+      destination:    train.destinationName || '',
+      operator:       train.operator || '',
+      transport_type: 'rail',
+    });
+  }
+
+  window.openTrainLog = openTrainLog;
 
   async function fetchLiveBuses() {
     if (!visibility.live_buses) {
@@ -916,9 +1037,8 @@
 
     openSheet(sheetHTML_loading(props, qt));
 
-    // rail uses crs, bus/tram/ferry use atco_code - show empty if neither present
-    const isBus  = BUS_TYPE_CODES.has(props.stop_type_code);
-    const refKey = isBus ? props.atco_code : props.crs;
+    // rail uses CRS, bus/tram/ferry use ATCO. If neither is present, stop here.
+    const { isBus, refKey } = getStopRequestContext(props);
 
     if (!refKey) {
       openSheet(sheetHTML_loaded(props, [], qt));
@@ -926,10 +1046,9 @@
     }
 
     const idParam = isBus ? `atco_code=${refKey}` : `crs=${refKey}`;
-    // only send date/time for past or future - omit entirely for "now" so the
-    // API (and bustimes upstream) uses its own live clock and serves live data
     const timeParams = qt ? `&date=${toDate(dt)}&time=${toTime(dt)}` : '';
     const extraParams = `&show_zz=${_showZZ ? 'true' : 'false'}` + `&show_passing=${_showPassing ? 'true' : 'false'}`;
+
     fetch(`${depsApi(props.stop_type_code)}?${idParam}${timeParams}${extraParams}`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => {

@@ -115,7 +115,7 @@ _SB_TRAIN_INFO_URL = "https://map-api.production.signalbox.io/api/train-informat
  
 RID_MAX_AGE_HOURS = 6
 _RATE_LIMIT_DELAY = 0.5   # 2 req/s
-_ENRICH_TIMEOUT   = 5.0   # seconds before we give up waiting and return what we have
+_ENRICH_TIMEOUT   = 0.1   # seconds before we give up waiting and return what we have
  
  
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -148,6 +148,38 @@ def _fetch_and_cache_rid(rid: str) -> "TrainRID | None":
     defaults = _parse_rid_payload(data)
     obj, _ = TrainRID.objects.update_or_create(rid=rid, defaults=defaults)
     return obj
+
+
+def _serialize_rid_detail(detail: "TrainRID") -> dict:
+    return dict(
+        rid=detail.rid,
+        headcode=detail.headcode,
+        uid=detail.uid,
+        toc_code=detail.toc_code,
+        train_operator=detail.train_operator,
+        origin_crs=detail.origin_crs,
+        origin_name=detail.origin_name,
+        origin_departure=_dt_to_str(detail.origin_departure),
+        destination_crs=detail.destination_crs,
+        destination_name=detail.destination_name,
+        destination_arrival=_dt_to_str(detail.destination_arrival),
+        fetched_at=_dt_to_str(detail.fetched_at),
+    )
+
+
+def _merge_rid_into_live_cache(detail: "TrainRID") -> None:
+    cached = cache.get("live_trains_data")
+    if not cached:
+        return
+
+    if isinstance(cached, dict) and "train_locations" in cached:
+        _apply_detail_to_locations(cached["train_locations"], {detail.rid: detail})
+    elif isinstance(cached, list):
+        _apply_detail_to_locations(cached, {detail.rid: detail})
+    else:
+        return
+
+    cache.set("live_trains_data", cached, 10)
  
  
 def _dt_to_str(value) -> "str | None":
@@ -176,6 +208,7 @@ def _apply_detail_to_locations(train_locations: list, cached_map: dict) -> list:
             continue
         train.update(
             headcode=detail.headcode,
+            uid=detail.uid,
             toc_code=detail.toc_code,
             train_operator=detail.train_operator,
             origin={
@@ -190,8 +223,8 @@ def _apply_detail_to_locations(train_locations: list, cached_map: dict) -> list:
             },
         )
     return train_locations
- 
- 
+
+
 def _enrich_train_locations(train_locations: list, deadline: float) -> list:
     """
     Enrich train_locations with RID detail.
@@ -283,8 +316,10 @@ class live_trains_proxy(View):
     CACHE_TIMEOUT = 10   # seconds
  
     def get(self, request, *args, **kwargs):
+        force_refresh = str(request.GET.get("refresh", "")).lower() in ("1", "true", "yes", "on")
+
         cached = cache.get(self.CACHE_KEY)
-        if cached:
+        if cached and not force_refresh:
             return JsonResponse(cached, safe=False)
  
         # ── fetch raw locations from Signalbox ─────────────────────────────
@@ -317,6 +352,20 @@ class live_trains_proxy(View):
             ).start()
  
         return JsonResponse(data, safe=False)
+
+
+@api_view(["GET"])
+def refresh_train_detail(request):
+    rid = (request.query_params.get("rid") or "").strip()
+    if not rid:
+        return Response({"detail": "Missing rid parameter"}, status=status.HTTP_400_BAD_REQUEST)
+
+    detail = _fetch_and_cache_rid(rid)
+    if not detail:
+        return Response({"detail": "Failed to fetch RID details"}, status=status.HTTP_502_BAD_GATEWAY)
+
+    _merge_rid_into_live_cache(detail)
+    return Response({"updated": True, "detail": _serialize_rid_detail(detail)}, status=status.HTTP_200_OK)
  
 class GetTrainOperatorsViewSet(ViewSet):
     def list(self, request):

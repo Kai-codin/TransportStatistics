@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -103,6 +104,47 @@ class ApiViewsTests(TestCase):
         self.assertEqual(self.mapped_stop.icon, "bus")
         self.assertEqual(self.mapped_stop.lines, "10,20")
         self.assertTrue(response.data["updated"])
+
+    @patch("API.views.requests.get")
+    def test_live_trains_refresh_bypasses_cache(self, mock_get):
+        cache.set("live_trains_data", {"cached": True}, 60)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"train_locations": []}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        response = self.client.get("/api/live-trains/", {"refresh": "1"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_get.called)
+        self.assertNotEqual(response.data, {"cached": True})
+
+    @patch("API.views.requests.get")
+    def test_refresh_train_detail_fetches_and_returns_saved_detail(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "headcode": "1A23",
+            "uid": "UID123",
+            "toc_code": "NT",
+            "train_operator": "Northern",
+            "origin_crs": "MAN",
+            "origin_name": "Manchester",
+            "origin_departure": "2026-04-28T10:00:00+01:00",
+            "destination_crs": "LDS",
+            "destination_name": "Leeds",
+            "destination_arrival": "2026-04-28T11:00:00+01:00",
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        response = self.client.get("/api/train-detail/refresh/", {"rid": "RID123"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_get.called)
+        self.assertEqual(response.data["detail"]["rid"], "RID123")
+        self.assertEqual(response.data["detail"]["headcode"], "1A23")
+        self.assertEqual(response.data["detail"]["uid"], "UID123")
 
     def test_fleet_search_returns_filtered_results(self):
         Trains.objects.create(fleetnumber="390001", type="Pendolino")

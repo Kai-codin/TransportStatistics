@@ -36,6 +36,12 @@
             </div>
           </div>
 
+          <div class="hidden">
+            {{ form.route_geometry }}
+            {{ form.full_route_geometry }}
+            {{ form.full_locations }}
+          </div>
+
           <!-- stop picker -->
           <div class="ts-field-group">
             <div class="ts-section-label">Your journey</div>
@@ -197,6 +203,140 @@
   let _fromStop  = null;
   let _toStop    = null;
   let _map       = null;
+
+  function parseJsonValue(value) {
+    if (!value) return null;
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function getPrefetchedRouteCoords() {
+    const fullRouteField = document.getElementById('id_full_route_geometry');
+    const routeField = document.getElementById('id_route_geometry');
+    const fullRoute = parseJsonValue(fullRouteField?.value);
+    if (Array.isArray(fullRoute) && fullRoute.length > 1) {
+      return fullRoute;
+    }
+
+    const route = parseJsonValue(routeField?.value);
+    if (Array.isArray(route) && route.length > 1) {
+      return route;
+    }
+
+    return null;
+  }
+
+  function projectPointOntoRoute(routeCoords, targetCoord) {
+    const routePath = routeCoords;
+    if (isBusMode() || !routePath || routePath.length < 2) {
+      return null;
+    }
+
+    if (!Array.isArray(targetCoord) || targetCoord.length < 2) {
+      return null;
+    }
+
+    let totalLength = 0;
+    for (let i = 0; i < routePath.length - 1; i++) {
+      const startPoint = routePath[i];
+      const endPoint = routePath[i + 1];
+      if (!Array.isArray(startPoint) || !Array.isArray(endPoint)) continue;
+      totalLength += Math.hypot(endPoint[0] - startPoint[0], endPoint[1] - startPoint[1]);
+    }
+
+    if (totalLength <= 0) {
+      return null;
+    }
+
+    let travelled = 0;
+    let bestProgress = 0;
+    let bestDistance = Infinity;
+    let bestPoint = null;
+    let bestSegmentIndex = -1;
+
+    for (let i = 0; i < routePath.length - 1; i++) {
+      const startPoint = routePath[i];
+      const endPoint = routePath[i + 1];
+      if (!Array.isArray(startPoint) || !Array.isArray(endPoint)) continue;
+
+      const segmentX = endPoint[0] - startPoint[0];
+      const segmentY = endPoint[1] - startPoint[1];
+      const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+      let projection = 0;
+      if (segmentLengthSquared > 0) {
+        projection = ((targetCoord[0] - startPoint[0]) * segmentX + (targetCoord[1] - startPoint[1]) * segmentY) / segmentLengthSquared;
+        projection = Math.max(0, Math.min(1, projection));
+      }
+
+      const projectedPoint = [
+        startPoint[0] + segmentX * projection,
+        startPoint[1] + segmentY * projection,
+      ];
+      const dx = projectedPoint[0] - targetCoord[0];
+      const dy = projectedPoint[1] - targetCoord[1];
+      const distance = dx * dx + dy * dy;
+
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        const segmentLength = Math.sqrt(segmentLengthSquared);
+        bestProgress = (travelled + segmentLength * projection) / totalLength;
+        bestPoint = projectedPoint;
+        bestSegmentIndex = i;
+      }
+
+      travelled += Math.sqrt(segmentLengthSquared);
+    }
+
+    return {
+      progress: bestProgress,
+      point: bestPoint,
+      segmentIndex: bestSegmentIndex,
+    };
+  }
+
+  function buildHighlightedRouteSlice(fromStop, toStop) {
+    const routeCoords = getPrefetchedRouteCoords();
+    if (isBusMode() || !routeCoords || routeCoords.length < 2) {
+      return null;
+    }
+
+    const fromCoord = [fromStop?.loc?.stop?.lon, fromStop?.loc?.stop?.lat];
+    const toCoord = [toStop?.loc?.stop?.lon, toStop?.loc?.stop?.lat];
+    const fromProjection = projectPointOntoRoute(routeCoords, fromCoord);
+    const toProjection = projectPointOntoRoute(routeCoords, toCoord);
+
+    if (!fromProjection || !toProjection || !fromProjection.point || !toProjection.point) {
+      return null;
+    }
+
+    const ordered = [fromProjection, toProjection].sort((a, b) => a.progress - b.progress);
+    const startProjection = ordered[0];
+    const endProjection = ordered[1];
+
+    const segment = [startProjection.point.slice()];
+    if (startProjection.segmentIndex === endProjection.segmentIndex) {
+      segment.push(endProjection.point.slice());
+      return segment;
+    }
+
+    for (let i = startProjection.segmentIndex + 1; i <= endProjection.segmentIndex; i++) {
+      if (Array.isArray(routeCoords[i])) {
+        segment.push(routeCoords[i].slice());
+      }
+    }
+
+    segment.push(endProjection.point.slice());
+
+    if (segment.length < 2) {
+      return null;
+    }
+
+    return segment;
+  }
 
   // ── initial panel state ────────────────────────────────────────────────────
   document.getElementById('lf-operator').value = prefOperator;
@@ -466,7 +606,10 @@
 
     const stopping = _locations.filter(l => l.time.type === 'stopping');
     const passing  = _locations.filter(l => l.time.type === 'passing');
-    const lineCoords = buildSegmentCoords(0, _locations.length - 1);
+    const routeCoords = getPrefetchedRouteCoords();
+    const lineCoords = (!isBusMode() && routeCoords && routeCoords.length > 1)
+      ? routeCoords
+      : buildSegmentCoords(0, _locations.length - 1);
 
     // clean up
     ['ts-route-line','ts-route-highlight','ts-stops-stopping','ts-stops-passing','ts-stops-selected']
@@ -680,8 +823,8 @@
     if (_map.getSource('ts-route-highlight')) _map.removeSource('ts-route-highlight');
     if (!_fromStop || !_toStop) return;
 
-    let segCoords = [];
-    if (_fromStop && _toStop) {
+    let segCoords = buildHighlightedRouteSlice(_fromStop, _toStop);
+    if (!segCoords) {
       if ((_fromStop.index >= 0) && (_toStop.index >= 0)) {
         segCoords = buildSegmentCoords(_fromStop.index, _toStop.index);
       } else if ((_fromStop.index >= 0) && (_toStop.index < 0)) {
@@ -695,6 +838,8 @@
         segCoords = [[_fromStop.loc.stop.lon, _fromStop.loc.stop.lat], [_toStop.loc.stop.lon, _toStop.loc.stop.lat]];
       }
     }
+    if (!segCoords || segCoords.length < 2) return;
+
     const routeSrc = { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: segCoords } } };
     try {
       _map.addSource('ts-route-highlight', routeSrc);
@@ -718,6 +863,7 @@
   // ── save ───────────────────────────────────────────────────────────────────
   document.getElementById('ts-save-btn').addEventListener('click', () => {
     if (!_fromStop || !_toStop) return;
+    const routeCoords = getPrefetchedRouteCoords();
     const routeNumberInput = document.getElementById('lf-route-number');
     const routeNumberValue = routeNumberInput ? (routeNumberInput.value || '').trim() : '';
     const resolvedHeadcode = routeNumberValue || headcode;
@@ -761,6 +907,7 @@
     }
 
     const segCoords = computeSegCoords(_fromStop, _toStop);
+    const savedRouteCoords = (!isBusMode() && routeCoords && routeCoords.length > 1) ? routeCoords : segCoords;
 
     const payload = new URLSearchParams({
       headcode:            resolvedHeadcode,
@@ -799,8 +946,8 @@
       bustimes_service_slug: document.getElementById('lf-bustimes-service-slug').value,
       bustimes_service_id: document.getElementById('lf-bustimes-service-id').value,
       route_number:        routeNumberValue,
-      route_geometry:      JSON.stringify(segCoords),
-      full_route_geometry: JSON.stringify(_locations && _locations.length ? _locations.map(l => [l.stop.lon, l.stop.lat]) : segCoords),
+      route_geometry:      JSON.stringify(savedRouteCoords),
+      full_route_geometry: JSON.stringify(savedRouteCoords),
       full_locations: JSON.stringify(_locations.map(l => ({
         name: l.stop?.name || '',
         crs:  l.stop?.crs  || '',

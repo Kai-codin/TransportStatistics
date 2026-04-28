@@ -2,8 +2,10 @@ import datetime
 import json
 import os
 import tempfile
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
@@ -11,6 +13,7 @@ from Trips.forms import TripLogForm
 from Trips.models import ImportJob, TripLog
 from Trips.tasks import detect_schema, run_import_job
 from Social.models import Friend
+from main.models import TrainRID
 
 
 class TripLogModelTests(TestCase):
@@ -94,6 +97,34 @@ class TripViewsTests(TestCase):
                 destination_name="York",
             ).exists()
         )
+
+    @patch("Trips.views.requests.get")
+    def test_log_trip_get_fetches_route_only_for_rail_logging(self, mock_get):
+        cache.clear()
+        TrainRID.objects.create(
+            rid="RID123",
+            uid="UID123",
+            headcode="2H41",
+        )
+
+        mock_response = mock_get.return_value
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"coordinates": [[-1.0, 50.0], [-1.1, 50.1]]}
+
+        self.client.force_login(self.owner)
+        response = self.client.get(
+            reverse("log_trip"),
+            {
+                "transport_type": "rail",
+                "cif_train_uid": "UID123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"].initial["route_geometry"], [[-1.0, 50.0], [-1.1, 50.1]])
+        self.assertEqual(response.context["form"].initial["full_route_geometry"], [[-1.0, 50.0], [-1.1, 50.1]])
+        mock_get.assert_called_once()
+        self.assertIn("/api/route/RID123", mock_get.call_args.args[0])
 
     def test_join_trip_toggles_membership(self):
         self.client.force_login(self.other)

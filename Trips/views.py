@@ -5,6 +5,8 @@ import os
 import threading
 from itertools import groupby
 
+import requests
+from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -15,12 +17,67 @@ from django.utils.dateparse import parse_time, parse_date
 
 from Social.forms import ProfileForm
 from Social.models import UserProfile, Friend
+from main.models import TrainRID
 
 from . import tasks
 from .forms import TripLogForm, UploadServicesForm
 from .models import TripLog, ImportJob
 
 logger = logging.getLogger(__name__)
+
+
+_SB_ROUTE_URL = "https://map-api.production.signalbox.io/api/route/{rid}"
+
+
+def _resolve_log_route_rid(rid: str | None, uid: str | None) -> str:
+    rid = (rid or "").strip()
+    if rid:
+        return rid
+
+    uid = (uid or "").strip()
+    if not uid:
+        return ""
+
+    detail = (
+        TrainRID.objects
+        .filter(uid=uid)
+        .exclude(rid="")
+        .order_by("-fetched_at")
+        .first()
+    )
+    return detail.rid if detail else ""
+
+
+def _fetch_log_route_geometry(route_rid: str):
+    if not route_rid:
+        return None
+
+    cache_key = f"trip_log_route:{route_rid}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        response = requests.get(_SB_ROUTE_URL.format(rid=route_rid), timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.warning("Failed to fetch route for RID %s while logging a trip: %s", route_rid, exc)
+        return None
+
+    geometry = None
+    if isinstance(data, dict):
+        geometry = data.get("coordinates") or data.get("route") or data.get("geometry")
+        if isinstance(geometry, dict):
+            geometry = geometry.get("coordinates")
+    elif isinstance(data, list):
+        geometry = data
+
+    if geometry is None:
+        return None
+
+    cache.set(cache_key, geometry, 24 * 60 * 60)
+    return geometry
 
 
 def trip_detail(request, pk):
@@ -566,6 +623,7 @@ def log_trip(request):
 
     else:
         p = request.GET
+        transport_type = (p.get('transport_type', 'rail') or 'rail').lower()
 
         vehicle_raw  = p.get('vehicle', '')
         bus_fleet    = ''
@@ -600,12 +658,20 @@ def log_trip(request):
             'bus_fleet_number':   bus_fleet,
             'bus_registration':   bus_reg,
         }
+
+        if transport_type == 'rail':
+            route_rid = _resolve_log_route_rid(p.get('rid'), p.get('cif_train_uid') or p.get('cif_uid') or p.get('uid'))
+            route_geometry = _fetch_log_route_geometry(route_rid)
+            if route_geometry is not None:
+                initial['route_geometry'] = route_geometry
+                initial['full_route_geometry'] = route_geometry
+
         form = TripLogForm(initial=initial)
 
     transport_type = (
         request.POST.get('transport_type')
         or request.GET.get('transport_type', 'rail')
-    )
+    ).lower()
     is_bus = transport_type in ('bus', 'tram', 'ferry')
 
     return render(request, 'log_trip.html', {

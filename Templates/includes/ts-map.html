@@ -177,6 +177,7 @@
     </button>
     <div id="ts-filter-menu" class="ts-filter-menu ts-hidden">
       <label><input type="checkbox" data-filter="bus_stops"> Bus Stops</label>
+      <label><input type="checkbox" data-filter="tram_platforms"> Tram Platforms</label>
       <label><input type="checkbox" data-filter="train_stations"> Train Stations</label>
       <label><input type="checkbox" data-filter="live_buses"> Live Buses</label>
       <label><input type="checkbox" data-filter="live_trains"> Live Trains</label>
@@ -220,6 +221,7 @@
     } catch (e) { console.warn("Could not load filters", e); }
     return {
       bus_stops: true,
+      tram_platforms: true,
       train_stations: true,
       live_buses: true,
       live_trains: true
@@ -271,21 +273,22 @@
 
   // 4. Update applyStopFilters to handle layer visibility
   function applyStopFilters() {
-    if (!map || !map.getLayer('stops')) return;
-    
-    // This logic assumes your vector source has 'stop_type_code' 
-    // or you can use your BUS_TYPE_CODES set logic here
+    if (!map || !map.getLayer('unclustered-point')) return;
+
     const filters = ['any'];
     
     if (visibility.bus_stops) {
-      filters.push(['in', ['get', 'stop_type_code'], ['literal', Array.from(BUS_TYPE_CODES)]]);
+      filters.push(['in', ['get', 'stop_type_code'], ['literal', BUS_ONLY_CODES]]);
+    }
+    if (visibility.tram_platforms) {
+      filters.push(['in', ['get', 'stop_type_code'], ['literal', TRAM_CODES]]);
     }
     if (visibility.train_stations) {
-      filters.push(['!', ['in', ['get', 'stop_type_code'], ['literal', Array.from(BUS_TYPE_CODES)]]]);
+      filters.push(['!', ['in', ['get', 'stop_type_code'], ['literal', ALL_BUS_CODES]]]);
     }
     
     // If nothing selected, filter everything out
-    map.setFilter('stops', filters.length > 1 ? filters : ['==', ['id'], 'none']);
+    map.setFilter('unclustered-point', filters.length > 1 ? filters : ['==', ['get', 'stop_type_code'], 'none']);
   }
   // Expected coord format ymax=52.80565080572876&xmax=-1.6264230424873176&ymin=52.793894297834726&xmin=-1.649060537355183
 
@@ -314,6 +317,14 @@
     'FER','FBT','FTD',                                        // ferry
     'TXR','STR',                                              // taxi
   ]);
+
+  // tram/metro codes — a subset of BUS_TYPE_CODES
+  const TRAM_TYPE_CODES = new Set(['MET', 'PLT', 'TMU']);
+
+  // Precomputed arrays for stop filter expressions
+  const BUS_ONLY_CODES = Array.from(BUS_TYPE_CODES).filter(c => !TRAM_TYPE_CODES.has(c));
+  const TRAM_CODES     = Array.from(TRAM_TYPE_CODES);
+  const ALL_BUS_CODES  = Array.from(BUS_TYPE_CODES);
 
   function depsApi(stop_type_code) {
     return BUS_TYPE_CODES.has(stop_type_code) ? BUS_DEPS_API : TRAIN_DEPS_API;

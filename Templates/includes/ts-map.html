@@ -1274,12 +1274,12 @@
 
           // Respect visibility filters — skip markers for hidden stop types
           const code = props.stop_type_code || '';
-          const isTram    = TRAM_CODES.indexOf(code) !== -1;
-          const isBusOnly = !isTram && BUS_ONLY_CODES.indexOf(code) !== -1;
-          const isTrain   = ALL_BUS_CODES.indexOf(code) === -1;
-          if (isTram    && !visibility.tram_platforms)  continue;
-          if (isBusOnly && !visibility.bus_stops)       continue;
-          if (isTrain   && !visibility.train_stations)  continue;
+          const isTram        = TRAM_TYPE_CODES.has(code);
+          const isBusOnly     = !isTram && BUS_TYPE_CODES.has(code);
+          const isTrainStation = !BUS_TYPE_CODES.has(code);
+          if (isTram        && !visibility.tram_platforms)  continue;
+          if (isBusOnly     && !visibility.bus_stops)       continue;
+          if (isTrainStation && !visibility.train_stations)  continue;
           const id = String(props.id || `${props.atco_code}:${props.crs}`);
           keep.add(id);
           if (_stopIconMarkers.has(id)) {

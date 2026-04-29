@@ -228,21 +228,21 @@ def completion_fleet(request, operator_name):
         .values_list("transport_type", flat=True)
         .first()
     )
-    if transport_type == "rail":
+    if transport_type != "bus":
         ridden_trip_rows = (
             TripLog.objects
             .filter(
                 (Q(user=request.user) | Q(on_trip_trip=request.user)),
                 operator__iexact=operator_name,
             )
-            .exclude(train_fleet_number__isnull=True)
-            .exclude(train_fleet_number__exact='')
-            .values('train_fleet_number', 'service_date', 'train_type')
+            .exclude(Q(train_fleet_number__isnull=True) & Q(bus_fleet_number__isnull=True))
+            .exclude(Q(train_fleet_number__exact='') & Q(bus_fleet_number__exact=''))
+            .values('train_fleet_number', 'bus_fleet_number', 'service_date', 'train_type')
         )
 
         ridden_map: dict[str, dict] = {}
         for row in ridden_trip_rows:
-            raw_units = str(row.get('train_fleet_number') or '').strip()
+            raw_units = str(row.get('train_fleet_number') or row.get('bus_fleet_number') or '').strip()
             units = split_train_units(raw_units)
             if not units:
                 continue

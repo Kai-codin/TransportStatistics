@@ -1551,6 +1551,7 @@
             });
             // style may not include glyphs for text; we'll render icons as DOM markers instead
           }
+          setupTrainRouteSource();
           // restore cached stops on the new style
           if (_lastFeatures.length) setSource(_lastFeatures);
         });
@@ -1579,6 +1580,8 @@
       });
       // We render icon text via DOM markers (updateIconMarkers) rather than a text symbol layer,
       // because the current style may not declare a `glyphs` property.
+
+      setupTrainRouteSource();
 
       map.on('click','unclustered-point', e => {
         const props = e.features[0].properties || {};

@@ -606,7 +606,7 @@
     });
   }
 
-  function createLiveryIcon({ label = '', rotation = 0, css = null, carriages = 1 } = {}) {
+  function createLiveryIcon({ label = '', rotation = 0, css = null, carriages = 1, overriderColour = '' } = {}) {
     const normalisedRotation = ((rotation % 360) + 360) % 360;
     const cellRotation = (normalisedRotation < 90 || normalisedRotation > 270) ? 0 : 180;
     const html = document.createElement('div');
@@ -619,7 +619,7 @@
       const carriageLabel = i === numCarriages - 1 ? label : '';
 
       carriageSvgs += `
-        <svg width="30" height="20" class="vehicle-marker livery-${css} ${carriageSideClass}" style="text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
+        <svg width="30" height="20" class="vehicle-marker livery-${css} ${carriageSideClass}" style="background: ${overriderColour}; text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
           <text x="14" y="13">${carriageLabel}</text>
         </svg>
       `;
@@ -755,17 +755,24 @@
       const vehicleLink = v.vehicle?.url || '';
       const dest = v.destination || '';
       const vehicleName = v.vehicle?.name || '';
-      const vehicleColour = v.vehicle?.colour || '#000';
+      const vehicleColour = v.vehicle?.colour || v.vehicle?.css || '#000';
+      let overriderColour = '';
 
       const iconRotation = heading + 270;
-      const css = v.vehicle?.livery || v.vehicle?.colour || '#fff';
+      const css = v.vehicle?.livery || v.vehicle?.css || '#fff';
+
+      if (v.vehicle?.css && !v.vehicle?.livery) {
+        overriderColour = css;
+      } else {
+        overriderColour = '';
+      }
 
       let el;
       if (showSimpleIcons) {
         // Fallback to the small circle marker used at lower detail.
         el = createSimpleCircle({ colour: vehicleColour, borderColour: '#0000' });
       } else {
-        el = createLiveryIcon({ label: line, css, rotation: iconRotation });
+        el = createLiveryIcon({ label: line, css, rotation: iconRotation, overriderColour: overriderColour });
       }
 
       const html = `

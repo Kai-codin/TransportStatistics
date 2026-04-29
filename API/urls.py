@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import StopViewSet, enrich_stop, fleet_search, train_fleet, live_trains_proxy, refresh_train_detail, GetTrainOperatorsViewSet
+from .views import StopViewSet, enrich_stop, fleet_search, train_fleet, live_trains_proxy, refresh_train_detail, GetTrainOperatorsViewSet, train_route
 from Depatures.api import ServiceLocationsViewSet, TrainDeparturesViewSet, BusDeparturesViewSet, BusServiceViewSet
 
 router = DefaultRouter()
@@ -19,6 +19,7 @@ urlpatterns = [
     path('fleet/', fleet_search, name='fleet-search-slash'),
     path('train-fleet/', train_fleet, name='train-fleet'),
     path('train-detail/refresh/', refresh_train_detail, name='train-detail-refresh'),
+    path('train-route/', train_route, name='train-route'),
     path('live-trains/', live_trains_proxy.as_view(), name='live-trains'),
     path('', include(router.urls)),
 ]

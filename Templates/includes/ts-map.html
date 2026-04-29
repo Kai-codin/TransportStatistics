@@ -177,6 +177,7 @@
     </button>
     <div id="ts-filter-menu" class="ts-filter-menu ts-hidden">
       <label><input type="checkbox" data-filter="bus_stops"> Bus Stops</label>
+      <label><input type="checkbox" data-filter="tram_platforms"> Tram Platforms</label>
       <label><input type="checkbox" data-filter="train_stations"> Train Stations</label>
       <label><input type="checkbox" data-filter="live_buses"> Live Buses</label>
       <label><input type="checkbox" data-filter="live_trains"> Live Trains</label>
@@ -209,6 +210,7 @@
   const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
   const TRAIN_API_URL = '/api/live-trains/';
   const TRAIN_DETAIL_REFRESH_URL = '/api/train-detail/refresh/';
+  const TRAIN_ROUTE_URL = '/api/train-route/';
   const VISIBILITY_STORAGE_KEY = 'ts_map_visibility';
   const trainMarkers = [];
   let trainData = [];
@@ -220,6 +222,7 @@
     } catch (e) { console.warn("Could not load filters", e); }
     return {
       bus_stops: true,
+      tram_platforms: true,
       train_stations: true,
       live_buses: true,
       live_trains: true
@@ -239,6 +242,7 @@
     // Update Live Markers
     if (!visibility.live_trains) {
       clearMarkers(trainMarkers);
+      trainData = [];
     } else {
       fetchTrains();
     }
@@ -246,6 +250,7 @@
     if (!visibility.live_buses) {
       clearMarkers(btMarkers);
       updateBtGeojson([]);
+      btVehicleData = [];
     } else {
       fetchLiveBuses();
     }
@@ -269,21 +274,25 @@
 
   // 4. Update applyStopFilters to handle layer visibility
   function applyStopFilters() {
-    if (!map || !map.getLayer('stops')) return;
-    
-    // This logic assumes your vector source has 'stop_type_code' 
-    // or you can use your BUS_TYPE_CODES set logic here
+    if (!map || !map.getLayer('unclustered-point')) return;
+
     const filters = ['any'];
     
     if (visibility.bus_stops) {
-      filters.push(['in', ['get', 'stop_type_code'], ['literal', Array.from(BUS_TYPE_CODES)]]);
+      filters.push(['in', ['get', 'stop_type_code'], ['literal', BUS_ONLY_CODES]]);
+    }
+    if (visibility.tram_platforms) {
+      filters.push(['in', ['get', 'stop_type_code'], ['literal', TRAM_CODES]]);
     }
     if (visibility.train_stations) {
-      filters.push(['!', ['in', ['get', 'stop_type_code'], ['literal', Array.from(BUS_TYPE_CODES)]]]);
+      filters.push(['!', ['in', ['get', 'stop_type_code'], ['literal', ALL_BUS_CODES]]]);
     }
     
     // If nothing selected, filter everything out
-    map.setFilter('stops', filters.length > 1 ? filters : ['==', ['id'], 'none']);
+    map.setFilter('unclustered-point', filters.length > 1 ? filters : ['==', ['get', 'stop_type_code'], 'none']);
+
+    // Also refresh DOM icon markers to match the new visibility state
+    if (_refreshIconMarkers) _refreshIconMarkers();
   }
   // Expected coord format ymax=52.80565080572876&xmax=-1.6264230424873176&ymin=52.793894297834726&xmin=-1.649060537355183
 
@@ -312,6 +321,14 @@
     'FER','FBT','FTD',                                        // ferry
     'TXR','STR',                                              // taxi
   ]);
+
+  // tram/metro codes — a subset of BUS_TYPE_CODES
+  const TRAM_TYPE_CODES = new Set(['MET', 'PLT', 'TMU']);
+
+  // Precomputed arrays for stop filter expressions
+  const BUS_ONLY_CODES = Array.from(BUS_TYPE_CODES).filter(c => !TRAM_TYPE_CODES.has(c));
+  const TRAM_CODES     = Array.from(TRAM_TYPE_CODES);
+  const ALL_BUS_CODES  = Array.from(BUS_TYPE_CODES);
 
   function depsApi(stop_type_code) {
     return BUS_TYPE_CODES.has(stop_type_code) ? BUS_DEPS_API : TRAIN_DEPS_API;
@@ -741,8 +758,78 @@
     src.setData(btVehiclesToGeoJSON(filteredVehicles));
   }
 
+  // ── train route overlay ────────────────────────────────────────────────────
+  function setupTrainRouteSource() {
+    if (map.getSource('active-train-route')) return;
+    map.addSource('active-train-route', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'active-train-route-line',
+      type: 'line',
+      source: 'active-train-route',
+      filter: ['==', ['get', 'type'], 'route'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#3b82f6',
+        'line-width': 4,
+        'line-opacity': 0.85
+      }
+    });
+    map.addLayer({
+      id: 'active-train-route-endpoints',
+      type: 'circle',
+      source: 'active-train-route',
+      filter: ['==', ['get', 'type'], 'endpoint'],
+      paint: {
+        'circle-radius': 6,
+        'circle-color': '#3b82f6',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff'
+      }
+    });
+  }
+
+  function clearTrainRoute() {
+    const src = map && map.getSource('active-train-route');
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
+  }
+
+  async function fetchAndShowTrainRoute(rid) {
+    if (!rid || !map) return;
+    clearTrainRoute();
+    try {
+      const res = await fetch(`${TRAIN_ROUTE_URL}?rid=${encodeURIComponent(rid)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const coords = data.coordinates;
+      if (!coords || coords.length < 2) return;
+      const features = [
+        {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { type: 'route' }
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: coords[0] },
+          properties: { type: 'endpoint' }
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: coords[coords.length - 1] },
+          properties: { type: 'endpoint' }
+        }
+      ];
+      const src = map.getSource('active-train-route');
+      if (src) src.setData({ type: 'FeatureCollection', features });
+    } catch (e) {
+      console.debug('Failed to fetch train route', e);
+    }
+  }
+
   function renderTrainMarkers() {
-    clearMarkers(trainMarkers);
     const showSimpleIcons = useSimpleIcons(trainData.length);
 
     for (const t of trainData) {
@@ -777,9 +864,15 @@
       //Operator: ${operatorName}<br>
       //RID: ${t.rid || '-'}<br>
 
+      const popup = new maplibregl.Popup({ offset: 6 }).setHTML(popupHtml);
+      if (t.rid) {
+        popup.on('open', () => fetchAndShowTrainRoute(t.rid));
+        popup.on('close', clearTrainRoute);
+      }
+
       marker = new maplibregl.Marker({ element: el })
         .setLngLat([t.location.lon, t.location.lat])
-        .setPopup(new maplibregl.Popup({ offset: 6 }).setHTML(popupHtml))
+        .setPopup(popup)
         .addTo(map);
 
       trainMarkers.push(marker);
@@ -849,6 +942,7 @@
   }
 
   function renderBusMarkers() {
+    if (!visibility.live_buses) return;
     const count = btVehicleData.length;
     if (count < BT_DOM_LIMIT) {
       updateBtGeojson([]);
@@ -1180,6 +1274,7 @@
   }
 
   let map = null;
+  let _refreshIconMarkers = null;
 
   // ── map init ───────────────────────────────────────────────────────────────
   window.initMap = function (opts) {
@@ -1236,6 +1331,10 @@
     // DOM markers for stops with an `icon` property (fallback when style has no glyphs)
     let _stopIconMarkers = new Map(); // pk -> Maplibre Marker
 
+    // Expose a callback so applyStopFilters (outer scope) can refresh icon markers
+    // when the visibility filter changes without triggering a full data reload.
+    _refreshIconMarkers = () => updateIconMarkers(_lastFeatures);
+
     function clearIconMarkers() {
       for (const m of _stopIconMarkers.values()) try { m.remove(); } catch(_) {}
       _stopIconMarkers.clear();
@@ -1248,6 +1347,15 @@
         try {
           const props = f.properties || {};
           if (!props.icon) continue;
+
+          // Respect visibility filters — skip markers for hidden stop types
+          const code = props.stop_type_code || '';
+          const isTram        = TRAM_TYPE_CODES.has(code);
+          const isBusOnly     = !isTram && BUS_TYPE_CODES.has(code);
+          const isTrainStation = !BUS_TYPE_CODES.has(code);
+          if (isTram        && !visibility.tram_platforms)  continue;
+          if (isBusOnly     && !visibility.bus_stops)       continue;
+          if (isTrainStation && !visibility.train_stations)  continue;
           const id = String(props.id || `${props.atco_code}:${props.crs}`);
           keep.add(id);
           if (_stopIconMarkers.has(id)) {
@@ -1443,6 +1551,7 @@
             });
             // style may not include glyphs for text; we'll render icons as DOM markers instead
           }
+          setupTrainRouteSource();
           // restore cached stops on the new style
           if (_lastFeatures.length) setSource(_lastFeatures);
         });
@@ -1471,6 +1580,8 @@
       });
       // We render icon text via DOM markers (updateIconMarkers) rather than a text symbol layer,
       // because the current style may not declare a `glyphs` property.
+
+      setupTrainRouteSource();
 
       map.on('click','unclustered-point', e => {
         const props = e.features[0].properties || {};
@@ -1501,8 +1612,8 @@
 
       map.on('moveend', () => {
         checkAndLoad();
-        fetchLiveBuses();
-        fetchTrains();
+        if (visibility.live_buses) fetchLiveBuses();
+        if (visibility.live_trains) fetchTrains();
       });
       // on zoomend: re-evaluate density immediately (no fetch needed if already loaded)
       // then also check if we need to load new data for the expanded viewport

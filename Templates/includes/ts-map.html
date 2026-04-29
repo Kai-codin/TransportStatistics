@@ -210,6 +210,7 @@
   const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
   const TRAIN_API_URL = '/api/live-trains/';
   const TRAIN_DETAIL_REFRESH_URL = '/api/train-detail/refresh/';
+  const TRAIN_ROUTE_URL = '/api/train-route/';
   const VISIBILITY_STORAGE_KEY = 'ts_map_visibility';
   const trainMarkers = [];
   let trainData = [];
@@ -757,9 +758,78 @@
     src.setData(btVehiclesToGeoJSON(filteredVehicles));
   }
 
+  // ── train route overlay ────────────────────────────────────────────────────
+  function setupTrainRouteSource() {
+    if (map.getSource('active-train-route')) return;
+    map.addSource('active-train-route', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'active-train-route-line',
+      type: 'line',
+      source: 'active-train-route',
+      filter: ['==', ['get', 'type'], 'route'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#3b82f6',
+        'line-width': 4,
+        'line-opacity': 0.85
+      }
+    });
+    map.addLayer({
+      id: 'active-train-route-endpoints',
+      type: 'circle',
+      source: 'active-train-route',
+      filter: ['==', ['get', 'type'], 'endpoint'],
+      paint: {
+        'circle-radius': 6,
+        'circle-color': '#3b82f6',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff'
+      }
+    });
+  }
+
+  function clearTrainRoute() {
+    const src = map && map.getSource('active-train-route');
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
+  }
+
+  async function fetchAndShowTrainRoute(rid) {
+    if (!rid || !map) return;
+    clearTrainRoute();
+    try {
+      const res = await fetch(`${TRAIN_ROUTE_URL}?rid=${encodeURIComponent(rid)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const coords = data.coordinates;
+      if (!coords || coords.length < 2) return;
+      const features = [
+        {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { type: 'route' }
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: coords[0] },
+          properties: { type: 'endpoint' }
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: coords[coords.length - 1] },
+          properties: { type: 'endpoint' }
+        }
+      ];
+      const src = map.getSource('active-train-route');
+      if (src) src.setData({ type: 'FeatureCollection', features });
+    } catch (e) {
+      console.debug('Failed to fetch train route', e);
+    }
+  }
+
   function renderTrainMarkers() {
-    if (!visibility.live_trains) return;
-    clearMarkers(trainMarkers);
     const showSimpleIcons = useSimpleIcons(trainData.length);
 
     for (const t of trainData) {
@@ -794,9 +864,15 @@
       //Operator: ${operatorName}<br>
       //RID: ${t.rid || '-'}<br>
 
+      const popup = new maplibregl.Popup({ offset: 6 }).setHTML(popupHtml);
+      if (t.rid) {
+        popup.on('open', () => fetchAndShowTrainRoute(t.rid));
+        popup.on('close', clearTrainRoute);
+      }
+
       marker = new maplibregl.Marker({ element: el })
         .setLngLat([t.location.lon, t.location.lat])
-        .setPopup(new maplibregl.Popup({ offset: 6 }).setHTML(popupHtml))
+        .setPopup(popup)
         .addTo(map);
 
       trainMarkers.push(marker);

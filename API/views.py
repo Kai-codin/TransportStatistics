@@ -112,6 +112,7 @@ class StopViewSet(viewsets.ReadOnlyModelViewSet):
 # ── Signalbox endpoints ────────────────────────────────────────────────────────
 _SB_LOCATIONS_URL = "https://map-api.production.signalbox.io/api/locations"
 _SB_TRAIN_INFO_URL = "https://map-api.production.signalbox.io/api/train-information/{rid}"
+_SB_ROUTE_URL = "https://map-api.production.signalbox.io/api/route/{rid}"
  
 RID_MAX_AGE_HOURS = 6
 _RATE_LIMIT_DELAY = 0.5   # 2 req/s
@@ -570,3 +571,42 @@ def train_fleet(request):
         'results': serializer.data,
     }
     return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def train_route(request):
+    """Fetch the route geometry for a train RID from Signal Box.
+
+    Uses the same endpoint as the trip log page so the geometry is consistent.
+    Results are cached for 24 hours.
+    """
+    rid = (request.query_params.get("rid") or "").strip()
+    if not rid:
+        return Response({"detail": "Missing rid parameter"}, status=status.HTTP_400_BAD_REQUEST)
+
+    cache_key = f"train_route:{rid}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response({"coordinates": cached})
+
+    try:
+        resp = requests.get(_SB_ROUTE_URL.format(rid=rid), timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("Failed to fetch route for RID %s: %s", rid, exc)
+        return Response({"detail": "Failed to fetch route"}, status=status.HTTP_502_BAD_GATEWAY)
+
+    geometry = None
+    if isinstance(data, dict):
+        geometry = data.get("coordinates") or data.get("route") or data.get("geometry")
+        if isinstance(geometry, dict):
+            geometry = geometry.get("coordinates")
+    elif isinstance(data, list):
+        geometry = data
+
+    if geometry is None:
+        return Response({"detail": "No route geometry available"}, status=status.HTTP_404_NOT_FOUND)
+
+    cache.set(cache_key, geometry, 24 * 60 * 60)
+    return Response({"coordinates": geometry})

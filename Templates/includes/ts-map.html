@@ -862,7 +862,15 @@
       return;
     }
     try {
-      const res = await fetch(TRAIN_API_URL);
+      let url = TRAIN_API_URL;
+      try {
+        if (map) {
+          const b = mapBbox(map);
+          const q = new URLSearchParams({ bbox: b.join(',') });
+          url = `${TRAIN_API_URL}?${q.toString()}`;
+        }
+      } catch (e) { /* ignore bbox errors */ }
+      const res = await fetch(url);
       const data = await res.json();
 
       trainData = data.train_locations || [];
@@ -955,7 +963,15 @@
   }
 
   async function refreshLiveTrainsProxy() {
-    const res = await fetch(`${TRAIN_API_URL}?refresh=1`);
+    let url = `${TRAIN_API_URL}?refresh=1`;
+    try {
+      if (map) {
+        const b = mapBbox(map);
+        const q = new URLSearchParams({ bbox: b.join(',') });
+        url = `${TRAIN_API_URL}?refresh=1&${q.toString()}`;
+      }
+    } catch (e) { /* ignore bbox errors */ }
+    const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`Failed to refresh live trains: ${res.status}`);
     }

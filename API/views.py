@@ -318,8 +318,45 @@ class live_trains_proxy(APIView):
     def get(self, request, *args, **kwargs):
         force_refresh = str(request.GET.get("refresh", "")).lower() in ("1", "true", "yes", "on")
 
+        # Parse bbox parameters (min_lon,min_lat,max_lon,max_lat) or min_/max_ lat/lon
+        min_lat = max_lat = min_lon = max_lon = None
+        p = request.GET
+        if p.get('min_lat') or p.get('max_lat') or p.get('min_lon') or p.get('max_lon'):
+            try:
+                min_lat = float(p['min_lat'])
+                max_lat = float(p['max_lat'])
+                min_lon = float(p['min_lon'])
+                max_lon = float(p['max_lon'])
+            except (KeyError, ValueError, TypeError):
+                min_lat = max_lat = min_lon = max_lon = None
+        elif p.get('bbox'):
+            parts = p['bbox'].split(',')
+            if len(parts) == 4:
+                try:
+                    min_lon, min_lat, max_lon, max_lat = map(float, parts)
+                except ValueError:
+                    min_lat = max_lat = min_lon = max_lon = None
+
+        def _inside_bbox(loc):
+            try:
+                lat = float(loc.get('lat') if isinstance(loc.get('lat'), (int, float)) else loc.get('latitude') or loc.get('y') or None)
+                lon = float(loc.get('lon') if isinstance(loc.get('lon'), (int, float)) else loc.get('longitude') or loc.get('x') or None)
+            except Exception:
+                return False
+            return None not in (min_lat, max_lat, min_lon, max_lon) and (lat >= min_lat and lat <= max_lat and lon >= min_lon and lon <= max_lon)
+
         cached = cache.get(self.CACHE_KEY)
         if cached and not force_refresh:
+            if None not in (min_lat, max_lat, min_lon, max_lon):
+                # Filter cached payload by bbox before returning
+                if isinstance(cached, dict) and 'train_locations' in cached:
+                    filtered = [t for t in cached.get('train_locations', []) if (t.get('location') and _inside_bbox(t.get('location')))]
+                    out = dict(cached)
+                    out['train_locations'] = filtered
+                    return Response(out)
+                elif isinstance(cached, list):
+                    filtered = [t for t in cached if (t.get('location') and _inside_bbox(t.get('location')))]
+                    return Response(filtered)
             return Response(cached)
  
         # ── fetch raw locations from Signalbox ─────────────────────────────
@@ -340,9 +377,20 @@ class live_trains_proxy(APIView):
         elif isinstance(data, list):
             data = _enrich_train_locations(data, deadline)
  
-        # ── cache whatever we have so concurrent requests don't pile in ────
+        # ── determine response payload (apply bbox filtering if requested) ──
+        response_data = data
+        if None not in (min_lat, max_lat, min_lon, max_lon):
+            if isinstance(data, dict) and 'train_locations' in data:
+                filtered = [t for t in data.get('train_locations', []) if (t.get('location') and _inside_bbox(t.get('location')))]
+                # Return same top-level structure but with filtered locations
+                response_data = dict(data)
+                response_data['train_locations'] = filtered
+            elif isinstance(data, list):
+                response_data = [t for t in data if (t.get('location') and _inside_bbox(t.get('location')))]
+
+        # ── cache full payload so concurrent requests don't pile in ───────
         cache.set(self.CACHE_KEY, data, self.CACHE_TIMEOUT)
- 
+
         # ── if deadline fired, finish the rest in the background ───────────
         if time.monotonic() >= deadline:
             threading.Thread(
@@ -350,8 +398,8 @@ class live_trains_proxy(APIView):
                 args=(data, self.CACHE_KEY, self.CACHE_TIMEOUT),
                 daemon=True,
             ).start()
- 
-        return Response(data)
+
+        return Response(response_data)
 
 
 @api_view(["GET"])

@@ -289,6 +289,9 @@
     
     // If nothing selected, filter everything out
     map.setFilter('unclustered-point', filters.length > 1 ? filters : ['==', ['get', 'stop_type_code'], 'none']);
+
+    // Also refresh DOM icon markers to match the new visibility state
+    if (_refreshIconMarkers) _refreshIconMarkers();
   }
   // Expected coord format ymax=52.80565080572876&xmax=-1.6264230424873176&ymin=52.793894297834726&xmin=-1.649060537355183
 
@@ -1195,6 +1198,7 @@
   }
 
   let map = null;
+  let _refreshIconMarkers = null;
 
   // ── map init ───────────────────────────────────────────────────────────────
   window.initMap = function (opts) {
@@ -1251,6 +1255,10 @@
     // DOM markers for stops with an `icon` property (fallback when style has no glyphs)
     let _stopIconMarkers = new Map(); // pk -> Maplibre Marker
 
+    // Expose a callback so applyStopFilters (outer scope) can refresh icon markers
+    // when the visibility filter changes without triggering a full data reload.
+    _refreshIconMarkers = () => updateIconMarkers(_lastFeatures);
+
     function clearIconMarkers() {
       for (const m of _stopIconMarkers.values()) try { m.remove(); } catch(_) {}
       _stopIconMarkers.clear();
@@ -1263,6 +1271,15 @@
         try {
           const props = f.properties || {};
           if (!props.icon) continue;
+
+          // Respect visibility filters — skip markers for hidden stop types
+          const code = props.stop_type_code || '';
+          const isTram        = TRAM_TYPE_CODES.has(code);
+          const isBusOnly     = !isTram && BUS_TYPE_CODES.has(code);
+          const isTrainStation = !BUS_TYPE_CODES.has(code);
+          if (isTram        && !visibility.tram_platforms)  continue;
+          if (isBusOnly     && !visibility.bus_stops)       continue;
+          if (isTrainStation && !visibility.train_stations)  continue;
           const id = String(props.id || `${props.atco_code}:${props.crs}`);
           keep.add(id);
           if (_stopIconMarkers.has(id)) {

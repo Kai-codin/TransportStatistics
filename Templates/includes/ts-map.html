@@ -239,6 +239,7 @@
     // Update Live Markers
     if (!visibility.live_trains) {
       clearMarkers(trainMarkers);
+      trainData = [];
     } else {
       fetchTrains();
     }
@@ -246,6 +247,7 @@
     if (!visibility.live_buses) {
       clearMarkers(btMarkers);
       updateBtGeojson([]);
+      btVehicleData = [];
     } else {
       fetchLiveBuses();
     }
@@ -742,6 +744,7 @@
   }
 
   function renderTrainMarkers() {
+    if (!visibility.live_trains) return;
     clearMarkers(trainMarkers);
     const showSimpleIcons = useSimpleIcons(trainData.length);
 
@@ -849,6 +852,7 @@
   }
 
   function renderBusMarkers() {
+    if (!visibility.live_buses) return;
     const count = btVehicleData.length;
     if (count < BT_DOM_LIMIT) {
       updateBtGeojson([]);
@@ -1501,8 +1505,8 @@
 
       map.on('moveend', () => {
         checkAndLoad();
-        fetchLiveBuses();
-        fetchTrains();
+        if (visibility.live_buses) fetchLiveBuses();
+        if (visibility.live_trains) fetchTrains();
       });
       // on zoomend: re-evaluate density immediately (no fetch needed if already loaded)
       // then also check if we need to load new data for the expanded viewport

@@ -62,6 +62,12 @@
     background: #f59e0b;
   }
 
+  .livery-3b82f6 {
+    color: #fff;
+    stroke: #3b82f6;
+    background: #3b82f6;
+  }
+
   .ts-map-controls {
     position: absolute;
     top: 150px;
@@ -138,6 +144,26 @@
   .ts-hidden {
     display: none;
   }
+
+  .loader {
+    width: 15px;
+    height: 15px;
+    border: 2px solid var(--ts-border);
+    border-bottom-color: var(--ts-accent);
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: rotation 1s linear infinite;
+    }
+
+    @keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+  } 
 </style>
 
 <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
@@ -273,6 +299,7 @@
   const BUS_DEPS_API   = '/api/bus-departures/';
 
   function getTrainColour(delay) {
+    if (delay <= -5) return '3b82f6';        // blue
     if (delay <= 0) return '16a34a';        // green
     if (delay <= 5) return 'f59e0b';        // orange
     return 'dc2626';                        // red
@@ -598,9 +625,9 @@
     const rotation = getTrainRotation(train.location, train.predicted_location);
 
     return createLiveryIcon({
-      label: train.headcode,          // no text for trains (or use headcode later)
+      label: train.headcode || '----',
       css: colour,        // Use the colour as the icon tint.
-      rotation: rotation + 90, // rotate to point in direction of travel (icon faces right by default)
+      rotation: rotation - 90, // rotate to point in direction of travel (icon faces right by default)
       carriages: 1        // keep it small like a dot
     });
   }
@@ -612,14 +639,21 @@
 
     const numCarriages = Math.min(16, Math.max(1, parseInt(carriages) || 1));
     const carriageSideClass = cellRotation + 90 < 180 ? 'right' : '';
+    let fontSize = '12px';
 
     let carriageSvgs = '';
     for (let i = 0; i < numCarriages; i++) {
       const carriageLabel = i === numCarriages - 1 ? label : '';
 
+      if (label.length > 3) {
+        fontSize = '11px';
+      } else {
+        fontSize = '12px';
+      }
+
       carriageSvgs += `
         <svg width="30" height="20" class="vehicle-marker livery-${css} ${carriageSideClass}" style="background: ${overriderColour}; text-align: center; transform: rotate(${cellRotation}deg); border: 1px solid rgba(0,0,0); ${i > 0 ? 'margin-left: 3px;' : ''}">
-          <text x="14" y="13">${carriageLabel}</text>
+          <text style="font-size: ${fontSize};" x="14" y="13">${carriageLabel}</text>
         </svg>
       `;
     }
@@ -775,7 +809,7 @@
       }
 
       const html = `
-        <a href="https://bustimes.org/trips/${v.trip_id || ''}">${line} to ${dest}</a><br>
+        <a href="https://bustimes.org/trips/${v.trip_id || ''}" style="text-decoration: underline; color: var(--ts-accent-h);" target="_blank" rel="noopener noreferrer">${line} to ${dest}</a><br>
         ${vehicleName ? `<a href="https://bustimes.org${vehicleLink}">${vehicleName}</a>` : ''}<br>
         <button class="ts-btn-primary ts-popup-action-btn" id="ts-log-${v.id}" onclick="logBTVehicle(${v.id})"
           data-headcode="${v.service.line_name}"
@@ -828,6 +862,17 @@
     }
   }
 
+  function niceDelay(delay) {
+    let text = 'loading...';
+
+    if (delay === null || delay === undefined) text = '-';
+    if (delay < 0) text = `${-delay} min early`;
+    if (delay === 0) text = 'On time';
+    if (delay > 5) text = `${delay} min late`;
+
+    return `<span style="color: #${getTrainColour(delay)};">${text}</span>`;
+  }
+
   function buildTrainLogPayload(train, operatorName) {
     return {
       headcode: train.headcode || '',
@@ -842,9 +887,12 @@
 
   function buildTrainPopupHtml(train, operatorName) {
     const payload = buildTrainLogPayload(train, operatorName);
+    const date = train.ts ? toDate(new Date(train.ts)) : toDate(new Date());
     return `
-      ${train.headcode || 'Train'} to ${train.destination ? `${train.destination.name}<br>` : ''}
-      Delay: ${train.delay ?? 0} min<br>
+      <a href="https://www.realtimetrains.co.uk/service/gb-nr:${train.uid}/${date}/detailed" target="_blank" style="text-decoration: underline; color: var(--ts-accent-h);" rel="noopener noreferrer">
+      ${train.headcode || '<span class="loader"></span>'} ${train.destination ? `to ${train.destination.name} </a>` : ''}
+      <br>
+      ${niceDelay(train.delay)}<br>
       <button type="button" class="ts-btn-primary ts-popup-action-btn" style="color: var(--ts-text-inv); display:inline-block;margin-top:6px;" onclick='openTrainLog(${JSON.stringify(payload)})'>Log this train</button>
     `;
   }

@@ -115,6 +115,8 @@ class TrainRID(models.Model):
     origin_crs = models.CharField(max_length=8, blank=True, default="")
     origin_name = models.CharField(max_length=128, blank=True, default="")
     origin_departure = models.DateTimeField(null=True, blank=True)
+
+    date = models.DateField(null=True, blank=True)
  
     destination_crs = models.CharField(max_length=8, blank=True, default="")
     destination_name = models.CharField(max_length=128, blank=True, default="")

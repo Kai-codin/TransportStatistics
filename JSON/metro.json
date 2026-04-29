@@ -4,7 +4,7 @@
       "operator_id": 45,
       "type": "Bombardier M5000",
       "livery_name": "Metro Link",
-      "livery_css": "linear-gradient(to right, #0000 25%, #9e989c 75%), radial-gradient(circle, #f3db46 35%, transparent 30%) 0 50% / 3px 3px, linear-gradient(to right, #f3db46 15%, #9e989c 15%)",
+      "livery_css": "linear-gradient(to right, #0000 25%, #9e989c 75%), radial-gradient(circle, #f3db46 35%, transparent 30%) 0 50% / calc(100% / 12) calc(100% / 7), linear-gradient(to right, #f3db46 15%, #9e989c 15%)",
       "fleet_numbers": [
         3001,
         3002,

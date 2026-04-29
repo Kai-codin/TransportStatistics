@@ -6,6 +6,29 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/shared/sidebar.css' %}" data-ts-theme />
 <link rel="stylesheet" href="{% static 'css/pages/completion_update.css' %}" data-ts-theme />
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    /* Styling to match your theme */
+    .select2-container--default .select2-selection--single {
+        height: 38px;
+        border: 1px solid var(--ts-border);
+        background-color: var(--ts-bg);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        color: var(--ts-text-main);
+    }
+    .select2-dropdown {
+        background-color: var(--ts-bg);
+        border: 1px solid var(--ts-border);
+    }
+    .select2-search__field {
+        border-radius: 4px !important;
+    }
+    .form-row { margin-bottom: 20px; }
+</style>
 {% endblock %}
 
 {% block body_class %}ts-app-page{% endblock %}
@@ -46,9 +69,9 @@
 
                         <div class="form-row">
                         <label for="source">Livery</label>
-                        <select id="source" name="source_css" onchange="onSourceChange()">
+                        <select id="source" name="source_css" class="ts-select2" onchange="onSourceChange()">
                             <option value="">-- choose --</option>
-                            {% for l in liveries %}
+                            {% for l in liveries|dictsort:"bus_livery_name" %}
                             <option value="{{ l.bus_livery }}" data-name="{{ l.bus_livery_name }}" data-count="{{ l.count }}">
                                 {% if l.bus_livery_name %}
                                   {{ l.bus_livery_name }} ({{ l.count }})
@@ -68,9 +91,9 @@
 
                         <div class="form-row">
                         <label for="target_select">Replace with</label>
-                        <select id="target_select" name="target_css_select" onchange="onTargetChange()">
+                        <select id="target_select" name="target_css_select" class="ts-select2" onchange="onTargetChange()">
                             <option value="">-- choose replacement --</option>
-                            {% for l in liveries %}
+                            {% for l in liveries|dictsort:"bus_livery_name" %}
                             <option value="{{ l.bus_livery }}" data-name="{{ l.bus_livery_name }}">
                                 {% if l.bus_livery_name %}
                                   {{ l.bus_livery_name }} ({{ l.count }})
@@ -137,7 +160,27 @@
     </main>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 <script>
+$(document).ready(function() {
+    // Initialize Select2
+    $('.ts-select2').select2({
+        width: '100%',
+        placeholder: "Search for a livery..."
+    });
+
+    // Select2 swallows native 'onchange'. We need to trigger your functions manually.
+    $('#source').on('select2:select', function (e) {
+        onSourceChange();
+    });
+    
+    $('#target_select').on('select2:select', function (e) {
+        onTargetChange();
+    });
+});
+
 function onSourceChange() {
   const sel = document.getElementById('source');
   const preview = document.getElementById('source_preview');
@@ -169,26 +212,15 @@ function onTargetChange() {
     return;
   }
 
-  // preview
   preview.style.background = option.value;
-
   if (hidden) hidden.value = option.value;
 
-  // ✅ AUTO-FILL NAME (only if empty)
   if (!nameInput.value) {
     nameInput.value = option.dataset.name || '';
   }
 }
 
-// init
-(function(){
-  try {
-    onSourceChange();
-    onTargetChange();
-  } catch(e){}
-})();
-
-// Bustimes search via AJAX (non-refresh)
+// Bustimes search logic remains the same...
 document.getElementById('btn_search_bustimes').addEventListener('click', function () {
   const sourceSel = document.getElementById('source');
   const option = sourceSel.options[sourceSel.selectedIndex];
@@ -237,7 +269,6 @@ document.getElementById('btn_search_bustimes').addEventListener('click', functio
         label.appendChild(meta);
         label.appendChild(preview);
 
-        // click selects radio
         label.addEventListener('click', function () {
           radio.checked = true;
           document.getElementById('api_replace_form').style.display = '';
@@ -245,14 +276,11 @@ document.getElementById('btn_search_bustimes').addEventListener('click', functio
           document.getElementById('form_api_left_css').value = r.left_css || '';
           document.getElementById('form_api_name').value = r.name || '';
 
-          // Also populate the main replacement controls so the primary Replace button works.
           try {
             const targetName = document.getElementById('target_name');
             const hidden = document.getElementById('target_css_hidden');
-            // set hidden value (do not touch the select)
             if (hidden) hidden.value = r.left_css || '';
             if (targetName && !targetName.value) targetName.value = r.name || '';
-            // update preview directly
             const preview = document.getElementById('target_preview');
             if (preview) preview.style.background = r.left_css || '';
           } catch (e) {}

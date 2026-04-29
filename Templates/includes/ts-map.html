@@ -624,6 +624,17 @@
     const colour = getTrainColour(train.delay);
     const rotation = getTrainRotation(train.location, train.predicted_location);
 
+    // if sends in (tram) set colour #8b5cf6
+    if (train.destination && train.destination.name && train.destination.name.toLowerCase().includes('tram')) {
+      return createLiveryIcon({
+        label: train.headcode || '----',
+        css: '3b82f6',        // blue for trams
+        rotation: rotation - 90, // rotate to point in direction of travel (icon faces right by default)
+        carriages: 1,         // keep it small like a dot
+        overriderColour: '#8b5cf6' // override background for better tram visibility
+      });
+    }
+
     return createLiveryIcon({
       label: train.headcode || '----',
       css: colour,        // Use the colour as the icon tint.
@@ -865,9 +876,12 @@
   function niceDelay(delay) {
     let text = 'loading...';
 
+    console.log('Calculating delay text for delay:', delay);
+
     if (delay === null || delay === undefined) text = '-';
     if (delay < 0) text = `${-delay} min early`;
     if (delay === 0) text = 'On time';
+    if (delay > 0 && delay <= 5) text = `${delay} min late`;
     if (delay > 5) text = `${delay} min late`;
 
     return `<span style="color: #${getTrainColour(delay)};">${text}</span>`;

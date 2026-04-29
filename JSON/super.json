@@ -1,0 +1,24 @@
+{
+  "fleet": [
+    {
+      "operator_id": 46,
+      "type": "Siemens-Duewag Supertram",
+      "livery_name": "Stagecoach Supertram",
+      "livery_css": "radial-gradient(circle at 0 39%,#de0025 30%,#0000 20%),radial-gradient(circle at 6% 39%,#f27d00 33%,#0000 20%),radial-gradient(circle at 0 39%,#de0025 30%,#0000 20%),radial-gradient(circle at 6% 39%,#f27d00 33%,#0000 20%),#002a6b",
+      "fleet_numbers": [
+        101,102,103,104,105,106,107,108,109,110,
+        111,112,113,114,115,116,117,118,119,120,
+        121,122,123,124,125
+      ]
+    },
+    {
+      "operator_id": 46,
+      "type": "Stadler Citylink Class 399",
+      "livery_name": "Stagecoach Supertram",
+      "livery_css": "radial-gradient(circle at 0 39%,#de0025 30%,#0000 20%),radial-gradient(circle at 6% 39%,#f27d00 33%,#0000 20%),radial-gradient(circle at 0 39%,#de0025 30%,#0000 20%),radial-gradient(circle at 6% 39%,#f27d00 33%,#0000 20%),#002a6b",
+      "fleet_numbers": [
+        201,202,203,204,205,206,207
+      ]
+    }
+  ]
+}

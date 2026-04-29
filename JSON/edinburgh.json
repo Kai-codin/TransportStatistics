@@ -1,0 +1,110 @@
+{
+  "fleet": [
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#fff 15%,#9b0000 15% 35%,#fff 35%)",
+      "livery_name": "Edinburgh Trams - St James Quarter",
+      "fleet_numbers": [251]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#fff 15%,#9b0000 15% 35%,#fff 35%)",
+      "livery_name": "Edinburgh Trams - OMNi",
+      "fleet_numbers": [252]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#fff 15%,#9b0000 15% 35%,#fff 35%)",
+      "livery_name": "Edinburgh Trams - CR Smith",
+      "fleet_numbers": [253, 259, 266]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#fff 15%,#9b0000 15% 35%,#fff 35%)",
+      "livery_name": "Edinburgh Trams - FIX from CR Smith",
+      "fleet_numbers": [265]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#fff 15%,#9b0000 15% 35%,#fff 35%)",
+      "livery_name": "Edinburgh Trams - aegon asset management",
+      "fleet_numbers": [267]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#fff 15%,#9b0000 15% 35%,#fff 35%)",
+      "livery_name": "Edinburgh Trams - Walker's Shortbread",
+      "fleet_numbers": [275]
+    },
+
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(280deg,#d71a21 25%,#0000 25%),linear-gradient(295deg,#fff 55%,#d71a21 55%)",
+      "livery_name": "Emirates",
+      "fleet_numbers": [255, 257, 258, 260, 261, 268, 269, 271, 272, 273]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(90deg,#fff 15%,#7d9ba3 15% 43%,#fff 43% 57%,#7d9ba3 57% 85%,#fff 85%)",
+      "livery_name": "Uniqlo",
+      "fleet_numbers": [254]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "#d4fafa",
+      "livery_name": "National Museum of Scotland",
+      "fleet_numbers": [256]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "#000",
+      "livery_name": "Square",
+      "fleet_numbers": [262]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(#122244 90%,#c2343c 90%)",
+      "livery_name": "The Royal Yacht Britannia",
+      "fleet_numbers": [263, 274]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(90deg,#fff 5%,#000 5%,#5c2710 14%,#b96124 43%,#fff 43% 57%,#b96124 57%,#5c2710 86%,#000 95%,#fff 95%)",
+      "livery_name": "The Real Mary King's Close",
+      "fleet_numbers": [264]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(90deg,#c800c8 15%,#0085c8 15% 29%,#004c73 29% 43%,#00324b 43% 58%,#004c73 58% 72%,#0085c8 72% 86%,#c800c8 86%)",
+      "livery_name": "Camera Obscura & World of Illusions",
+      "fleet_numbers": [270]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "#881028",
+      "livery_name": "The Famous Grouse",
+      "fleet_numbers": [276]
+    },
+    {
+      "operator_id": 48,
+      "type": "CAF Urbos 3",
+      "livery_css": "linear-gradient(90deg,#db41de 5%,#cfecf7 5% 30%,#db41de 30% 42%,#cfecf7 42% 58%,#01d894 58% 70%,#cfecf7 70% 95%,#01d894 95%)",
+      "livery_name": "Scottish Rugby",
+      "fleet_numbers": [277]
+    }
+  ]
+}

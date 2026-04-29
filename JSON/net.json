@@ -1,0 +1,113 @@
+{
+  "fleet": [
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "Consent Coalition",
+      "livery_css": "#111",
+      "fleet_numbers": [
+        201
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "Oxford Business College",
+      "livery_css": "#fff",
+      "fleet_numbers": [
+        202
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "NET",
+      "livery_css": "linear-gradient(to bottom, #002c2a 20%, #858f98 10%)",
+      "fleet_numbers": [
+        203,
+        206,
+        207,
+        208,
+        209,
+        213,
+        215
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "EON",
+      "livery_css": "#a92d37",
+      "fleet_numbers": [
+        204,
+        214
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "Sky Broadband",
+      "livery_css": "#4da6ea",
+      "fleet_numbers": [
+        205
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "NET Pride",
+      "livery_css": "linear-gradient(to bottom, #0000 10%, #858f98 10%),\r\nlinear-gradient(\r\n  to right,\r\n  #002c2a 10% 15%,\r\n  #6fa4f4 15% 20%,\r\n  #27bc76 20% 25%,\r\n  #fde250 25% 30%,\r\n  #e86a2e 30% 35%,\r\n  #f63434 35% 40%,\r\n  #dc63d0 40% 45%,\r\n  #fef35e 45% 50%,\r\n  #fff 50% 55%,\r\n  #f3cceb 55% 60%,\r\n  #adf6ff 60% 65%,\r\n  #7f513e 65% 70%,\r\n  #000 70% 75%,\r\n  #bf66c6 75% 80%,\r\n  #002c2a 80% 100%\r\n)",
+      "fleet_numbers": [
+        210
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "Marks Electrical",
+      "livery_css": "#4da6ea",
+      "fleet_numbers": [
+        211
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Bombardier Incentro AT6/5",
+      "livery_name": "CN28",
+      "livery_css": "#fff",
+      "fleet_numbers": [
+        212
+      ]
+    },
+    {
+      "operator_id": 44,
+      "type": "Alstom Citadis 302",
+      "livery_name": "NET",
+      "livery_css": "linear-gradient(to bottom, #002c2a 20%, #858f98 10%)",
+      "fleet_numbers": [
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        228,
+        229,
+        230,
+        231,
+        232,
+        233,
+        234,
+        235,
+        236,
+        237
+      ]
+    }
+  ]
+}

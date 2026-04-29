@@ -25,7 +25,7 @@ def train_edit_requests_list(request):
             models.Q(operator__name__icontains=q)
         )
 
-    paginator = Paginator(trains_qs, 25)
+    paginator = Paginator(trains_qs, 250)
     page = request.GET.get("page")
     trains_page = paginator.get_page(page)
 

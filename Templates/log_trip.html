@@ -361,7 +361,9 @@
   document.getElementById('lf-type').addEventListener('change', syncVehicleSections);
 
   function syncVehicleSections() {
-    const isBus = ['bus', 'tram', 'ferry'].includes(document.getElementById('lf-type').value);
+    const mode = document.getElementById('lf-type').value;
+    const isBus = mode === 'bus';
+
     document.getElementById('ts-vehicle-rail').classList.toggle('ts-hidden', isBus);
     document.getElementById('ts-vehicle-bus').classList.toggle('ts-hidden', !isBus);
   }
@@ -398,7 +400,7 @@
   }
 
   function isBusMode() {
-    return ['bus', 'tram', 'ferry'].includes(document.getElementById('lf-type').value);
+    return ['bus'].includes(document.getElementById('lf-type').value);
   }
 
   // Build stitched road geometry for a slice of _locations (buses)
@@ -446,7 +448,9 @@
   // ── fetch service ──────────────────────────────────────────────────────────
   function fetchService() {
     let url;
-    if (transportType === 'bus') {
+    const mode = document.getElementById('lf-type').value;
+
+    if (mode === 'bus') {
       const date = prefDate || new Date().toISOString().slice(0, 10);
       url = `/api/bus-service/?trip=${encodeURIComponent(tripID)}&date=${encodeURIComponent(date)}`;
     } else {
@@ -1010,6 +1014,12 @@
 
   function searchVehicle(query, auto = false) {
     const results = document.getElementById('ts-vehicle-results');
+    const mode = (document.getElementById('lf-type').value || '').toLowerCase();
+
+    if (mode !== 'bus') {
+      searchTrainFleet(query, auto);
+      return;
+    }
 
     fetch(`https://bustimes.org/api/vehicles/?search=${encodeURIComponent(query)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -1097,6 +1107,8 @@
 
   function searchTrainFleet(query, auto = false) {
     const results = document.getElementById('ts-train-results');
+
+    console.log('Searching train fleet for', query);
 
     fetch(`/api/fleet?q=${encodeURIComponent(query)}`)
       .then(r => r.ok ? r.json() : Promise.reject())

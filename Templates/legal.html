@@ -18,7 +18,22 @@
     <div class="ts-content">
 
       <h1 class="ts-page-title">Legal</h1>
-      <p class="ts-page-subtitle">Licensing and attribution for data used by this service.</p>
+      <p class="ts-page-subtitle">
+        Licensing and attribution for the data and services used across the site.
+      </p>
+
+      <div class="ts-section">
+        <div class="ts-card">
+          <div class="ts-section-title">Signalbox APIs</div>
+          <p>
+            Signalbox APIs are used to provide live train locations, route geometry,
+            and additional train metadata.
+          </p>
+          <p class="ts-empty-text-muted">
+            Endpoints used: locations, train-information, route.
+          </p>
+        </div>
+      </div>
 
       <div class="ts-section">
         <div class="ts-section-title">Data Sources</div>
@@ -34,92 +49,157 @@
               </tr>
             </thead>
             <tbody>
+
               <tr>
                 <td>Bus Departures</td>
-                <td>Real-time bus departure information is sourced from <a href="https://bustimes.org"
-                    target="_blank">bustimes.org</a></td>
-                <td><a href="https://bustimes.org/stops/{atco code}/departures"
-                    target="_blank">https://bustimes.org/stops/{atco code}/departures</a></td>
-                <td><a href="https://bustimes.org/data" target="_blank">bustimes.org Data</a></td>
+                <td>
+                  Real-time bus departure information from
+                  <a href="https://bustimes.org" target="_blank">bustimes.org</a>
+                </td>
+                <td>
+                  <a href="https://bustimes.org/stops/{atco code}/departures" target="_blank">
+                    /stops/{atco code}/departures
+                  </a>
+                </td>
+                <td>
+                  <a href="https://bustimes.org/data" target="_blank">bustimes.org Data</a>
+                </td>
               </tr>
+
               <tr>
-                <td>Live Bus Positions</td>
-                <td>Live bus positions and vehicle details are sourced from <a href="https://bustimes.org" target="_blank">bustimes.org</a></td>
-                <td><a href="https://bustimes.org/api/vehicles/" target="_blank">https://bustimes.org/api/vehicles/</a></td>
-                <td><a href="https://github.com/jclgoodwin/bustimes.org/blob/main/LICENSE" target="_blank">MPL-2.0 license</a></td>
+                <td>Bus Locations & Vehicles</td>
+                <td>
+                  Live bus positions and vehicle details from
+                  <a href="https://bustimes.org" target="_blank">bustimes.org</a>
+                </td>
+                <td>
+                  <a href="https://bustimes.org/api/vehicles/" target="_blank">
+                    /api/vehicles/
+                  </a>
+                </td>
+                <td>
+                  <a href="https://github.com/jclgoodwin/bustimes.org/blob/main/LICENSE" target="_blank">
+                    MPL-2.0
+                  </a>
+                </td>
               </tr>
+
               <tr>
                 <td>Train Departures</td>
-                <td>Train departure data is sourced from Network Rail SCHEDULE JsonScheduleV1</td>
-                <td><a href="https://publicdatafeeds.networkrail.co.uk"
-                    target="_blank">https://publicdatafeeds.networkrail.co.uk/</a></td>
-                <td><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a></td>
-              </tr>
-              <tr>
-                <td>Bus Vehicle Information</td>
-                <td>Bus vehicle information is sourced from <a href="https://bustimes.org"
-                    target="_blank">bustimes.org</a>
+                <td>Timetable and departure data from Network Rail SCHEDULE feeds</td>
+                <td>
+                  <a href="https://publicdatafeeds.networkrail.co.uk/" target="_blank">
+                    publicdatafeeds.networkrail.co.uk
+                  </a>
                 </td>
-                <td><a href="https://bustimes.org/api/vehicles/" target="_blank">https://bustimes.org/api/vehicles/</a></td>
-                <td><a href="https://github.com/jclgoodwin/bustimes.org/blob/main/LICENSE" target="_blank">MPL-2.0 license</a></td>
+                <td>
+                  <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">
+                    CC BY-SA 4.0
+                  </a>
+                </td>
               </tr>
+
               <tr>
-                <td>Map Styles</td>
-                <td>Custom MapLibre style files used for basemap rendering.</td>
-                <td><a href="https://maps.fluffynet.dev/" target="_blank">https://maps.fluffynet.dev/</a></td>
-                <td>See provider site for licence/attribution</td>
+                <td>Signalbox Train APIs</td>
+                <td>
+                  Live train locations, routes, and detailed train lookups
+                </td>
+                <td>
+                  <a href="https://map-api.production.signalbox.io/api/locations" target="_blank">locations</a>,
+                  <a href="https://map-api.production.signalbox.io/api/train-information/{rid}" target="_blank">train-information</a>,
+                  <a href="https://map-api.production.signalbox.io/api/route/{rid}" target="_blank">route</a>
+                </td>
+                <td>External service (see provider terms)</td>
               </tr>
-              <tr>
-                <td>Map Library</td>
-                <td>Map rendering is performed with MapLibre GL JS.</td>
-                <td><a href="https://maplibre.org/" target="_blank">https://maplibre.org/</a></td>
-                <td>BSD-style / open-source</td>
-              </tr>
-              <tr>
-                <td>Basemap Data</td>
-                <td>Underlying basemap vector/tiles are provided by OpenStreetMap contributors.</td>
-                <td><a href="https://openstreetmap.org/" target="_blank">https://openstreetmap.org/</a></td>
-                <td>Open Database Licence (ODbL)</td>
-              </tr>
-              <tr>
-                <td>Web Fonts</td>
-                <td>Fonts are loaded from Google Fonts for UI typography.</td>
-                <td><a href="https://fonts.googleapis.com/" target="_blank">https://fonts.googleapis.com/</a></td>
-                <td>See Google Fonts for licence details</td>
-              </tr>
+
               <tr>
                 <td>Bus Stops</td>
-                <td>Bus stop information is sourced from <a href="https://beta-naptan.dft.gov.uk/download" target="_blank">NaPTAN</a></td>
-                <td><a href="https://beta-naptan.dft.gov.uk/download" target="_blank">https://beta-naptan.dft.gov.uk/download</a></td>
-                <td><a href="http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government
-                    Licence v3.0.</a></td>
+                <td>
+                  Bus stop data from NaPTAN
+                </td>
+                <td>
+                  <a href="https://beta-naptan.dft.gov.uk/download" target="_blank">
+                    beta-naptan.dft.gov.uk/download
+                  </a>
+                </td>
+                <td>
+                  <a href="http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/" target="_blank">
+                    Open Government Licence v3.0
+                  </a>
+                </td>
               </tr>
+
               <tr>
-                <td>Train Station Locations</td>
-                <td>Train station location information is sourced from Network Rail</td>
-                <td><a href="https://github.com/davwheat/uk-railway-stations/blob/main/stations.json"
-                    target="_blank">davwheat's uk-railway-stations stations.json</a></td>
-                <td><a href="https://github.com/davwheat/uk-railway-stations/blob/main/LICENSE" target="_blank">ODC Open Database License (ODbL)</a></td>
+                <td>Rail Locations</td>
+                <td>
+                  Station and other rail location data from Network Rail and open datasets
+                </td>
+                <td>
+                  <a href="https://github.com/davwheat/uk-railway-stations/blob/main/stations.json" target="_blank">
+                    stations.json
+                  </a>
+                </td>
+                <td>
+                  <a href="https://github.com/davwheat/uk-railway-stations/blob/main/LICENSE" target="_blank">
+                    ODbL
+                  </a>
+                </td>
               </tr>
+
               <tr>
-                <td>Other Rail Locations</td>
-                <td>Other rail location information is sourced from Network Rail SCHEDULE TiplocV1</td>
-                <td><a href="https://publicdatafeeds.networkrail.co.uk"
-                    target="_blank">https://publicdatafeeds.networkrail.co.uk/</a></td>
-                <td><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a></td>
+                <td>Other Rail Data</td>
+                <td>
+                  Additional rail location data from Network Rail TIPLOC feeds
+                </td>
+                <td>
+                  <a href="https://publicdatafeeds.networkrail.co.uk/" target="_blank">
+                    publicdatafeeds.networkrail.co.uk
+                  </a>
+                </td>
+                <td>
+                  <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">
+                    CC BY-SA 4.0
+                  </a>
+                </td>
               </tr>
+
               <tr>
-                <td>Realtime Trains links</td>
-                <td>Some pages include links to RealTimeTrains for convenience; timetable data shown here is derived from Network Rail SCHEDULE feeds rather than provided by RealTimeTrains.</td>
-                <td><a href="https://www.realtimetrains.co.uk/" target="_blank">https://www.realtimetrains.co.uk/</a></td>
-                <td>External site - see their terms</td>
+                <td>Maps & Basemap</td>
+                <td>
+                  Map rendering via MapLibre GL JS with OpenStreetMap data and custom styles
+                </td>
+                <td>
+                  <a href="https://maplibre.org/" target="_blank">maplibre.org</a>,
+                  <a href="https://maps.fluffynet.dev/" target="_blank">maps.fluffynet.dev</a>,
+                  <a href="https://openstreetmap.org/" target="_blank">openstreetmap.org</a>
+                </td>
+                <td>BSD-style / ODbL (OpenStreetMap)</td>
               </tr>
+
               <tr>
-                <td>Bustimes links</td>
-                <td>Some pages include links to bustimes.org for convenience; live bus departures displayed are obtained from bustimes.org.</td>
-                <td><a href="https://bustimes.org/" target="_blank">https://bustimes.org/</a></td>
-                <td>External site - see their terms</td>
+                <td>Web Fonts</td>
+                <td>Fonts loaded from Google Fonts</td>
+                <td>
+                  <a href="https://fonts.googleapis.com/" target="_blank">
+                    fonts.googleapis.com
+                  </a>
+                </td>
+                <td>See Google Fonts licence</td>
               </tr>
+
+              <tr>
+                <td>External Links</td>
+                <td>
+                  Links to third-party sites such as RealTimeTrains and bustimes.org are provided
+                  for convenience. Data displayed on this site is sourced independently.
+                </td>
+                <td>
+                  <a href="https://www.realtimetrains.co.uk/" target="_blank">realtimetrains.co.uk</a>,
+                  <a href="https://bustimes.org/" target="_blank">bustimes.org</a>
+                </td>
+                <td>External sites (see their terms)</td>
+              </tr>
+
             </tbody>
           </table>
         </div>

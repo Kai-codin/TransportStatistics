@@ -100,9 +100,9 @@
                   <div class="ts-trip-vehicle-wrapper">
                     <div class="ts-trip-vehicle">
                       {% if trip.bus_fleet_number and trip.bus_registration %}
-                      <span class="ts-trip-fleet">{{ trip.bus_fleet_number }} - {{ trip.bus_registration }}</span>
-                      {% elif trip.bus_fleet_number %}
-                      <span class="ts-trip-fleet">{{ trip.bus_fleet_number }}</span>
+                      <span class="ts-trip-fleet">{% if trip.train_fleet_number %}{{ trip.train_fleet_number }}{% elif trip.bus_fleet_number %}{{ trip.bus_fleet_number }}{% endif %} - {{ trip.bus_registration }}</span>
+                      {% elif trip.train_fleet_number or trip.bus_fleet_number %}
+                      <span class="ts-trip-fleet">{% if trip.train_fleet_number %}{{ trip.train_fleet_number }}{% elif trip.bus_fleet_number %}{{ trip.bus_fleet_number }}{% endif %}</span>
                       {% elif trip.bus_registration %}
                       <span class="ts-trip-fleet">{{ trip.bus_registration }}</span>
                       {% endif %}
@@ -121,7 +121,7 @@
                   {% elif trip.is_rail and trip.train_fleet_number %}
                   <div class="ts-trip-vehicle-wrapper">
                     <div class="ts-trip-vehicle">
-                      <span class="ts-trip-fleet">{{ trip.train_fleet_number }}</span>
+                      <span class="ts-trip-fleet">{% if trip.train_fleet_number %}{{ trip.train_fleet_number }}{% elif trip.bus_fleet_number %}{{ trip.bus_fleet_number }}{% endif %}</span>
                       {% if trip.bus_livery %}
                       <div class="ts-trip-livery-swatch" data-livery-bg="{{ trip.bus_livery }}"></div>
                       {% endif %}

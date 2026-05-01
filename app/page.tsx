@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from 'react';
 import { Map } from '@/components/Map';
+import maplibregl from 'maplibre-gl';
 
 export default function Home() {
   const mapRef = useRef<any>(null);

@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { MapPin, AlertTriangle } from 'lucide-react';
 
-export const Map = () => {
+// 1. Define the type of object the parent will be able to access
+export interface MapHandle {
+  getMap: () => maplibregl.Map | null;
+}
+
+export const Map = forwardRef<MapHandle, {}>((props, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const [bounds, setBounds] = useState({ minLat: 0, maxLat: 0, minLon: 0, maxLon: 0 });
@@ -15,6 +20,10 @@ export const Map = () => {
   const [retryKey, setRetryKey] = useState(0);
 
   const stops = useQuery(api.functions.stops.getInBBox, bounds);
+
+  useImperativeHandle(ref, () => ({
+    getMap: () => mapInstance.current,
+  }));
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -106,4 +115,4 @@ export const Map = () => {
       <div ref={mapContainer} className="w-full h-full" />
     </div>
   );
-};
+});

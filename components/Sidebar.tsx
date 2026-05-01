@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useUser, useClerk, SignOutButton, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { 
   Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, 
-  Shield, Settings, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight 
+  Shield, Settings, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea
 } from "lucide-react";
 
 const navLinks = [
@@ -14,6 +14,7 @@ const navLinks = [
   { name: "Profile", href: "/profile", icon: User },
   { name: "Friends", href: "/friends", icon: Users },
   { name: "Completion", href: "/completion", icon: CheckCircle },
+  { name: "Stats", href: "/stats", icon: ChartArea },
   { name: "Liveries", href: "/liveries", icon: Palette },
   { name: "Update", href: "/update", icon: RefreshCw },
   { name: "Request Edit", href: "/request-edit", icon: Edit },

@@ -6,6 +6,22 @@ body {
   margin: 0;
 }
 
+.vehicle-marker {
+  border: 1px solid var(--marker-border-color);
+  /*  border-left-color: var(--marker-arrow-color);*/
+  margin: 1px;
+  text-align: center;
+  overflow: hidden;
+  line-height: 16px;
+  color: #000;
+  fill: currentColor;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke-width: 2px;
+  font-size: 12px;
+  display: block; /* cos svg is not block-level by default */
+}
+
 @theme inline {
   --color-color-background: var(--color-background);
   --color-color-foregrounad: var(--color-foreground);

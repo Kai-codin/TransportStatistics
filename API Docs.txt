@@ -1,0 +1,126 @@
+APIs
+
+/api/live-vehicles?
+BBox=ymax=&xmax=&ymin=&xmin=
+ShowBuses=true/false
+ShowTrains=true/false
+
+Build on APIs
+
+Live Train Locations
+https://map-api.production.signalbox.io//api/locations
+Example response:
+{
+  "train_locations": [
+    {
+      "delay": 1.0,
+      "location": {
+        "lat": 53.484352,
+        "lon": -2.063057
+      },
+      "predicted_location": {
+        "lat": 53.48426,
+        "lon": -2.0630116
+      },
+      "predicted_ts": "2026-05-01T10:42:20+00:00",
+      "rid": "202605017636645",
+      "toc_code": "TP",
+      "ts": "2026-05-01T10:41:50+00:00"
+    }
+  ]
+}
+
+Live Bus Locations & Information
+https://bustimes.org/vehicles.json?ymax=&xmax=&ymin=&xmin=
+Example response:
+[
+  {
+    "id": 34947,
+    "journey_id": 876732313,
+    "coordinates": [
+      -1.144991,
+      52.944718
+    ],
+    "heading": 269.0,
+    "datetime": "2026-05-01T11:42:16+01:00",
+    "destination": "Nottingham",
+    "block": "419",
+    "date": "2026-05-01",
+    "trip_id": 577974496,
+    "service_id": 9362,
+    "service": {
+      "url": "/services/19-melton-mowbray-nottingham",
+      "line_name": "19"
+    },
+    "vehicle": {
+      "url": "/vehicles/cbnl-511",
+      "name": "511 - FN09 FSO",
+      "livery": 1603,
+      "colour": "#FF6700"
+    }
+  }
+]
+
+colour on trains is based on the delay "-5 early blue", "-5-0 is on time green", "+1-9 late orange", "+10-19 late red", "+20 late pink"
+
+Wanted Response
+[
+    "trains":
+    [
+        {
+            "id": rid,
+            "delay": delay,
+            "location": {
+                "lat": lat,
+                "lon": lon
+            },
+            "rotation": rotation,
+            "operator_code": toc_code,
+            "operator": train_operator,
+            "service": headcode,
+            "origin": origin,
+            "destination": destination,
+            "colour": colour,
+        }
+    ],
+    "buses":
+    [
+        {
+            "id": trip_id,
+            "location": {
+                "lat": lat,
+                "lon": lon
+            },
+            "rotation": heading,
+            "service": service.line_name,
+            "destination": destination,
+            "name": vehicle.name,
+            "colour": vehicle.colour,
+            "liveryID": vehicle.livery,
+        },
+    ]    
+]
+
+/api/service-route?
+type=bus/train
+id=trip_id/rid
+
+Build on APIs
+
+Train Route Geometry
+https://map-api.production.signalbox.io//api/route/{rid}
+
+Train Route Stops
+https://map-api.production.signalbox.io//api/train-information/{rid}
+
+Bus Trip Information
+https://bustimes.org/vehicles.json?service={trip_id}
+
+Bus Route Geometry
+https://bustimes.org/api/trips/{trip_id}/
+
+
+Background Functions
+Detailed Train Information
+https://map-api.production.signalbox.io//api/train-information/{rid}
+

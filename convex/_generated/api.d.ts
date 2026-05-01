@@ -12,6 +12,7 @@ import type * as functions_import from "../functions/import.js";
 import type * as functions_import_trips from "../functions/import_trips.js";
 import type * as functions_seed from "../functions/seed.js";
 import type * as functions_stops from "../functions/stops.js";
+import type * as functions_trains from "../functions/trains.js";
 import type * as functions_trips from "../functions/trips.js";
 
 import type {
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   "functions/import_trips": typeof functions_import_trips;
   "functions/seed": typeof functions_seed;
   "functions/stops": typeof functions_stops;
+  "functions/trains": typeof functions_trains;
   "functions/trips": typeof functions_trips;
 }>;
 

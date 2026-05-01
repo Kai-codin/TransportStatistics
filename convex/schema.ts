@@ -33,7 +33,25 @@ export default defineSchema({
     .index("by_stopType", ["stopTypeId"])
     .index("by_active", ["active"])
     .index("by_lon", ["lon"])
-    .index("by_lat", ["lat"]),
+    .index("by_lat", ["lat"])
+    .index("by_lat_lon", ["lat", "lon"]),
+
+  trainDetails: defineTable({
+    rid: v.string(),
+    toc_code: v.string(),
+    train_operator: v.string(),
+    uid: v.string(),
+    destination_arrival: v.string(),
+    destination_name: v.string(),
+    destination_crs: v.string(),
+    origin_departure: v.string(),
+    origin_name: v.string(),
+    origin_crs: v.string(),
+    stops: v.array(v.any()), 
+    delay: v.number(),
+    headcode: v.string(),
+  })
+  .index("by_rid", ["rid"]),
 
   tripLogs: defineTable({
     user: v.string(),

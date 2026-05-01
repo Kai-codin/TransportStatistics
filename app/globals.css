@@ -7,7 +7,6 @@ body {
 }
 
 .vehicle-marker {
-  border: 1px solid var(--marker-border-color);
   /*  border-left-color: var(--marker-arrow-color);*/
   margin: 1px;
   text-align: center;
@@ -19,6 +18,7 @@ body {
   paint-order: stroke;
   stroke-width: 2px;
   font-size: 12px;
+  border: 1px solid black;
   display: block; /* cos svg is not block-level by default */
 }
 

@@ -62,6 +62,10 @@ Example response:
 ]
 
 colour on trains is based on the delay "-5 early blue", "-5-0 is on time green", "+1-9 late orange", "+10-19 late red", "+20 late pink"
+when this API is called return a responces fill in the extra train data form the db using the rid
+async call the Details Train Information API for each train to get the extra data store it in the db so it can be added in the next api call
+Return this api before waiting for the details train information API to return, so the response is fast and then update the train data in the background when the details train information API returns and update the response with the new data when it is ready
+
 
 Wanted Response
 [
@@ -101,26 +105,78 @@ Wanted Response
     ]    
 ]
 
-/api/service-route?
-type=bus/train
-id=trip_id/rid
-
-Build on APIs
-
-Train Route Geometry
-https://map-api.production.signalbox.io//api/route/{rid}
-
-Train Route Stops
-https://map-api.production.signalbox.io//api/train-information/{rid}
-
-Bus Trip Information
-https://bustimes.org/vehicles.json?service={trip_id}
-
-Bus Route Geometry
-https://bustimes.org/api/trips/{trip_id}/
-
 
 Background Functions
 Detailed Train Information
 https://map-api.production.signalbox.io//api/train-information/{rid}
+Example response:
+{
+  "delay": -1.0,
+  "destination_arrival": "2026-05-01T12:56:00+01:00",
+  "destination_crs": "BMV",
+  "destination_name": "Bromsgrove",
+  "headcode": "2O28",
+  "origin_crs": "LTV",
+  "origin_departure": "2026-05-01T11:38:00+01:00",
+  "origin_name": "Lichfield Trent Valley",
+  "rid": "202605018005616",
+  "stops": [
+    {
+      "actual_arrival": null,
+      "actual_departure": "2026-05-01T11:38:00+01:00",
+      "arrival": null,
+      "cancelled": false,
+      "crs": "LTV",
+      "departure": "2026-05-01T11:38:00+01:00",
+      "name": "Lichfield Trent Valley",
+      "platform": "3"
+    },
+    {
+      "actual_arrival": "2026-05-01T11:40:00+01:00",
+      "actual_departure": "2026-05-01T11:42:00+01:00",
+      "arrival": "2026-05-01T11:41:00+01:00",
+      "cancelled": false,
+      "crs": "LIC",
+      "departure": "2026-05-01T11:42:00+01:00",
+      "name": "Lichfield City",
+      "platform": "2"
+    }
+  ],
+  "toc_code": "LM",
+  "train_operator": "West Midlands Trains",
+  "uid": "P05616"
+}
+
+Store this info in the database
+    rid
+    toc_code
+    train_operator
+    uid
+    destination_arrival
+    destination_name
+    destination_crs
+    origin_departure
+    origin_name
+    origin_crs
+    stops
+
+
+
+/api/service-route?
+    type=bus/train
+    id=trip_id/rid
+
+    Build on APIs
+
+    Train Route Geometry
+    https://map-api.production.signalbox.io//api/route/{rid}
+
+    Train Route Stops
+    https://map-api.production.signalbox.io//api/train-information/{rid}
+
+    Bus Trip Information
+    https://bustimes.org/vehicles.json?service={trip_id}
+
+    Bus Route Geometry
+    https://bustimes.org/api/trips/{trip_id}/
 

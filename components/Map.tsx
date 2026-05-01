@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useState, forwardRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useQuery } from 'convex/react';
@@ -7,6 +7,7 @@ import { api } from '../convex/_generated/api';
 
 const MIN_ZOOM = 14;
 const POLL_INTERVAL_MS = 10000;
+const DENSITY_THRESHOLD = 1000;
 
 export const Map = forwardRef<any, {}>((props, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -15,10 +16,10 @@ export const Map = forwardRef<any, {}>((props, ref) => {
   const boundsRef = useRef({ minLat: 0, maxLat: 0, minLon: 0, maxLon: 0 });
   const [bounds, setBounds] = useState({ minLat: 0, maxLat: 0, minLon: 0, maxLon: 0 });
   const [tooZoomedOut, setTooZoomedOut] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const stops = useQuery(api.functions.stops.getInBBox, tooZoomedOut ? 'skip' : bounds);
 
-  // 1. Inject the external CSS
   useEffect(() => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -27,27 +28,25 @@ export const Map = forwardRef<any, {}>((props, ref) => {
     return () => { document.head.removeChild(link); };
   }, []);
 
-  // 2. Helper: Create the custom vehicle marker
+  // Helper: Create custom marker
   const createMarker = (item: any, type: 'train' | 'bus') => {
     const el = document.createElement('div');
+    let background = '';
     el.className = 'maplibregl-marker maplibregl-marker-anchor-center';
-    el.setAttribute('aria-label', 'Map marker');
-    el.setAttribute('role', 'button');
-    
-    // Apply rotation based on heading data
     el.style.transform = `rotate(${item.rotation || 0}deg)`;
-
     const liveryClass = `livery-${item.liveryID || 0}`;
-
     const color = item.colour || (type === 'train' ? '#1669b6' : '#ff0000');
-    if (type === 'train') {
-      el.style.background = color;
+    //if (type === 'train') el.style.background = color;
+
+    if (type === 'bus' && item.colour && !item.liveryID) {
+      background = color;
+    } else if (type === 'train') {
+      background = color;
     }
-    
-    // Injecting your specific template
+
     el.innerHTML = `
-      <svg width="24" height="16" data-vehicle-id="${item.id}" class="vehicle-marker ${liveryClass}">
-        <text x="12" y="12">${item.service || 'N/A'}</text>
+      <svg width="30" height="20" data-vehicle-id="${item.id}" style="background: ${background}" class="vehicle-marker ${liveryClass}">
+        <text x="14" y="13">${item.service || 'N/A'}</text>
       </svg>
       <div class="arrow" data-vehicle-id="${item.id}"></div>
     `;
@@ -65,7 +64,6 @@ export const Map = forwardRef<any, {}>((props, ref) => {
       .setPopup(popup);
   };
 
-  // 3. Polling Effect
   useEffect(() => {
     if (!mapInstance.current) return;
 
@@ -74,28 +72,37 @@ export const Map = forwardRef<any, {}>((props, ref) => {
         const { minLat, maxLat, minLon, maxLon } = boundsRef.current;
         const res = await fetch(`/api/live-vehicles?xmin=${minLon}&ymin=${minLat}&xmax=${maxLon}&ymax=${maxLat}`);
         if (!res.ok) return;
+
         const data = await res.json();
-        
-        // Clean up existing markers before adding new ones
+        const allVehicles = [...(data.trains || []), ...(data.buses || [])];
+        const map = mapInstance.current!;
+
+        // 1. Clear existing markers and hide high-density layer by default
         markersRef.current.forEach(m => m.remove());
-        const newMarkers: maplibregl.Marker[] = [];
-        
-        data.trains.forEach((t: any) => {
-            const m = createMarker(t, 'train');
-            m.addTo(mapInstance.current!);
-            newMarkers.push(m);
-        });
+        markersRef.current = [];
+        map.setLayoutProperty('vehicles-layer', 'visibility', 'none');
 
-        data.buses.forEach((b: any) => {
-            const m = createMarker(b, 'bus');
-            m.addTo(mapInstance.current!);
-            newMarkers.push(m);
-        });
+        // 2. Decide Strategy
+        if (allVehicles.length > DENSITY_THRESHOLD) {
+          // SIMPLE MODE: Use GeoJSON source for performance
+          const features = allVehicles.map((v: any) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [v.location.lon, v.location.lat] },
+            properties: { color: v.colour || '#ff0000' }
+          }));
 
-        markersRef.current = newMarkers;
-      } catch (e) {
-        console.error("Failed to update vehicles", e);
-      }
+          (map.getSource('vehicles-source') as any).setData({
+            type: 'FeatureCollection',
+            features: features
+          });
+          map.setLayoutProperty('vehicles-layer', 'visibility', 'visible');
+
+        } else {
+          // RICH MODE: Use DOM Markers
+          data.trains?.forEach((t: any) => { markersRef.current.push(createMarker(t, 'train').addTo(map)); });
+          data.buses?.forEach((b: any) => { markersRef.current.push(createMarker(b, 'bus').addTo(map)); });
+        }
+      } catch (e) { console.error("Failed to update vehicles", e); }
     };
 
     const interval = setInterval(fetchVehicles, POLL_INTERVAL_MS);
@@ -103,18 +110,28 @@ export const Map = forwardRef<any, {}>((props, ref) => {
     return () => clearInterval(interval);
   }, [bounds]);
 
-  // 4. Initial Map Setup
   useEffect(() => {
     if (!mapContainer.current) return;
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: "https://api.maptiler.com/maps/openstreetmap/style.json?key=ghAzCSy39lRpGskkQ68J",
+      style: "/api/proxy/map-style",
       center: [-1.5, 52.5],
       zoom: 10,
     });
     mapInstance.current = map;
 
     map.on('load', () => {
+      // Setup High-Density Source/Layer
+      map.addSource('vehicles-source', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'vehicles-layer',
+        type: 'circle',
+        source: 'vehicles-source',
+        paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-width': 0 },
+        layout: { 'visibility': 'none' } // Hidden by default
+      });
+
+      // Existing stops layer
       map.addSource('stops-source', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'stops-layer', type: 'circle', source: 'stops-source', paint: { 'circle-radius': 5, 'circle-color': '#1669b6' } });
       
@@ -124,7 +141,6 @@ export const Map = forwardRef<any, {}>((props, ref) => {
         boundsRef.current = { minLat: b.getSouth(), maxLat: b.getNorth(), minLon: b.getWest(), maxLon: b.getEast() };
         setBounds(boundsRef.current);
       };
-      
       map.on('moveend', updateBounds);
       updateBounds();
     });

@@ -193,7 +193,7 @@
   };
 
   // ── theme ──────────────────────────────────────────────────────────────────
-  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/tf-';
+  const STYLE_BASE = 'https://maps.fluffynet.dev/styles/';
   const styleFor = t => STYLE_BASE + (t === 'dark' ? 'dark' : 'light') + '/style.json';
   let _theme    = (() => { try { return localStorage.getItem('ts_theme') || 'light'; } catch { return 'light'; } })();
   let STYLE_URL = styleFor(_theme);

@@ -1,11 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUser, useClerk, SignOutButton, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { useUser, useClerk, SignOutButton, Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { 
   Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, 
-  Shield, Settings, Sun, LogOut 
+  Shield, Settings, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight 
 } from "lucide-react";
 
 const navLinks = [
@@ -24,95 +25,126 @@ export default function Sidebar() {
   const isStaff = isLoaded && user?.publicMetadata?.is_staff === "true";
   const { openUserProfile } = useClerk();
 
+  // State
+  const [isCollapsed, setIsCollapsed] = useState(false); // For Desktop
+  const [isMobileOpen, setIsMobileOpen] = useState(false); // For Mobile
+
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setIsMobileOpen(false);
+  }, [pathname]);
+
   return (
-    // .ts-sidebar styles
-    <aside className="w-[220px] flex-shrink-0 flex flex-col bg-ts-surface border-r border-ts-border-soft h-screen overflow-hidden z-10">
-      
-      {/* .ts-sidebar-brand */}
-      <div className="flex items-center gap-2.5 p-5 border-b border-ts-border-soft flex-shrink-0">
-        <div className="w-8 h-8 bg-ts-accent rounded-lg flex items-center justify-center text-ts-text-inv font-mono font-extrabold text-[16px]">
-          TS
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[13px] font-bold text-white leading-tight">Transport Statistics</span>
-        </div>
-      </div>
+    <>
+      {/* Mobile Backdrop */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden" 
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
 
-      {/* .ts-sidebar-nav */}
-      <nav className="flex-1 overflow-y-auto p-2 flex flex-col gap-0.5">
-        {navLinks.map((link) => {
-          const isActive = pathname === link.href;
-          const Icon = link.icon;
-          return (
-            <Link 
-              key={link.name} 
-              href={link.href}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] font-medium transition-all duration-150 border border-transparent ${
-                isActive 
-                  ? "bg-ts-accent-light text-ts-accent border-ts-accent-border" 
-                  : "text-ts-text-2 hover:bg-ts-surface-2 hover:text-white hover:border-ts-border-soft"
-              }`}
-            >
-              <div className="w-[18px] h-[18px] flex items-center justify-center opacity-70">
-                <Icon size={18} />
-              </div>
-              {link.name}
-            </Link>
-          );
-        })}
-
-        {/* Staff Section */}
-        {isStaff && (
-          <div className="mt-4">
-            <p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ts-text-3 px-3 py-2">Staff</p>
-            <Link href="/admin" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white transition-all">
-              <Shield size={18} /> Admin
-            </Link>
-          </div>
-        )}
-      </nav>
-
-      {/* .ts-sidebar-footer */}
-      <div className="p-2 border-t border-ts-border-soft flex-shrink-0 flex flex-col gap-1">
-        
-        <Show when="signed-out">
-          <div className="flex flex-col gap-2 p-2">
-            <SignInButton mode="modal">
-              <button className="w-full text-left text-sm text-ts-text-2 hover:text-white py-1">Sign In</button>
-            </SignInButton>
-          </div>
-        </Show>
-
-        <Show when="signed-in">
-          {/* User Card */}
-          <div 
-            onClick={() => openUserProfile()}
-            className="flex items-center gap-2.5 p-2 rounded-[6px] bg-ts-surface-2 border border-ts-border-soft mb-1 cursor-pointer hover:border-ts-accent-border hover:bg-ts-accent-light transition-all"
-          >
-            {/* Hide the default UserButton but keep it for the avatar image */}
-            <div className="pointer-events-none h-7 w-7">
-              <UserButton />
+      {/* Sidebar Container */}
+      <aside 
+        className={`fixed md:relative z-50 h-screen flex flex-col bg-ts-surface border-r border-ts-border-soft transition-all duration-300 ease-in-out ${
+          isCollapsed ? "w-[58px]" : "w-[240px]"
+        } ${
+          isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
+        {/* Header/Brand */}
+        <div className="flex items-center justify-between p-5 border-b border-ts-border-soft flex-shrink-0 h-[72px]">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 flex-shrink-0 bg-ts-accent rounded-lg flex items-center justify-center text-ts-text-inv font-mono font-extrabold text-[16px]">
+              TS
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-white truncate">{user?.fullName || "User"}</p>
-              {isStaff && <p className="text-[10px] text-ts-text-3 uppercase tracking-wide">Staff</p>}
-            </div>
+            {!isCollapsed && <span className="text-[13px] font-bold text-white leading-tight whitespace-nowrap">Transport Statistics</span>}
           </div>
           
-          <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white w-full transition-all">
-            <Settings size={18} /> Settings
+          {/* Toggle Buttons */}
+          <button onClick={() => setIsCollapsed(!isCollapsed)} className="hidden md:block p-1 text-ts-text-2 hover:text-white">
+            {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
-          <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white w-full transition-all">
-            <Sun size={18} /> Light mode
+          <button onClick={() => setIsMobileOpen(false)} className="md:hidden p-1 text-ts-text-2">
+            <X size={20} />
           </button>
+        </div>
 
-          <SignOutButton>
-            <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-red-400 hover:bg-red-950/20 hover:text-red-300 w-full transition-all">
-              <LogOut size={18} /> Log out
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto p-2 flex flex-col gap-0.5">
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+            const Icon = link.icon;
+            return (
+              <Link 
+                key={link.name} 
+                href={link.href}
+                title={isCollapsed ? link.name : ""}
+                className={`flex whitespace-nowrap items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] font-medium transition-all duration-150 border border-transparent ${
+                  isActive 
+                    ? "bg-ts-accent-light text-ts-accent border-ts-accent-border" 
+                    : "text-ts-text-2 hover:bg-ts-surface-2 hover:text-white hover:border-ts-border-soft"
+                }`}
+              >
+                <div className="w-[18px] h-[20px] flex-shrink-0 flex items-center justify-center opacity-70 whitespace-nowrap">
+                  <Icon size={18} />
+                </div>
+                {!isCollapsed && link.name}
+              </Link>
+            );
+          })}
+
+          {isStaff && !isCollapsed && (
+            <div className="mt-4">
+              <p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ts-text-3 px-3 py-2">Staff</p>
+              <Link href="/admin" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white transition-all">
+                <Shield size={18} /> Admin
+              </Link>
+            </div>
+          )}
+        </nav>
+
+        {/* Footer */}
+        <div className="p-2 border-t border-ts-border-soft flex-shrink-0">
+          <Show when="signed-in">
+             <div 
+              onClick={() => openUserProfile()}
+              className={`flex items-center gap-2.5 p-2 rounded-[6px] bg-ts-surface-2 border border-ts-border-soft cursor-pointer hover:border-ts-accent-border transition-all ${isCollapsed ? "justify-center" : ""}`}
+            >
+              <div className="pointer-events-none h-7 w-7 flex-shrink-0">
+                <UserButton />
+              </div>
+              {!isCollapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-semibold text-white truncate">{user?.fullName || "User"}</p>
+                </div>
+              )}
+            </div>
+            <button className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white w-full transition-all whitespace-nowrap ${isCollapsed ? "justify-center" : ""}`}>
+              <Settings size={18} />
+              {!isCollapsed && "Settings"}
             </button>
-          </SignOutButton>
-        </Show>
-      </div>
-    </aside>
+            <button className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white w-full transition-all whitespace-nowrap ${isCollapsed ? "justify-center" : ""}`}>
+              <Sun size={18} />
+              {!isCollapsed && "Light Mode"}
+            </button>
+            <SignOutButton>
+              <button className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-red-400 hover:bg-red-950/20 hover:text-red-300 w-full transition-all whitespace-nowrap ${isCollapsed ? "justify-center" : ""}`}>
+                <LogOut size={18} />
+                {!isCollapsed && "Log out"}
+              </button>
+            </SignOutButton>
+          </Show>
+        </div>
+      </aside>
+
+      {/* Mobile Hamburger Menu (Only visible when sidebar is closed on mobile) */}
+      <button 
+        onClick={() => setIsMobileOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-30 p-2 bg-ts-surface text-white rounded-md border border-ts-border-soft"
+      >
+        <Menu size={20} />
+      </button>
+    </>
   );
 }

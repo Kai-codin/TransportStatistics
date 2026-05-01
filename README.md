@@ -1,52 +1,36 @@
-# TransportStatistics
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-TransportStatistics is a Django project for logging journeys and serving rail/bus stop and departure data through HTML pages and REST endpoints.
+## Getting Started
 
-## Features
-- Trip logging with social/privacy controls.
-- Stops API with text, type, active-state, and bounding-box filters.
-- Train and bus departure APIs.
-- Bulk import commands for timetable and stop datasets.
+First, run the development server:
 
-## Tech Stack
-- Python 3.10+
-- Django 5.x
-- Django REST Framework
-- MySQL/PostgreSQL/SQLite (via `DATABASE_URL`)
-
-## Quick Start
-1. Create a virtual environment and install dependencies:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-2. Copy environment template and adjust values:
-   ```bash
-   cp .env.example .env
-   ```
-3. Run migrations and start development server:
-   ```bash
-   python manage.py migrate
-   python manage.py runserver
-   ```
-
-See [GETTING_STARTED.md](GETTING_STARTED.md) for import workflows and dataset setup.
-Full command reference: [MANAGEMENT_COMMANDS.md](MANAGEMENT_COMMANDS.md).
-Standalone schedule updater package: [`tools/schedule_updater`](tools/schedule_updater).
-
-## Logging (toggleable)
-Logging is controlled through environment variables:
-- `LOGGING_ENABLED=True|False` (default `True`)
-- `LOG_LEVEL=DEBUG|INFO|WARNING|ERROR|CRITICAL` (default `INFO`)
-
-Example:
 ```bash
-LOGGING_ENABLED=True LOG_LEVEL=DEBUG python manage.py runserver
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-## Open Source Metadata
-- License: [LICENSE](LICENSE)
-- Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- Security policy: [SECURITY.md](SECURITY.md)
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

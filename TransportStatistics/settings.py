@@ -46,6 +46,7 @@ INSTALLED_APPS = [
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
 MIDDLEWARE = [
+    'TransportStatistics.middleware.DatabaseColdStartMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

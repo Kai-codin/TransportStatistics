@@ -395,6 +395,8 @@ def export_user_data(request):
             'operator': t.operator,
             'service_date': str(t.service_date) if t.service_date else None,
             'transport_type': t.transport_type,
+            'bustimes_service_id': t.bustimes_service_id,
+            'bustimes_service_slug': t.bustimes_service_slug,
             'origin_name': t.origin_name,
             'origin_crs': t.origin_crs,
             'origin_tiploc': t.origin_tiploc,

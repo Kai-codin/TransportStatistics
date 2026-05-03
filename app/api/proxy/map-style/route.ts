@@ -1,7 +1,7 @@
 // app/api/proxy/map-style/route.ts
 import { NextResponse } from 'next/server';
 
-const PRIMARY_STYLE_URL = "https://disabled.maps.fluffynet.dev/styles/dark/style.json";
+const PRIMARY_STYLE_URL = "https://maps.fluffynet.dev/styles/dark/style.json";
 const FALLBACK_STYLE_URL = "https://api.maptiler.com/maps/openstreetmap/style.json?key=ghAzCSy39lRpGskkQ68J";
 
 export async function GET() {

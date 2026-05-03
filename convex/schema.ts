@@ -51,6 +51,7 @@ export default defineSchema({
     delay: v.number(),
     headcode: v.string(),
   })
+  .index("by_delay", ["delay"])
   .index("by_rid", ["rid"]),
 
   tripLogs: defineTable({

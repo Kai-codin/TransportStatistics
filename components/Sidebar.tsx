@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUser, useClerk, SignOutButton, Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { useUser, useClerk, SignOutButton, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { 
   Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, 
   Shield, Settings, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea
@@ -135,6 +135,16 @@ export default function Sidebar() {
                 {!isCollapsed && "Log out"}
               </button>
             </SignOutButton>
+          </Show>
+
+          <Show when="signed-out">
+              <SignInButton>
+                <button>Sign In</button>
+              </SignInButton>
+              or 
+              <SignUpButton>
+                <button>Sign up</button>
+              </SignUpButton>
           </Show>
         </div>
       </aside>

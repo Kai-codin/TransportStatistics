@@ -6,7 +6,7 @@ import { useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
 const MIN_ZOOM = 14;
-const POLL_INTERVAL_MS = 10000;
+const POLL_INTERVAL_MS = 5000;
 const DENSITY_THRESHOLD = 1000;
 
 export const Map = forwardRef<any, {}>((props, ref) => {

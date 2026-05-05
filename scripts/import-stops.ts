@@ -9,10 +9,18 @@ const client = new ConvexHttpClient(process.env.CONVEX_DEPLOYMENT_URL!);
 
 async function runImport() {
   // 3. Read File
-  const filePath = path.join(__dirname, "../JSON/OSM_stops.JSON");
+  const filePath = path.join(__dirname, "../JSON/stops.JSON");
   console.log(`Reading: ${filePath}`);
   
-  const rawData = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const raw = fs.readFileSync(filePath, "utf8");
+
+  // Fix invalid JSON tokens
+  const cleaned = raw
+    .replace(/\bNaN\b/g, "null")
+    .replace(/\bInfinity\b/g, "null")
+    .replace(/\b-Inf\b/g, "null");
+
+  const rawData = JSON.parse(cleaned);
   // Support both direct array or FeatureCollection objects
   const features = rawData.features || rawData; 
   

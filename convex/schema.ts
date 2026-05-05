@@ -66,7 +66,9 @@ export default defineSchema({
         v.literal("Rail"),
         v.literal("Bus"),
         v.literal("Tram"),
-        v.literal("Ferry")
+        v.literal("Ferry"),
+        v.literal("Taxi"),
+        v.literal("Other")  
     ),
     // Wrapped in v.optional()
     bustimes_service_id: v.optional(v.number()), 

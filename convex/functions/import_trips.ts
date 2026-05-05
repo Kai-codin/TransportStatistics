@@ -25,8 +25,8 @@ export const importTrips = mutation({
         transport_type: (trip.transport_type.charAt(0).toUpperCase() + trip.transport_type.slice(1)) as "Rail" | "Bus" | "Tram" | "Ferry",
         
         // These fields were missing in your JSON, so we provide defaults
-        bustimes_service_id: 0, 
-        bustimes_service_slug: "imported",
+        bustimes_service_id: Number(trip.bustimes_service_id) || 0, 
+        bustimes_service_slug: trip.bustimes_service_slug || "N/A",
         
         origin_name: trip.origin_name,
         origin_stop_code: trip.origin_crs || "N/A",
@@ -41,6 +41,7 @@ export const importTrips = mutation({
         full_locations: trip.full_locations,
         
         unit_number: trip.train_fleet_number || trip.bus_fleet_number || "",
+        unit_reg: trip.train_unit_reg || trip.bus_registration || "",
         unit_type: trip.train_type || trip.bus_type || "",
         livery_name: clean(trip.bus_livery_name),
         livery_css: clean(trip.bus_livery),

@@ -21,7 +21,9 @@
 /build
 
 # misc
+*.DS_Store
 .DS_Store
+*/.DS_Store
 *.pem
 
 # debug
@@ -43,3 +45,4 @@ next-env.d.ts
 .agents/
 .claude/
 JSON/OSM_stops.json
+venv/

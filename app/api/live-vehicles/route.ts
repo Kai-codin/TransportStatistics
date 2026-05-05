@@ -104,7 +104,12 @@ export async function GET(request: Request) {
     const today = new Date().toISOString().split('T')[0];
 
     const response = {
-      trains: trainList.map((t: any) => {
+      trains: trainList
+        .filter((t: any) => {
+          const details = cachedDetails[t.rid];
+          return details?.headcode || t.headcode; // only include if headcode exists
+        })
+        .map((t: any) => {
         const rotation = (t.location && t.predicted_location) 
             ? calculateBearing(t.location.lat, t.location.lon, t.predicted_location.lat, t.predicted_location.lon) 
             : 0;

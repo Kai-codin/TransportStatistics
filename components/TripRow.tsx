@@ -5,7 +5,6 @@ interface TripRowProps {
 }
 
 export const TripRow = ({ trip }: TripRowProps) => {
-  const isRail = trip.transport_type === 'Rail';
 
   const getTypePillClasses = (type: string) => {
     switch (type) {
@@ -16,49 +15,77 @@ export const TripRow = ({ trip }: TripRowProps) => {
     }
   };
 
-  const getLiveryColAccent = (type: string) => {
+  const getAccentColor = (type: string) => {
     switch (type) {
-      case 'Rail': return 'border-r-emerald-500/20';
-      case 'Bus':  return 'border-r-orange-500/20';
-      case 'Tram': return 'border-r-purple-500/20';
-      default:     return 'border-r-blue-500/20';
+      case 'Rail': return 'bg-emerald-500/60';
+      case 'Bus':  return 'bg-orange-500/60';
+      case 'Tram': return 'bg-purple-500/60';
+      default:     return 'bg-blue-500/60';
     }
   };
 
-  const unitLabel = trip.unit_number || trip.unit_reg || trip.unit_type || '—';
-  const subLabel  = isRail ? trip.unit_type : trip.livery_name;
+  const hasUnit = trip.unit_number || trip.unit_reg;
+  const label = [trip.unit_number, trip.unit_reg].filter(Boolean).join(' - ');
 
   return (
-    <div className="rounded-md flex bg-ts-surface border border-ts-border rounded-[--color-ts-r-sm] overflow-hidden hover:border-ts-border-soft transition-colors">
+    <div className="flex bg-ts-surface border border-ts-border rounded-[--color-ts-r-sm] overflow-hidden hover:border-ts-border-soft transition-colors rounded-lg">
 
-      {/* Livery Column */}
-      <div className={`rounded-r-md w-20 shrink-0 flex flex-col items-center justify-center gap-1.5 py-2.5 bg-ts-surface-2 border-r border-r-2 border-ts-border ${getLiveryColAccent(trip.transport_type)}`}>
-        {trip.livery_css ? (
-          <div
-            className="w-[40px] aspect-18/12 border border-ts-border-soft shrink-0"
-            style={{ background: trip.livery_css }}
-            title={trip.livery_name || 'Livery'}
-          />
-        ) : (
-          <div className="w-[40px] aspect-18/12 border border-dashed border-ts-border shrink-0" />
+      {/* Vehicle Details Column */}
+      <div className="w-44 shrink-0 flex bg-ts-surface-2">
+        {/* Accent strip */}
+        <div className="flex-1 flex flex-col justify-center gap-2 px-3 py-3">
+
+        {/* Livery swatch + name */}
+        <div className="flex items-center gap-2.5">
+          {trip.livery_css ? (
+            <>
+              <div
+                className="w-10 aspect-24/16 border border-ts-border-soft shrink-0"
+                style={{ background: trip.livery_css }}
+                role="img"
+                aria-label={trip.livery_name || 'Livery'}
+              />
+              <span className="text-[10px] font-medium text-ts-text-2 leading-tight line-clamp-2">
+                {trip.livery_name}
+              </span>
+            </>
+          ) : (
+            <div className="w-10 h-[26px] rounded-sm border border-dashed border-ts-border shrink-0" />
+          )}
+        </div>
+
+        {/* Divider */}
+        {hasUnit && (
+          <div className="border-t border-ts-border" />
         )}
-        <span className="font-mono text-[10px] text-ts-text-3 text-center leading-tight px-1">
-          {unitLabel}
-        </span>
+
+        {/* Unit number + reg stacked */}
+        {hasUnit && (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-[11px] font-semibold text-ts-text-1 leading-none tracking-wide">
+              {label}
+            </span>
+            {trip.unit_type && (
+              <span className="text-[9px] text-ts-text-2 leading-tight mt-0.5 truncate">
+                {trip.unit_type}
+              </span>
+            )}
+          </div>
+        )}
+
+        </div>
+        <div className={`w-[3px] shrink-0 ${getAccentColor(trip.transport_type)}`} />
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col justify-center gap-1 px-3.5 py-2.5 min-w-0">
+      <div className="flex-1 flex flex-col justify-center gap-2 px-3.5 py-2.5 min-w-0">
 
         {/* Top Row: type pill + service number + operator */}
-        <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${getTypePillClasses(trip.transport_type)}`}>
-            {trip.transport_type || 'Unknown'}
-          </span>
-          <span className="font-mono text-[11px] font-medium text-ts-text-2 bg-ts-surface-3 border border-ts-border px-1.5 py-0.5 rounded shrink-0">
+        <div className="flex items-center gap-2 min-w-0">          
+          <span className={`font-mono text-[13px] font-medium px-1.5 py-0.5 rounded shrink-0 ${getTypePillClasses(trip.transport_type)}`}>
             {trip.service_number || '—'}
           </span>
-          <span className="text-[11px] text-ts-text-3 truncate">
+          <span className="text-[12px] text-ts-text-3 truncate">
             {trip.operator}
           </span>
         </div>
@@ -73,7 +100,7 @@ export const TripRow = ({ trip }: TripRowProps) => {
             {trip.origin_name}
           </span>
           <span className="text-ts-text-3 shrink-0 text-xs">→</span>
-          <span className="text-[13px] text-ts-text-2 truncate shrink min-w-0">
+          <span className="text-[13px] font-medium text-ts-text-1 truncate shrink min-w-0">
             {trip.destination_name}
           </span>
         </div>

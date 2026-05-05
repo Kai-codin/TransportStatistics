@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 2271 261" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,-0,-739)">
+        <g id="Artboard2" transform="matrix(1.662518,0,0,0.686842,4.987555,244.473684)">
+            <rect x="-3" y="720" width="1366" height="380" style="fill:none;"/>
+            <clipPath id="_clip1">
+                <rect x="-3" y="720" width="1366" height="380"/>
+            </clipPath>
+            <g clip-path="url(#_clip1)">
+                <g transform="matrix(9.106667,0,0,2.533333,-276.2,669.333333)">
+                    <path d="M180,35L180,155C180,163.279 179.228,170 178.276,170L31.724,170C30.772,170 30,163.279 30,155L30,35C30,26.721 30.772,20 31.724,20L178.276,20C179.228,20 180,26.721 180,35Z" style="fill:rgb(52,208,100);"/>
+                </g>
+                <g transform="matrix(0.410954,0,0,0.994726,8.369355,270.234543)">
+                    <g transform="matrix(271.232877,0,0,271.232877,3264.794521,728)">
+                    </g>
+                    <text x="10px" y="728px" style="font-family:'JetBrainsMono-Bold', 'JetBrains Mono', monospace;font-weight:700;font-size:271.233px;fill:rgb(13,20,16);">Transport Statistics</text>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

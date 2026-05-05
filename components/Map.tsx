@@ -128,7 +128,7 @@ export const Map = forwardRef<any, {}>((props, ref) => {
       center: [-1.5, 52.5],
       zoom: 10,
     });
-    
+
     // Add built-in controls
     map.addControl(new maplibregl.NavigationControl({}));
     map.addControl(new maplibregl.GeolocateControl({

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 500 500" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g id="Artboard1" transform="matrix(1,0,0,0.994036,0,1.988072)">
+        <rect x="0" y="-2" width="500" height="503" style="fill:none;"/>
+        <clipPath id="_clip1">
+            <rect x="0" y="-2" width="500" height="503"/>
+        </clipPath>
+        <g clip-path="url(#_clip1)">
+            <g transform="matrix(3.333333,0,0,3.353333,-100,-69.066667)">
+                <path d="M180,35L180,155C180,163.279 173.279,170 165,170L45,170C36.721,170 30,163.279 30,155L30,35C30,26.721 36.721,20 45,20L165,20C173.279,20 180,26.721 180,35Z" style="fill:rgb(52,208,100);"/>
+            </g>
+            <g transform="matrix(1.819716,0,0,1.830635,-36.616663,75.80683)">
+                <g transform="matrix(205.218814,0,0,205.218814,276.262577,168)">
+                </g>
+                <text x="30px" y="168px" style="font-family:'JetBrainsMono-Bold', 'JetBrains Mono', monospace;font-weight:700;font-size:205.219px;fill:rgb(13,20,16);">TS</text>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,12 +1,33 @@
 // app/api/proxy/map-style/route.ts
 import { NextResponse } from 'next/server';
 
-const PRIMARY_STYLE_URL = "https://maps.fluffynet.dev/styles/dark/style.json";
-const FALLBACK_STYLE_URL = "https://api.maptiler.com/maps/openstreetmap/style.json?key=ghAzCSy39lRpGskkQ68J";
+const PRIMARY_STYLE_URL = "https://tiles.fluffynet.dev/styles/dark/style.json";
+const FALLBACK_STYLE_URL = "https://api.maptiler.com/maps/openstreetmap/style.json?key=" + process.env.MAPTILER_KEY;
+
+// Helper function to sanitize attribution
+const sanitizeStyle = (styleData: any, isFallback: boolean = false) => {
+  if (isFallback) {
+        if (styleData.sources) {
+      for (const key in styleData.sources) {
+        // Overwrite the attribution for every source
+        styleData.sources[key].attribution = `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`;
+      }
+    }
+    return styleData;
+  } else {
+    if (styleData.sources) {
+      for (const key in styleData.sources) {
+        // Overwrite the attribution for every source
+        styleData.sources[key].attribution = "<a href='https://www.openstreetmap.org/copyright'>Map data © OpenStreetMap contributors</a> | Hosted by <a href='https://tiles.fluffynet.dev/'>FluffyNet</a>";styleData.sources[key].attribution = `Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> | Hosted by <a href="https://tiles.fluffynet.dev/" target="_blank" rel="noopener noreferrer">FluffyNet</a>`;
+      }
+    }
+    return styleData;
+  }
+};
 
 export async function GET() {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000); // Fail fast
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
 
   try {
     const response = await fetch(PRIMARY_STYLE_URL, {
@@ -17,20 +38,15 @@ export async function GET() {
     if (!response.ok) throw new Error('Primary style returned non-200 status');
 
     const styleData = await response.json();
-    
-    // Safety check: Does the style contain obviously broken references?
-    // If you see specific errors for 'planet.json', you might want to switch 
-    // to fallback here if you detect that specific string in the response.
-    return NextResponse.json(styleData);
+    return NextResponse.json(sanitizeStyle(styleData, false));
 
   } catch (error) {
     console.warn("Primary style unreachable, switching to fallback.");
     
-    // Fetch and return the fallback instead
     const fallbackResponse = await fetch(FALLBACK_STYLE_URL);
     const fallbackData = await fallbackResponse.json();
     
-    return NextResponse.json(fallbackData);
+    return NextResponse.json(sanitizeStyle(fallbackData, true));
   } finally {
     clearTimeout(timeoutId);
   }

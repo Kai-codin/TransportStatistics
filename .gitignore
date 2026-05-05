@@ -48,3 +48,5 @@ JSON/OSM_stops.json
 venv/
 
 *.pdf
+stops/great-britain-latest.osm.pbf
+JSON/stops.json

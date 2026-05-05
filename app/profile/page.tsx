@@ -7,10 +7,9 @@ import { useUser } from "@clerk/nextjs";
 import { useMemo } from "react";
 
 export default function ProfilePage() {
-  const { user } = useUser();
+  const { isSignedIn, user } = useUser();
   const trips = useQuery(api.functions.trips.getMyTrips, user ? {} : "skip");
 
-  // Grouping logic (mimicking the Django logic)
   const groupedTrips = useMemo(() => {
     if (!trips) return {};
     return trips.reduce((acc: any, trip) => {
@@ -23,11 +22,18 @@ export default function ProfilePage() {
     }, {});
   }, [trips]);
 
+  if (!isSignedIn) {
+    return (
+      <div className="max-w-4xl mx-auto p-4 md:p-8">
+        <div className="text-center py-10 text-slate-400">Please sign in to view your profile.</div>
+      </div>
+    );
+  }
+
   const totalDays = Object.keys(groupedTrips).length;
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8">
-      {/* Django .ts-profile-header */}
       <div className="flex justify-between items-end mb-8 border-b border-white/10 pb-6">
         <h1 className="text-3xl font-bold text-white">My Trips</h1>
         <div className="flex gap-6">

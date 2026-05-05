@@ -6,95 +6,22 @@ body {
   margin: 0;
 }
 
-.vehicle-marker {
-  /*  border-left-color: var(--marker-arrow-color);*/
-  margin: 1px;
-  text-align: center;
-  overflow: hidden;
-  line-height: 16px;
-  color: #000;
-  fill: currentColor;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke-width: 2px;
-  font-size: 12px;
-  border: 1px solid black;
-  display: block; /* cos svg is not block-level by default */
-  transform: rotate(90deg);
-  margin-top: 7px;
-}
-
-.vehicle-marker.right {
-  transform: rotate(270deg);
-}
-
-/* Custom Popup Container Overrides */
-.vehicle-popup .maplibregl-popup-content {
-  background-color: #1a1a1a !important;
-  border: 1px solid #333 !important;
-  border-radius: 10px !important;
-  padding: 12px !important;
-  color: #fff !important;
-  min-width: 200px;
-}
-
-/* Remove default pointer/tip color if desired */
-.vehicle-popup .maplibregl-popup-tip {
-  border-top-color: #1a1a1a !important;
-}
-
-/* Internal Styling */
-.v-popup-link {
-  color: #22c55e; /* Bright Green */
-  font-weight: bold;
-  text-decoration: underline;
-  display: block;
-  margin-bottom: 4px;
-  cursor: pointer;
-}
-
-.v-popup-subtitle {
-  color: #fff;
-  margin-bottom: 12px;
-  font-size: 0.9rem;
-}
-
-.v-popup-btn {
-  background-color: #22c55e; /* Bright Green */
-  color: #000;
-  font-weight: bold;
-  text-align: center;
-  padding: 10px;
-  border-radius: 8px;
-  display: block;
-  text-decoration: none;
-  cursor: pointer;
-  border: none;
-}
-
-.v-popup-btn:hover {
-  background-color: #16a34a !important; /* Darker Green on Hover */
-}
-
-.route-line {
-  stroke: #22c55e; /* Bright Green */
-  stroke-width: 4;
-  stroke-opacity: 0.8;
-}
-
-.route-stop {
-  stroke: #fff;
-  stroke-width: 2;
-  fill: #1669b6; /* Blue */
-}
-
-.arrow {
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 8px solid rgb(0, 0, 0);
-  margin-bottom: -2px; /* Pulls the arrow slightly closer to the SVG */
+:root {
+  --clerk-color-primary: light-dark(#2F3037, #34D064);
+  --clerk-color-primary-foreground: light-dark(#FFFFFF, #0D1410);
+  --clerk-color-danger: #EF4444;
+  --clerk-color-success: #22C543;
+  --clerk-color-warning: #F36B16;
+  --clerk-color-neutral: light-dark(#000000, white);
+  --clerk-color-foreground: light-dark(#000000, #FFFFFF);
+  --clerk-color-background: light-dark(#FFFFFF, #0D1410);
+  --clerk-color-input: light-dark(#FFFFFF, #26262B);
+  --clerk-color-input-foreground: light-dark(#000000, white);
+  --clerk-color-ring: light-dark(color-mix(in srgb, #000000 15.000000000000002%, transparent), color-mix(in srgb, #ffffff 15.000000000000002%, transparent));
+  --clerk-color-shimmer: #FFFFFF;
+  --clerk-color-modal-backdrop: #000000;
+  --clerk-border-radius: 0.375rem;
+  --clerk-spacing: 1rem;
 }
 
 @theme inline {
@@ -137,4 +64,108 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show {
+  background: var(--color-ts-bg);
+  color: var(--color-ts-text-2);
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show a {
+  color: var(--color-ts-accent) !important;
+}
+
+.maplibregl-ctrl-attrib-button {
+  filter: invert(100%);
+}
+
+.vehicle-marker {
+  /*  border-left-color: var(--marker-arrow-color);*/
+  margin: 1px;
+  text-align: center;
+  overflow: hidden;
+  line-height: 16px;
+  color: #000;
+  fill: currentColor;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke-width: 2px;
+  font-size: 12px;
+  border: 1px solid black;
+  display: block; /* cos svg is not block-level by default */
+  transform: rotate(90deg);
+  margin-top: 7px;
+}
+
+.vehicle-marker.right {
+  transform: rotate(270deg);
+}
+
+/* Custom Popup Container Overrides */
+.vehicle-popup .maplibregl-popup-content {
+  background-color: #1a1a1a !important;
+  border: 1px solid #333 !important;
+  border-radius: 10px !important;
+  padding: 12px !important;
+  color: #fff !important;
+  min-width: 200px;
+}
+
+/* Remove default pointer/tip color if desired */
+.vehicle-popup .maplibregl-popup-tip {
+  border-top-color: #1a1a1a !important;
+}
+
+/* Internal Styling */
+.v-popup-link {
+  color: var(--color-ts-accent); /* Bright Green */
+  font-weight: bold;
+  text-decoration: underline;
+  display: block;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.v-popup-subtitle {
+  color: #fff;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+.v-popup-btn {
+  background-color: var(--color-ts-accent); /* Bright Green */
+  color: #000;
+  font-weight: bold;
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  display: block;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+}
+
+.v-popup-btn:hover {
+  background-color: var(--color-ts-accent-h) !important; /* Darker Green on Hover */
+}
+
+.route-line {
+  stroke: var(--color-ts-accent); /* Bright Green */
+  stroke-width: 4;
+  stroke-opacity: 0.8;
+}
+
+.route-stop {
+  stroke: #fff;
+  stroke-width: 2;
+  fill: var(--color-ts-accent); /* Bright Green */
+}
+
+.arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid rgb(0, 0, 0);
+  margin-bottom: -2px; /* Pulls the arrow slightly closer to the SVG */
 }

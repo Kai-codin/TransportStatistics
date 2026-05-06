@@ -56,22 +56,6 @@ export const Map = forwardRef<MapHandle, {}>((_props, ref) => {
       zoom: zoom,
     });
 
-    // 2. Add Controls
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    try {
-      // Geolocation may throw in insecure contexts; wrap it
-      map.addControl(
-        new maplibregl.GeolocateControl({
-          positionOptions: { enableHighAccuracy: true },
-          trackUserLocation: false,
-          showUserLocation: true,
-        }),
-        'top-right'
-      );
-    } catch (err) {
-      console.warn('GeolocateControl not available in this context', err);
-    }
-
     // Handle WebGL context loss gracefully to avoid noisy console errors
     map.on('webglcontextlost', (e: any) => {
       console.warn('WebGL context lost', e);

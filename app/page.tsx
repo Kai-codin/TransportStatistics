@@ -15,7 +15,20 @@ export default function Home() {
         clearInterval(checkMap);
         
         // Now you can manipulate the map
-        map.addControl(new maplibregl.NavigationControl());
+        map.addControl(
+          new maplibregl.NavigationControl({
+            showCompass: false, // 👈 disables compass
+            showZoom: true      // keep zoom buttons (optional)
+          })
+        );
+        map.addControl(
+        new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+          showUserLocation: true,
+        }),
+        'top-right'
+      );
         console.log("Map interaction successful");
       }
     }, 100);

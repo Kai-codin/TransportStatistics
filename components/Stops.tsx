@@ -30,20 +30,30 @@ const PANEL_CSS = `
     #ts-stop-panel-root { bottom: 0; right: 0; left: 0; width: 100%; max-height: 72dvh; border-radius: 16px 16px 0 0; border: none; }
   }
   .ts-stop-panel { width: 100%; box-sizing: border-box; background: ${C.bg}; color: ${C.text1}; padding: 16px; border-radius: inherit; font-family: system-ui, sans-serif; position: relative; }
-  #ts-stop-panel-close { position: absolute; top: 14px; right: 14px; background: transparent; border: none; color: ${C.text3}; font-size: 24px; cursor: pointer; }
+  #ts-stop-panel-close { position: absolute; top: 14px; right: 14px; background: transparent; border: none; color: ${C.text3}; font-size: 24px; cursor: pointer; line-height: 1; }
   .line-pill { background: ${C.surface3}; border: 1px solid ${C.border}; color: ${C.text2}; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; display: inline-block; margin-right: 4px; margin-bottom: 4px; }
   .warning-box { background: ${C.danger}15; color: ${C.danger}; padding: 8px; border-radius: 6px; font-size: 11px; margin-bottom: 10px; border: 1px solid ${C.danger}30; }
-  .ts-stop-table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-  .ts-stop-table th { color: ${C.text3}; font-size: 9px; text-transform: uppercase; text-align: left; padding: 4px; border-bottom: 1px solid ${C.border}; }
-  .ts-stop-table td { padding: 8px 4px; border-bottom: 1px solid ${C.borderSoft}; vertical-align: middle; }
-  .service-cell { width: 50px; }
-  .time-cell { width: 50px; text-align: right; font-size: 12px; }
-  .plat-cell { width: 35px; text-align: center; font-size: 12px; }
-  .dest-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-  
+
+  /* Departure rows */
+  .dep-list { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+  .dep-header { display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; padding: 4px 8px; margin-bottom: 2px; }
+  .dep-header span { font-size: 9px; color: ${C.text3}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; }
+  .dep-header span.right { text-align: right; }
+  .dep-row { display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; align-items: center; padding: 9px 8px; border-top: 1px solid ${C.borderSoft}; }
+  .dep-row:last-child { border-bottom: 1px solid ${C.borderSoft}; }
+  .dep-service a { display: inline-block; background: ${C.accentL}; color: ${C.accent}; font-weight: 700; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid ${C.accentB}; text-decoration: none; white-space: nowrap; }
+  .dep-dest { font-size: 12px; color: ${C.text1}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .dep-time { font-size: 12px; text-align: right; white-space: nowrap; }
+  .dep-plat { text-align: right; }
+  .dep-plat span { background: ${C.surface3}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${C.border}; font-size: 11px; color: ${C.text2}; display: inline-block; }
+  .dep-status-row { padding: 2px 8px 7px; border-top: none; }
+  .dep-status-badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 500; }
+  .dep-pass .dep-service a, .dep-pass .dep-dest, .dep-pass .dep-time, .dep-pass .dep-plat { opacity: 0.45; }
+  .dep-rar .dep-service a, .dep-rar .dep-dest, .dep-rar .dep-time, .dep-rar .dep-plat { opacity: 0.45; }
+
   /* Flip Animation */
-  .row-anim { animation: flipIn 0.6s ease-out forwards; backface-visibility: hidden; }
-  @keyframes flipIn { from { transform: rotateX(-90deg); opacity: 0; } to { transform: rotateX(0deg); opacity: 1; } }
+  .row-anim { animation: flipIn 0.5s ease-out forwards; }
+  @keyframes flipIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 `;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -95,51 +105,99 @@ function buildDeparturesContent(data: any, offsetMin: number, popupId: string, s
   const showExpected = !!metadata?.contains_expected_times;
   const showPlatform = !!metadata?.contains_platform_numbers;
 
-  const rows =
-    departures.length === 0
-      ? `<tr><td colspan="5" style="text-align:center; color:${C.text3}; padding: 20px;">No departures found.</td></tr>`
-      : departures
-          .map((d: any) => {
-            const sched = fmt(d.scheduled_departure);
-            const exp = fmt(d.expected_departure);
-            const isCancelled = d.is_cancelled;
-            const schedStyle = isCancelled ? `style="text-decoration:line-through; color:${C.danger};"` : `style="color:${C.text1};"`;
-            const expStyle = d.expected_departure && d.expected_departure !== d.scheduled_departure ? `style="color:${C.warn}; font-weight:600;"` : `style="color:${C.text2};"`;
+  // ncols = number of time/plat columns after dest
+  const ncols = (showExpected ? 2 : 1) + (showPlatform ? 1 : 0);
 
-            return `
-          <tr class="data-row">
-            <td class="service-cell"><span style="background:${C.accentL};color:${C.accent};font-weight:700;font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid ${C.accentB}; display:inline-block;"><a href="${d.service_link}" target="_blank" rel="noopener noreferrer">${d.service || "?"}</a></span></td>
-            <td class="dest-cell" style="color:${C.text1}; font-size:12px;">${d.destination || "Unknown"}</td>
-            <td class="time-cell" ${schedStyle}>${sched}</td>
-            ${showExpected ? `<td class="time-cell" ${expStyle}>${isCancelled ? "–" : d.expected_departure ? exp : sched}</td>` : ""}
-            ${showPlatform ? `<td class="plat-cell"><span style="background:${C.surface3};padding:2px 7px;border-radius:4px;border:1px solid ${C.border}; font-size:11px;">${d.platform || "–"}</span></td>` : ""}
-          </tr>
-        `;
-          })
-          .join("");
+  const fmtStatus = (raw: string): { label: string; color: string; bg: string; border: string } => {
+    const label = raw.split(/[_\s]+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+    const key = raw.toUpperCase();
+    if (key === "AT_PLATFORM" || key === "AT PLATFORM")
+      return { label, color: C.text2, bg: C.surface2, border: C.borderSoft };
+    if (key === "APPROACHING")
+      return { label, color: C.text3, bg: C.surface2, border: C.borderSoft };
+    return { label, color: C.text3, bg: C.surface2, border: C.borderSoft };
+  };
 
-  const offsetBtns = [-60, -30, -15, 0, 15, 30, 60]
-    .map((o) => {
-      const active = o === offsetMin;
-      return `<button data-offset="${o}" data-popup="${popupId}" style="flex:1;padding:5px 0;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ${active ? C.accent : C.border};background:${active ? C.accent : C.surface2};color:${active ? C.bg : C.text2};">${o === 0 ? "LIVE" : o > 0 ? `+${o}m` : `${o}m`}</button>`;
-    })
-    .join("");
+  const headerCols = [
+    `<span>Service</span>`,
+    `<span>Destination</span>`,
+    `<span class="right">Sched.</span>`,
+    ...(showExpected ? [`<span class="right">Exp.</span>`] : []),
+    ...(showPlatform ? [`<span class="right">Plat.</span>`] : []),
+  ].join("");
 
-  const attributions = data.attributions;
+  const rows = departures.length === 0
+    ? `<div style="padding:24px 8px;text-align:center;color:${C.text3};font-size:12px;">No departures found.</div>`
+    : departures.map((d: any) => {
+        const sched = fmt(d.scheduled_departure);
+        const exp = fmt(d.expected_departure);
+        const isCancelled = d.is_cancelled;
+        const isPass = d.displayAs === "PASS";
+
+        const schedStyle = isCancelled
+          ? `text-decoration:line-through; color:${C.danger};`
+          : `color:${C.text1};`;
+        const expStyle = d.expected_departure && d.expected_departure !== d.scheduled_departure
+          ? `color:${C.warn}; font-weight:600;`
+          : `color:${C.text2};`;
+
+        const isRar = d.rar === true && !d.scheduled_departure && !d.expected_departure;
+
+        const mainRow = `<div class="dep-row${isPass || isRar ? " dep-pass" : ""}" style="--ncols:${ncols};">
+          <div class="dep-service"><a href="${d.service_link}" target="_blank" rel="noopener noreferrer">${d.service || "?"}</a></div>
+          <div class="dep-dest" title="${d.destination || ""}">${d.destination || "Unknown"}</div>
+          <div class="dep-time" style="${schedStyle}">${sched}</div>
+          ${showExpected ? `<div class="dep-time" style="${expStyle}">${isCancelled ? "–" : d.expected_departure ? exp : sched}</div>` : ""}
+          ${showPlatform ? `<div class="dep-plat"><span>${d.platform || "–"}</span></div>` : ""}
+        </div>`;
+
+        const badges: string[] = [];
+        if (isRar) {
+          badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text3};border:1px solid ${C.borderSoft};">Runs as Required</span>`);
+        }
+        if (d.displayAs && d.displayAs !== "CALL") {
+          const displayMap: Record<string, { label: string; color: string; bg: string; border: string }> = {
+            PASS:      { label: "Passing",   color: C.text3,   bg: C.surface2,       border: C.borderSoft      },
+            CANCELLED: { label: "Cancelled", color: C.danger,  bg: `${C.danger}15`,  border: `${C.danger}30`   },
+            DIVERTED:  { label: "Diverted",  color: C.warn,    bg: `${C.warn}15`,    border: `${C.warn}30`     },
+          };
+          const b = displayMap[d.displayAs] ?? { label: d.displayAs.charAt(0) + d.displayAs.slice(1).toLowerCase(), color: C.text3, bg: C.surface2, border: C.borderSoft };
+          badges.push(`<span class="dep-status-badge" style="background:${b.bg};color:${b.color};border:1px solid ${b.border};">${b.label}</span>`);
+        }
+        if (d.status) {
+          const s = fmtStatus(d.status);
+          badges.push(`<span class="dep-status-badge" style="background:${s.bg};color:${s.color};border:1px solid ${s.border};">${s.label}</span>`);
+        }
+        const statusRow = badges.length
+          ? `<div class="dep-status-row" style="display:flex;gap:4px;flex-wrap:wrap;">${badges.join("")}</div>`
+          : "";
+
+        return mainRow + statusRow;
+      }).join("");
+
+  const offsetBtns = [-60, -30, -15, 0, 15, 30, 60].map((o) => {
+    const active = o === offsetMin;
+    return `<button data-offset="${o}" data-popup="${popupId}" style="flex:1;padding:5px 0;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ${active ? C.accent : C.border};background:${active ? C.accent : C.surface2};color:${active ? C.bg : C.text2};">${o === 0 ? "LIVE" : o > 0 ? `+${o}m` : `${o}m`}</button>`;
+  }).join("");
+
+  const showPass = !!data.metadata?._showPass;
 
   return `
-    <div style="margin-bottom:14px;"><div style="font-size:9px;color:${C.text3};text-transform:uppercase;margin-bottom:6px;">Time offset</div><div style="display:flex;gap:4px;">${offsetBtns}</div></div>
-    <div style="">
-      <table class="ts-stop-table">
-        <thead>
-          <tr><th class="service-cell">Service</th><th class="dest-cell">Dest.</th><th class="time-cell">Sched.</th>${showExpected ? `<th class="time-cell">Exp.</th>` : ""}${showPlatform ? `<th class="plat-cell">Plat.</th>` : ""}</tr>
-        </thead>
-        <tbody id="ts-tbody">${rows}</tbody>
-      </table>
-      <div style="margin-top: 8px;">
-        <small style="color:${C.text3}; display:block;">${attributions.map((a: string) => `<div>${a}</div>`).join("")}</small>
-        <small id="ts-refresh-indicator" style="color:${C.text3}; display:block; margin-top:4px;">Refreshed 0 seconds ago</small>
-      </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:9px;color:${C.text3};text-transform:uppercase;margin-bottom:6px;">Time offset</div>
+      <div style="display:flex;gap:4px;">${offsetBtns}</div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px;gap:6px;">
+      <span style="font-size:10px;color:${C.text3};">Show passing</span>
+      <button data-pass-toggle="1" style="position:relative;width:32px;height:18px;border-radius:9px;border:1px solid ${showPass ? C.accent : C.border};background:${showPass ? C.accentB : C.surface2};cursor:pointer;padding:0;transition:background 0.2s;">
+        <span style="position:absolute;top:2px;left:${showPass ? "14px" : "2px"};width:12px;height:12px;border-radius:50%;background:${showPass ? C.accent : C.text3};transition:left 0.2s;display:block;"></span>
+      </button>
+    </div>
+    <div class="dep-header" style="--ncols:${ncols};">${headerCols}</div>
+    <div class="dep-list" id="ts-dep-list">${rows}</div>
+    <div style="margin-top:10px;">
+      <small style="color:${C.text3};display:block;">${data.attributions.map((a: string) => `<div>${a}</div>`).join("")}</small>
+      <small id="ts-refresh-indicator" style="color:${C.text3};display:block;margin-top:4px;">Refreshed 0 seconds ago</small>
     </div>
   `;
 }
@@ -237,7 +295,11 @@ export const Stops = ({
     try {
       const targetISO = offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
       const code = mode === "train" ? stop.crsCode || stop.tiploc : stop.atcoCode;
-      const url = targetISO ? `/api/departures?code=${code}&type=${mode}&datetime=${encodeURIComponent(targetISO)}` : `/api/departures?code=${code}&type=${mode}`;
+      const showPass = activeState.current?.showPass ?? false;
+      const params = new URLSearchParams({ code, type: mode });
+      if (targetISO) params.set("datetime", targetISO);
+      if (showPass) params.set("pass", "show");
+      const url = `/api/departures?${params.toString()}`;
 
       const res = await fetch(url);
       if (res.status === 482) {
@@ -267,6 +329,7 @@ export const Stops = ({
       lastDataRef.current = dataString;
       lastUpdatedRef.current = Date.now();
 
+      if (data.metadata) data.metadata._showPass = activeState.current?.showPass ?? false;
       const contentHTML = buildDeparturesContent(data, offsetMin, id, stop._id);
       const headerExtraHTML = buildHeaderExtra(data.metadata);
 
@@ -277,7 +340,7 @@ export const Stops = ({
         contentDiv.innerHTML = contentHTML;
         extraDiv.innerHTML = headerExtraHTML;
 
-        const rows = document.querySelectorAll('#ts-tbody .data-row');
+        const rows = document.querySelectorAll('#ts-dep-list .dep-row');
         rows.forEach((row, index) => {
             (row as HTMLElement).classList.add('row-anim');
             (row as HTMLElement).style.animationDelay = `${index * 0.05}s`;
@@ -290,8 +353,17 @@ export const Stops = ({
       document.querySelectorAll("button[data-offset]").forEach((btn) => {
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
-          fetchAndRender(state, parseInt(btn.getAttribute("data-offset") || "0"), true);
+          if (!activeState.current) return;
+          fetchAndRender(activeState.current, parseInt(btn.getAttribute("data-offset") || "0"), false);
         });
+      });
+
+      document.querySelector("button[data-pass-toggle]")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const next = !(activeState.current?.showPass ?? false);
+        activeState.current = { ...activeState.current!, showPass: next };
+        lastDataRef.current = null; // force re-render even if data is same
+        fetchAndRender(activeState.current, activeState.current.offset ?? 0, true);
       });
     } catch {
       const _curr = activeState.current as any;

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Redis } from 'ioredis';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
-
+const consoleDebug = false; // Set to true to enable debug logging
 // 1. Initialize Redis with better error handling
 const redisClient = new Redis(process.env.REDIS_URL!, {
   enableAutoPipelining: true,
@@ -21,13 +21,16 @@ const limiter = new RateLimiterRedis({
 });
 
 function log(message: string) {
-  console.log(`[API] ${message}`);
+  if (consoleDebug && consoleDebug === true) {
+    console.log(`[API] ${message}`);
+  }
 }
 
 // --- Types ---
 interface Departure {
-  id: string;
+id: string | null;
   service: string | null;
+  service_link: string;
   origin: string | null;
   destination: string | null;
   operator: string | null;
@@ -35,14 +38,18 @@ interface Departure {
   scheduled_departure: string | null;
   expected_departure: string | null;
   platform: string | null;
+  displayAs: string | null;
   status: string | null;
   is_cancelled: boolean | null;
   cancellation_reason: string | null;
   delay: string | number | null;
   mode: 'bus' | 'train';
+  rar: boolean | null;
   vehicle_info?: {
     type: string | null;
   };
+  log_link: string;
+  debug?: any;
 }
 
 function analyzeDepartures(departures: Departure[]) {
@@ -119,6 +126,7 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
   const date = searchParams.get('date');
   const time = searchParams.get('time');
+  const pass = searchParams.get('pass') === 'show';
   const datetime = searchParams.get('datetime');
   const limit = searchParams.get('limit') || '10';
 
@@ -168,8 +176,6 @@ export async function GET(request: Request) {
       const data = await response.json();
       log(`RTT Data received. Found ${data.services?.length || 0} services.`);
 
-      console.log('Sample RTT service item:', data.services?.[1]);
-
       // Enhanced Normalization
       const departures: Departure[] = (data.services || [])
         .map((item: any) => {
@@ -184,18 +190,28 @@ export async function GET(request: Request) {
             destination: item.destination?.[0]?.location?.description || null,
             operator: item.scheduleMetadata?.operator?.name || null,
             operator_code: item.scheduleMetadata?.operator?.code || null,
-            scheduled_departure: item.temporalData?.departure?.scheduleInternal || null,
-            expected_departure: item.temporalData?.departure?.realtimeForecast || item.temporalData?.departure?.realtimeActual || null,
+            scheduled_departure: item.temporalData?.departure?.scheduleInternal || item.temporalData?.arrival?.scheduleInternal  || item.temporalData?.pass?.scheduleInternal || null,
+            expected_departure: item.temporalData?.departure?.realtimeForecast || item.temporalData?.arrival?.realtimeForecast  || item.temporalData?.pass?.realtimeForecast || null,
             platform: item.locationMetadata?.platform?.actual || item.locationMetadata?.platform?.planned || null,
-            status: item.temporalData?.displayAs || null,
+            displayAs: item.temporalData?.displayAs || null,
+            status: item.temporalData?.status || null,
             is_cancelled: item.temporalData?.departure?.isCancelled ?? null,
             cancellation_reason: item.reasons?.[0]?.longText || null,
             delay: item.temporalData?.departure?.realtimeInternalLateness ?? null,
             mode: 'train',
+            rar: item.scheduleMetadata?.runsAsRequired ?? null,
             vehicle_info: { type: item.locationMetadata?.stockBranding || null },
             log_link: `/log?service_uid=${item.scheduleMetadata?.uniqueIdentity}`,
             debug: debug ? item : undefined,
           };
+        })
+        .filter((d: Departure) => {
+          const displayAs = d.displayAs ? d.displayAs : '';
+
+          if (displayAs && !pass) {
+            return displayAs !== 'PASS';
+          }
+          return true;
         })
         .slice(0, limit);
 

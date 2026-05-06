@@ -21,7 +21,8 @@ export const getInBBox = query({
       .filter((q) =>
         q.and(
           q.gte(q.field("lon"), args.minLon),
-          q.lte(q.field("lon"), args.maxLon)
+          q.lte(q.field("lon"), args.maxLon),
+          q.eq(q.field("active"), true)
         )
       )
       .take(500);

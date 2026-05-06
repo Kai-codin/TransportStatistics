@@ -1,6 +1,26 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { Redis } from 'ioredis';
+import { RateLimiterRedis } from 'rate-limiter-flexible';
+
+// 1. Initialize Redis with better error handling
+const redisClient = new Redis(process.env.REDIS_URL!, {
+  enableAutoPipelining: true,
+  maxRetriesPerRequest: 3,
+  // Add a generic error handler so it doesn't crash the server
+  lazyConnect: true,
+});
+
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
+
+// 2. Setup the rate limiter
+const limiter = new RateLimiterRedis({
+  storeClient: redisClient,
+  keyPrefix: 'api_limit',
+  points: 5, // 5 requests
+  duration: 1, // per 1 second
+});
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -33,7 +53,7 @@ function interpolateColour(c1: number[], c2: number[], t: number) {
 
 // 🎨 nicer modern palette (still matches signalling ranges)
 function getTrainColour(delay: number, headcode?: string) {
-  if (headcode === "N/A") return "#6B7280"; 
+  if (headcode === "N/A") return "#1e1e1f"; 
 
   if (delay <= -3) return "#3B82F6"; // blue
   if (delay <= 2) return "#22C55E";  // green
@@ -52,7 +72,27 @@ function getTrainColour(delay: number, headcode?: string) {
   return "#8B5CF6"; // purple
 }
 
+function getCacheKey(xmin: string, ymin: string, xmax: string, ymax: string) {
+  // Round to 2 decimal places (~1km grid) so users in the same area hit the same cache
+  const r = (val: string) => Math.round(parseFloat(val) * 100) / 100;
+  return `cache:vehicles:${r(xmin)}:${r(ymin)}:${r(xmax)}:${r(ymax)}`;
+}
+
 export async function GET(request: Request) {
+  // Identify user by IP
+  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
+
+  try {
+    // 3. Consume points. This will throw an error if rate limited
+    await limiter.consume(ip);
+  } catch (rejRes: any) {
+    // This runs if the user is rate limited
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const debug = searchParams.get("debug") === "true";
   const xmin = searchParams.get("xmin");
@@ -60,12 +100,20 @@ export async function GET(request: Request) {
   const xmax = searchParams.get("xmax");
   const ymax = searchParams.get("ymax");
 
-  const showTrains = searchParams.get("showTrains") !== "false";
-  const showBuses = searchParams.get("showBuses") !== "false";
-
   if (!xmin || !ymin || !xmax || !ymax) {
     return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
   }
+
+  const cacheKey = getCacheKey(xmin, ymin, xmax, ymax);
+  const cachedResponse = await redisClient.get(cacheKey);
+
+  if (cachedResponse) {
+    console.log("🚀 Cache Hit!");
+    return NextResponse.json(JSON.parse(cachedResponse));
+  }
+
+  const showTrains = searchParams.get("showTrains") !== "false";
+  const showBuses = searchParams.get("showBuses") !== "false";
 
   const latMin = parseFloat(ymin);
   const latMax = parseFloat(ymax);
@@ -100,34 +148,54 @@ export async function GET(request: Request) {
     if (showBuses && results[1].status === "fulfilled" && results[1].value?.ok) {
       busData = await results[1].value.json();
     }
+    
+    const visibleTrains = allTrains.filter((t: any) => {
+      const lat = t.location?.lat;
+      const lon = t.location?.lon;
+      if (lat == null || lon == null) return false;
+      return lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax;
+    });
 
-    const isSimpleMode = (allTrains.length + busData.length) > 1000;
+    const isSimpleMode = (visibleTrains.length + busData.length) > 1000;
     const cachedDetails: Record<string, any> = {};
 
-    // -----------------------------
-    // 🔄 UPDATE ALL TRAIN DETAILS (NOT JUST VISIBLE)
-    // -----------------------------
+    // 4. UPDATE DETAILS: Use 'visibleTrains' instead of 'allTrains'
+    console.log(`Trains in BBOX: ${visibleTrains.length}. Simple mode: ${isSimpleMode}`);
+
     if (!isSimpleMode && showTrains) {
-      const rids = allTrains.map((t: any) => t.rid).filter(Boolean);
+      const rids = visibleTrains.map((t: any) => t.rid).filter(Boolean) as string[];
       const CHUNK_SIZE = 100;
+      const chunks: string[][] = [];
 
       for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
-        const chunk = rids.slice(i, i + CHUNK_SIZE);
+        chunks.push(rids.slice(i, i + CHUNK_SIZE));
+      }
 
-        const data = await convex.query(api.functions.trains.getDetailsForRids, {
-          rids: chunk,
-        });
+      //if (rids.length === 0) {
+      //  return NextResponse.json({ error: "No valid train IDs found" }, { status: 500 });
+      //}
 
+      // 2. Fire all queries at once
+      const queryPromises = chunks.map(chunk => 
+        convex.query(api.functions.trains.getDetailsForRids, { rids: chunk })
+      );
+
+      // 3. Wait for all of them in parallel
+      const results = await Promise.all(queryPromises);
+
+      // 4. Merge results
+      results.forEach((data, index) => {
         Object.assign(cachedDetails, data);
-
+        
+        // Trigger sync for missing ones
+        const chunk = chunks[index];
         const missingRids = chunk.filter((rid: string) => !data[rid]);
-
         if (missingRids.length > 0) {
           convex
             .action(api.functions.trains.syncBatch, { rids: missingRids })
-            .catch((err) => console.error("Failed to sync new RIDs:", err));
+            .catch((err) => console.error("Failed to sync:", err));
         }
-      }
+      });
     }
 
     // -----------------------------
@@ -161,7 +229,7 @@ export async function GET(request: Request) {
                 ) : 0;
 
           const details = cachedDetails[t.rid] || {};
-          const headcode = details.headcode ?? t.headcode;
+          const headcode = details.headcode ?? t.headcode ?? "N/A";
           const displayHeadcode = headcode || "";
           let label1 = '';
           
@@ -175,6 +243,8 @@ export async function GET(request: Request) {
             label1 = "Unknown Service";
           }
 
+          const colour = isSimpleMode ? getTrainColour(t.delay) : getTrainColour(t.delay, headcode);
+
           return {
             id: t.rid,
             delay: t.delay,
@@ -183,8 +253,7 @@ export async function GET(request: Request) {
             operator: isSimpleMode ? "" : details.train_operator ?? "Loading...",
             service: isSimpleMode ? (t.headcode ?? "Loading...") : displayHeadcode,
             destination: isSimpleMode ? "N/A" : details.destination_name ?? "Loading...",
-            colour:  isSimpleMode ? getTrainColour(t.delay, headcode) : getTrainColour(t.delay),
-
+            colour: colour,
             popup_data: {
               label1: label1,
               link1: details.uid? `https://www.realtimetrains.co.uk/service/gb-nr:${details.uid}/${today}/detailed` : "#",
@@ -224,6 +293,7 @@ export async function GET(request: Request) {
       }),
     };
 
+    await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 30);
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error in live-vehicles API:", error);

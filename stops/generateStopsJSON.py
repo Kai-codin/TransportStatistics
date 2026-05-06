@@ -5,6 +5,7 @@ import pandas as pd
 import osmium
 import time
 from tqdm import tqdm
+from pyproj import Transformer # <--- Add this import
 
 # -----------------------------
 # CONFIG
@@ -58,31 +59,39 @@ def download_file(url, filename):
 # -----------------------------
 # PARSE NAPTAN
 # -----------------------------
+transformer = Transformer.from_crs("EPSG:27700", "EPSG:4326", always_xy=True)
+
 def parse_naptan():
     log("Downloading + parsing NaPTAN CSV...")
-
     df = pd.read_csv(NAPTAN_URL, dtype=str, low_memory=False)
-
+    
     stops = {}
-
     skipped = 0
     errors = 0
-
     start = time.time()
 
     for i, (_, row) in enumerate(tqdm(df.iterrows(), total=len(df), desc="NaPTAN", mininterval=1)):
+        # Try getting existing lat/lon
         lat = row.get("Latitude")
         lon = row.get("Longitude")
-
-        if not lat or not lon:
-            skipped += 1
-            continue
-
+        
+        # Check if we need to fall back to Easting/Northing
+        if (not lat or not lon or pd.isna(lat) or pd.isna(lon)):
+            easting = row.get("Easting")
+            northing = row.get("Northing")
+            
+            if easting and northing and not pd.isna(easting) and not pd.isna(northing):
+                # Perform the conversion
+                # Note: Transformer returns (lon, lat)
+                lon, lat = transformer.transform(float(easting), float(northing))
+            else:
+                skipped += 1
+                continue
+        
         atco = row.get("ATCOCode")
         if not atco:
             skipped += 1
             continue
-
         stop_type = row.get("StopType", "")
 
         # Skip rail

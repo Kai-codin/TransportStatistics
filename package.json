@@ -11,15 +11,19 @@
   "dependencies": {
     "@clerk/nextjs": "^7.2.8",
     "@clerk/ui": "^1.6.8",
+    "@upstash/redis": "^1.38.0",
     "convex": "^1.36.1",
+    "ioredis": "^5.10.1",
     "lucide-react": "^1.14.0",
     "maplibre-gl": "^5.24.0",
     "next": "16.2.4",
+    "rate-limiter-flexible": "^11.0.2",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/ioredis": "^4.28.10",
     "@types/maplibre-gl": "^1.13.2",
     "@types/node": "^20",
     "@types/react": "^19",

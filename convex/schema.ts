@@ -30,6 +30,7 @@ export default defineSchema({
   })
     // Indices for performance
     .index("by_atcoCode", ["atcoCode"])
+    .index("by_crsCode", ["crsCode"])
     .index("by_stopType", ["stopTypeId"])
     .index("by_active", ["active"])
     .index("by_lon", ["lon"])

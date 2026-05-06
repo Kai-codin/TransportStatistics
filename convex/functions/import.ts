@@ -150,6 +150,8 @@ export const importBatch = mutation({
           name: feature.name ?? "Unknown",
           commonName: feature.commonName ?? feature.name ?? "Unknown",
           atcoCode: String(atcoCode),
+          crsCode: feature.crsCode ?? undefined,
+          tiplocCode: feature.tiplocCode ?? undefined,
           naptanCode: feature.naptanCode ?? undefined,
           stopTypeId,
           active: feature.active ?? true,

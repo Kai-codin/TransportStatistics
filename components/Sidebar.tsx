@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser, useClerk, SignOutButton, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { 
-  Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, 
+  Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
   Shield, Settings, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea
 } from "lucide-react";
 
@@ -149,9 +149,11 @@ export default function Sidebar() {
                 </button>
               </SignUpButton>
           </Show>
-          <a href="/legal" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white w-full transition-all whitespace-nowrap">
-            Legal, Privacy & Data
-          </a>
+          <div className="mt-4">
+              <Link href="/legal" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 hover:text-white transition-all">
+                <Scale size={18} /> {!isCollapsed && "Legal, Privacy & Data"}
+              </Link>
+            </div>
         </div>
       </aside>
 

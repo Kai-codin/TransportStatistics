@@ -72,6 +72,7 @@ async function getValidAccessToken(): Promise<string> {
 // --- API Handler ---
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const debug = searchParams.get("debug") === "true";
   const type = searchParams.get('type');
   const code = searchParams.get('code');
   const date = searchParams.get('date');
@@ -140,7 +141,9 @@ export async function GET(request: Request) {
         mode: 'train',
         vehicle_info: {
           type: item.locationMetadata?.stockBranding || null,
-        }
+        },
+        debug: debug ? item : undefined,
+        log_link: `/log?service_uid=${item.scheduleMetadata?.uniqueIdentity}`,
       }));
 
       return NextResponse.json(departures);
@@ -179,6 +182,8 @@ export async function GET(request: Request) {
         cancellation_reason: null,
         delay: item.delay || null,
         mode: 'bus',
+        debug: debug ? item : undefined,
+        log_link: `/log?trip_id=${item.trip_id}`,
       }));
 
       return NextResponse.json(departures);

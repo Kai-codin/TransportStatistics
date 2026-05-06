@@ -134,28 +134,29 @@ class StationHandler(osmium.SimpleHandler):
     def node(self, n):
         self.count += 1
 
-        # 🔥 heartbeat every N nodes
+        # Heartbeat every N nodes
         if self.count % LOG_EVERY == 0:
             elapsed = time.time() - self.start
             rate = self.count / elapsed if elapsed > 0 else 0
             log(f"OSM nodes processed: {self.count:,} | {rate:,.0f} nodes/sec | stations={len(self.stations):,}")
 
-        tags = n.tags
-
-        if tags.get("railway") == "station":
-            try:
-                self.stations.append({
-                    "name": tags.get("name", "Unknown"),
-                    "commonName": tags.get("name", "Unknown"),
-                    "atcoCode": f"OSM:{n.id}",
-                    "stopTypeId": STOP_TYPES["rail"],
-                    "active": True,
-                    "hidden": False,
-                    "lat": n.location.lat,
-                    "lon": n.location.lon,
-                })
-            except Exception:
-                pass
+        # Ensure it is a railway station
+        if n.tags.get("railway") == "station":
+            tags = n.tags
+            
+            # Using .get() allows us to set defaults if tags are missing
+            self.stations.append({
+                "name": tags.get("name", "Unknown"),
+                "commonName": tags.get("name", "Unknown"),
+                "atcoCode": tags.get("naptan:AtcoCode", None), 
+                "crsCode": tags.get("ref:crs", None),
+                "tipLocCode": tags.get("ref:tiploc", None),
+                "stopTypeId": STOP_TYPES["rail"],
+                "active": True,
+                "hidden": False,
+                "lat": n.location.lat,
+                "lon": n.location.lon,
+            })
 
 # -----------------------------
 # PARSE OSM

@@ -29,3 +29,10 @@ export const getInBBox = query({
     return stops;
   },
 });
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("stopTypes").collect();
+  },
+});

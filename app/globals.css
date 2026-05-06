@@ -169,3 +169,22 @@ body {
   border-bottom: 8px solid rgb(0, 0, 0);
   margin-bottom: -2px; /* Pulls the arrow slightly closer to the SVG */
 }
+
+.custom-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 8px;
+  /* Crucial: Ensure it has dimensions if content fails to provide them */
+  min-width: 200px; 
+}
+
+.custom-popup .maplibregl-popup-close-button {
+  color: white;
+  right: 8px;
+  top: 8px;
+}
+
+.custom-popup .maplibregl-popup-tip {
+  border-top-color: #111827;
+}

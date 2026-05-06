@@ -143,6 +143,11 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
 
     const fetchVehicles = async () => {
       try {
+        // Ensure map style and sources are ready before manipulating layers/sources
+        if (typeof (map as any).isStyleLoaded === 'function' && !(map as any).isStyleLoaded()) return;
+        if (!map.getSource || !map.getLayer) return;
+        if (!map.getSource('vehicles-source')) return;
+
         const { minLat, maxLat, minLon, maxLon } = bounds;
         const res = await fetch(
           `/api/live-vehicles?xmin=${minLon}&ymin=${minLat}&xmax=${maxLon}&ymax=${maxLat}&showTrains=${showTrains}&showBuses=${showBuses}&debug=true`
@@ -157,7 +162,13 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
         const filteredBuses = showBuses ? data.buses || [] : [];
         const allVehicles = [...filteredTrains, ...filteredBuses];
 
-        map.setLayoutProperty('vehicles-layer', 'visibility', 'none');
+        try {
+          if (map.getLayer('vehicles-layer')) {
+            map.setLayoutProperty('vehicles-layer', 'visibility', 'none');
+          }
+        } catch (err) {
+          console.warn('Skipped setLayoutProperty because map style not ready', err);
+        }
 
         if (allVehicles.length > DENSITY_THRESHOLD) {
           const features = allVehicles.map((v: any) => ({
@@ -165,8 +176,17 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
             geometry: { type: 'Point', coordinates: [v.location.lon, v.location.lat] },
             properties: { color: v.colour || '#ff0000' },
           }));
-          (map.getSource('vehicles-source') as any).setData({ type: 'FeatureCollection', features });
-          map.setLayoutProperty('vehicles-layer', 'visibility', 'visible');
+          const src = map.getSource('vehicles-source') as any;
+          if (src && typeof src.setData === 'function') {
+            src.setData({ type: 'FeatureCollection', features });
+          }
+          try {
+            if (map.getLayer('vehicles-layer')) {
+              map.setLayoutProperty('vehicles-layer', 'visibility', 'visible');
+            }
+          } catch (err) {
+            console.warn('Skipped setLayoutProperty(visible) because map style not ready', err);
+          }
         } else {
           filteredTrains.forEach((t: any) => markersRef.current.push(createMarker(t, 'train').addTo(map)));
           filteredBuses.forEach((b: any) => markersRef.current.push(createMarker(b, 'bus').addTo(map)));

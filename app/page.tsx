@@ -29,7 +29,6 @@ export default function Home() {
         }),
         'top-right'
       );
-        console.log("Map interaction successful");
       }
     }, 100);
   }, []);

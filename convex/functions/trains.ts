@@ -26,7 +26,6 @@ export const saveTrainDetailsBatch = mutation({
   },
   handler: async (ctx, args) => {
     for (const train of args.trains) {
-      console.log(`Saving train details for RID: ${train.rid}`); // Debug log
       // Validate that we actually have a rid before trying to save
       if (!train.rid) {
         console.warn("Attempted to save train without RID:", train);

@@ -128,7 +128,7 @@ export async function GET(request: Request) {
   const time = searchParams.get('time');
   const pass = searchParams.get('pass') === 'show';
   const datetime = searchParams.get('datetime');
-  const limit = searchParams.get('limit') || '10';
+  const limit = searchParams.get('limit') || '15';
 
   log(`Incoming request: type=${type}, code=${code}`);
 

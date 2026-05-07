@@ -9,25 +9,19 @@ export const getInBBox = query({
     maxLon: v.number(),
   },
   handler: async (ctx, args) => {
-    const stops = await ctx.db
+    // Note: No console.logs inside the chain!
+    return await ctx.db
       .query("stops")
-      .withIndex("by_lat_lon", (q) =>
-        q
-          .gte("lat", args.minLat)
-          .lte("lat", args.maxLat)
-      )
-      // lon is now the second field in the index — Convex can
-      // use it for filtering without a full collection scan
+      .withIndex("by_lat_lon", (q) => q.gte("lat", args.minLat))
       .filter((q) =>
         q.and(
+          q.lte(q.field("lat"), args.maxLat),
           q.gte(q.field("lon"), args.minLon),
           q.lte(q.field("lon"), args.maxLon),
           q.eq(q.field("active"), true)
         )
       )
       .take(500);
-
-    return stops;
   },
 });
 

@@ -22,7 +22,9 @@ const limiter = new RateLimiterRedis({
   duration: 1, // per 1 second
 });
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!, {
+  fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+});
 
 // --- Helper Functions ---
 
@@ -108,7 +110,6 @@ export async function GET(request: Request) {
   const cachedResponse = await redisClient.get(cacheKey);
 
   if (cachedResponse) {
-    console.log("🚀 Cache Hit!");
     return NextResponse.json(JSON.parse(cachedResponse));
   }
 
@@ -159,28 +160,23 @@ export async function GET(request: Request) {
     const isSimpleMode = (visibleTrains.length + busData.length) > 1000;
     const cachedDetails: Record<string, any> = {};
 
-    // 4. UPDATE DETAILS: Use 'visibleTrains' instead of 'allTrains'
-    console.log(`Trains in BBOX: ${visibleTrains.length}. Simple mode: ${isSimpleMode}`);
-
     if (!isSimpleMode && showTrains) {
       const rids = visibleTrains.map((t: any) => t.rid).filter(Boolean) as string[];
-      const CHUNK_SIZE = 100;
+      
+      // 2. Lower the chunk size to prevent URL length limits (dropped query params)
+      const CHUNK_SIZE = 25; 
       const chunks: string[][] = [];
 
       for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
         chunks.push(rids.slice(i, i + CHUNK_SIZE));
       }
 
-      //if (rids.length === 0) {
-      //  return NextResponse.json({ error: "No valid train IDs found" }, { status: 500 });
-      //}
-
-      // 2. Fire all queries at once
+      // Fire all queries in parallel
       const queryPromises = chunks.map(chunk => 
         convex.query(api.functions.trains.getDetailsForRids, { rids: chunk })
       );
 
-      // 3. Wait for all of them in parallel
+      // Wait for all of them
       const results = await Promise.all(queryPromises);
 
       // 4. Merge results
@@ -297,6 +293,6 @@ export async function GET(request: Request) {
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error in live-vehicles API:", error);
-    return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
+    return NextResponse.json({ error: `Failed to fetch data: ${error instanceof Error ? error.message : "Unknown error"}` }, { status: 500 });
   }
 }

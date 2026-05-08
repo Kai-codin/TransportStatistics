@@ -20,12 +20,15 @@ export const Stops = ({
   // Initialize the departure panel hook
   const { openPanel } = useDeparturePanel();
 
+  console.log("Rendering Stops component with bounds:", bounds, "tooZoomedOut:", tooZoomedOut);
   const stops = useQuery(
     api.functions.stops.getInBBox,
     tooZoomedOut ? "skip" : bounds,
   );
-  
+  console.log("Fetched stops:", stops);
+  console.log("Fetching stop types...");
   const stopTypes = useQuery(api.functions.stops.list);
+  console.log("Fetched stop types:", stopTypes);
 
   const typeColorMap = useMemo(() => {
     if (!stopTypes) return {} as Record<string, string>;

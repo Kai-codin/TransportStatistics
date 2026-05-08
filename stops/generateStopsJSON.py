@@ -20,51 +20,86 @@ OUTPUT_FILE = "stops.json"
 LOG_EVERY = 50000  # <-- adjust for spam vs visibility
 
 STOP_TYPES = {
-    "rail": "rail_station_id",
+    "rail": "j57526944rm9x6tb7k750mfaz586705n",
     "tram": "tram_stop_id",
     "bus": "bus_stop_id"
 }
 
 # -----------------------------
-# STOP TYPE → CONVEX ID MAPPING
 # -----------------------------
-# Maps NaPTAN StopType codes to Convex _id values
-STOP_TYPE_CONVEX_ID = {
-    # Bus/Coach on street subtypes
-    "MKD": "j57dfy4ngvckk9ap6tyrehefph867jrw",
-    "CUS": "j570e3cksc97wygx5e48sw4wxs867s1w",
-    "HAR": "j57c329c45arzwk9mepa18pps18675sv",
-    "FLX": "j57245y99yq811n98b1jvyrcj98662zj",
-    # Bus/Coach on street (parent)
-    "BCT": "j5701fm12ysf423t5vde8zp4ex867cxz",
-    # Bus/Coach station
-    "BCS": "j578pd5bz8sd3tz60qxygbzhe5866gss",
-    "BCQ": "j57ak1jcb5avmfzxswbwjhcgh5867fpj",
-    "BCE": "j5722dnvn3xvcnpj830pwgk1p1867svc",
-    "BST": "j572yxhmpesw8br2j9aenkd8t1867ptd",
-    # Rail
-    "RLS": "j57526944rm9x6tb7k750mfaz586705n",
-    "RPL": "j577kaqg7tz3zbb17s2rzfr02x867nh4",
-    "RSE": "j57777xwptypzxb7gyrwtgh41d86650m",
-    "RLY": "j57eqzxk2q3h214ksaz1gqhghh866vcd",
-    # Metro/Tram
-    "MET": "j571rvz1knm53vvvhk6ymy8k69867fx5",
-    "PLT": "j57eyw2fznp3zwdfv2x0kpz3vh867feq",
-    "TMU": "j575j7bpsr62hxs9w299d4arsn866qgd",
-    # Ferry
-    "FER": "j576eemexbygz1jmv6p931feqs867p7x",
-    "FBT": "j574f2qdkgsrv39kgtz7m2mk2s867qc9",
-    "FTD": "j571031fcbfe1bmw09gnsw2chh867kjp",
-    # Taxi
-    "TXR": "j573723deyfkz8v414zkg1rbbn8661ae",
-    "STR": "j575fzny9tyzrbvpnfhqkt3yx58679ts",
-    # Airport
-    "AIR": "j5728g7755x6p9rycxhe20sx0n8667sx",
-    "GAT": "j57csvf66b1hf71mvyc7c6k7h18660yb",
-}
+# STOP TYPE → CONVEX ID MAPPING (accepts direct Convex paste or convex_ids.json)
+# -----------------------------
+# You can either:
+#  - Paste your Convex objects export into `CONVEX_PASTE` below (JS/JSON-like), OR
+#  - Place a JSON file named `convex_ids.json` next to this script containing
+#    either a list of objects with `code` and `_id` fields or a mapping {"CODE": "_id"}.
 
-# Convex ID for the OSM rail station type
+CONVEX_PASTE = '[{ _creationTime: 1778146398336.3525, _id: "j5769apg39ghr2be0xd7evndz1868tky", code: "FLX", name: "Bus Coach on street Bay", subOf: "j577yw1veaqnb1866ywajqnkjs869za5" }, { _creationTime: 1778146398336.3523, _id: "j57dsmpfb7s4h54vpd1crcfbv586922e", code: "HAR", name: "Bus Coach on street Bay", subOf: "j577yw1veaqnb1866ywajqnkjs869za5" }, { _creationTime: 1778146398336.352, _id: "j570ngv581athkg6174z1fpkrx869w3b", code: "CUS", name: "Bus Coach on street Bay", subOf: "j577yw1veaqnb1866ywajqnkjs869za5" }, { _creationTime: 1778146398336.3518, _id: "j576q65ws7q09vae1mb4sx4zdd869d8r", code: "MKD", name: "Bus Coach on street Bay", subOf: "j577yw1veaqnb1866ywajqnkjs869za5" }, { _creationTime: 1778146398336.3516, _id: "j576q404nzaghzx94rk0yd3qjh868r0a", code: "TXR", name: "Taxi Rank Bay" }, { _creationTime: 1778146398336.3513, _id: "j5763y07z7zazah8xnq7gcwky1869x6h", code: "STR", name: "Shared Taxi Rank" }, { _creationTime: 1778146398336.351, _id: "j571jaygf4wgh564f2h4ekq069868yh2", code: "RLS", name: "Rail Stations" }, { _creationTime: 1778146398336.3508, _id: "j573mvevnmyrjsq8ey3va1bmah868nms", code: "RPL", name: "Rail Station Platform" }, { _creationTime: 1778146398336.3506, _id: "j5755adndmycwxkvqyq8b42n4d8699er", code: "RSE", name: "Rail Station Entrance" }, { _creationTime: 1778146398336.3503, _id: "j57dr897vp32da16qtg1j81pnx8692n9", code: "RLY", name: "Rail Station Access Area" }, { _creationTime: 1778146398336.35, _id: "j57386cetwss9j0t940zr60jc5869fty", code: "PLT", name: "Metro Station Platform" }, { _creationTime: 1778146398336.3499, _id: "j57b66zrps61kdsbjcsekb36kd869cbm", code: "TMU", name: "Metro Station Entrance" }, { _creationTime: 1778146398336.3496, _id: "j571ck3nrwcbwf4h744a9dg9wd868px7", code: "MET", name: "Metro Station Access Area" }, { _creationTime: 1778146398336.3494, _id: "j574eaqj2q5c6k287y7jdsqv4s8689wh", code: "FTD", name: "Ferry Port Entrance" }, { _creationTime: 1778146398336.349, _id: "j5741vesayvey83g1yrd3ekv1s869y3k", code: "FBT", name: "Ferry Port Bay" }, { _creationTime: 1778146398336.3489, _id: "j57c1a1k5219h86bt5cv52pw8x868s1b", code: "FER", name: "Ferry Port Access Area" }, { _creationTime: 1778146398336.3486, _id: "j57bmqt6r9zvnfrew5h00y4gb9868qw5", code: "BCE", name: "Bus or Coach Station Entrance" }, { _creationTime: 1778146398336.3484, _id: "j579sf5g0y6ked4vn072w7rksx8686n1", code: "BCS", name: "Bus or Coach Station Bay" }, { _creationTime: 1778146398336.3481, _id: "j57cd623q6q2n2phn5fgta8tk98684n0", code: "BCQ", name: "Bus or Coach Station Bay" }, { _creationTime: 1778146398336.348, _id: "j57da22xmncbqtbrnpz0b5sgzx868746", code: "BST", name: "Bus or Coach Station Access Area" }, { _creationTime: 1778146398336.3477, _id: "j577yw1veaqnb1866ywajqnkjs869za5", code: "BCT", name: "Bus Coach on street" }, { _creationTime: 1778146398336.3474, _id: "j572gtxbb0zf7pxy7fk4f6vjyd868pr4", code: "AIR", name: "Airport Entrance" }, { _creationTime: 1778146398336.3472, _id: "j5791c4rq89ab3yq670jghdkyn868jad", code: "GAT", name: "Airport Access Area" }]'
+import re
+
+def parse_convex_paste(text):
+    """Extract a mapping of code -> _id from a pasted Convex export.
+    Handles JS-style objects (unquoted keys) and JSON lists.
+    """
+    mapping = {}
+    if not text or text.strip().startswith("[PASTE"):
+        return mapping
+
+    # Try JSON first
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            for item in parsed:
+                code = item.get("code") or item.get('Code')
+                _id = item.get("_id") or item.get("id")
+                if code and _id:
+                    mapping[code] = _id
+            return mapping
+        if isinstance(parsed, dict):
+            # If it's already a mapping code->id
+            if all(isinstance(v, str) for v in parsed.values()):
+                return parsed
+    except Exception:
+        pass
+
+    # Fallback: regex-scan JS/JS-like objects to pull out pairs within each {...}
+    objects = re.findall(r'\{([^}]+)\}', text, re.S)
+    for obj in objects:
+        code_m = re.search(r'code\s*[:]\s*["\']?([A-Z0-9]+)["\']?', obj) or re.search(r'\"code\"\s*:\s*\"([^\"]+)\"', obj)
+        id_m = re.search(r'_id\s*[:]\s*["\']?([a-z0-9]+)["\']?', obj) or re.search(r'\"_id\"\s*:\s*\"([^\"]+)\"', obj)
+        if code_m and id_m:
+            code = code_m.group(1)
+            _id = id_m.group(1)
+            mapping[code] = _id
+
+    # Also try to catch simple "code: \"X\", _id: \"Y\"" patterns across the whole text
+    pairs = re.findall(r'code\s*[:]\s*["\']?([A-Z0-9]+)["\']?[,\s\n]+[^}]*?_id\s*[:]\s*["\']?([a-z0-9]+)["\']?', text, re.I)
+    for code, _id in pairs:
+        mapping[code] = _id
+
+    return mapping
+
+def load_convex_mapping():
+    # 1) convex_ids.json file next to script
+    try:
+        if os.path.exists("convex_ids.json"):
+            with open("convex_ids.json") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return {item.get("code"): item.get("_id") for item in data if item.get("code") and item.get("_id")}
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        pass
+
+    # 2) parse pasted export
+    return parse_convex_paste(CONVEX_PASTE)
+
+# Convex ID for the OSM rail station type (fallback)
 RAIL_CONVEX_ID = "j57526944rm9x6tb7k750mfaz586705n"  # RLS - Rail Stations
+
+# Build mapping once
+STOP_TYPE_CONVEX_MAP = load_convex_mapping()
 
 def log(msg):
     """tqdm-safe logging"""
@@ -145,9 +180,9 @@ def parse_naptan():
         else:
             stop_type_id = STOP_TYPES["bus"]
 
-        convex_id = STOP_TYPE_CONVEX_ID.get(stop_type)
+        convex_id = STOP_TYPE_CONVEX_MAP.get(stop_type)
         if not convex_id:
-            convex_id = STOP_TYPE_CONVEX_ID["BCT"]
+            convex_id = STOP_TYPE_CONVEX_MAP.get("BCT") or RAIL_CONVEX_ID
 
         try:
             stops[atco] = {

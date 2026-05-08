@@ -14,6 +14,8 @@ import type * as functions_seed from "../functions/seed.js";
 import type * as functions_stops from "../functions/stops.js";
 import type * as functions_trains from "../functions/trains.js";
 import type * as functions_trips from "../functions/trips.js";
+import type * as migrations_replaceRailStationStopType from "../migrations/replaceRailStationStopType.js";
+import type * as migrations_runReplaceRailStationType from "../migrations/runReplaceRailStationType.js";
 
 import type {
   ApiFromModules,
@@ -28,6 +30,8 @@ declare const fullApi: ApiFromModules<{
   "functions/stops": typeof functions_stops;
   "functions/trains": typeof functions_trains;
   "functions/trips": typeof functions_trips;
+  "migrations/replaceRailStationStopType": typeof migrations_replaceRailStationStopType;
+  "migrations/runReplaceRailStationType": typeof migrations_runReplaceRailStationType;
 }>;
 
 /**

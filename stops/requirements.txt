@@ -1,0 +1,12 @@
+certifi==2026.4.22
+charset-normalizer==3.4.7
+idna==3.13
+numpy==2.4.4
+osmium==4.3.1
+pandas==3.0.2
+pyproj==3.7.2
+python-dateutil==2.9.0.post0
+requests==2.33.1
+six==1.17.0
+tqdm==4.67.3
+urllib3==2.6.3

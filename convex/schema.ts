@@ -33,8 +33,6 @@ export default defineSchema({
     .index("by_crsCode", ["crsCode"])
     .index("by_stopType", ["stopTypeId"])
     .index("by_active", ["active"])
-    .index("by_lon", ["lon"])
-    .index("by_lat", ["lat"])
     .index("by_lat_lon", ["lat", "lon"]),
 
   trainDetails: defineTable({

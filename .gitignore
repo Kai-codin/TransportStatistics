@@ -49,4 +49,4 @@ venv/
 
 *.pdf
 stops/great-britain-latest.osm.pbf
-JSON/stops.json
+stops.json

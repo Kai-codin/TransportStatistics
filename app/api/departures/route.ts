@@ -234,13 +234,13 @@ export async function GET(request: Request) {
 
       // Perform both calls concurrently
       const [timesRes, metaRes] = await Promise.all([
-        fetch(`https://bustimes.org/stops/${code}/times.json?${dateTimeQuery}&limit=10`),
+        fetch(`https://bustimes.org/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`),
         fetch(`https://bustimes.org/api/stops/${code}?format=json`)
       ]);
       
       if (!timesRes.ok) {
         log(`Bus times fetch failed: ${timesRes.status}`);
-        throw new Error('Failed to fetch bus departure data');
+        throw new Error(`'Failed to fetch bus departure data (${timesRes.statusText}) - possibly invalid stop code or external API issue. | URL: https://bustimes.org/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`);
       }
       
       const timesData = await timesRes.json();

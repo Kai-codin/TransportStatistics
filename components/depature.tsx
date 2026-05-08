@@ -103,6 +103,8 @@ function buildDeparturesContent(data: any, offsetMin: number, popupId: string, s
 
   const ncols = (showExpected ? 2 : 1) + (showPlatform ? 1 : 0);
 
+  let retryIn = null;
+
   const fmtStatus = (raw: string): { label: string; color: string; bg: string; border: string } => {
     const label = raw.split(/[_\s]+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
     const key = raw.toUpperCase();
@@ -235,7 +237,7 @@ export function useDeparturePanel() {
 
     try {
       const targetISO = offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
-      const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.naptanCode || stop.atcoCode;
+      const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.atcoCode;
 
       console.log(`Fetching departures for ${stop.commonName} with code ${code} and mode ${mode} at offset ${offsetMin} minutes (ISO: ${targetISO})`);
       console.log(`All codes for stop:`, { atcoCode: stop.atcoCode, crsCode: stop.crsCode, tiplocCode: stop.tiplocCode, naptanCode: stop.naptanCode });
@@ -314,8 +316,14 @@ export function useDeparturePanel() {
       const _curr = activeState.current as any;
       if (_curr?.id === id) {
         _curr.error = true;
-        setPanelHTML(buildErrorPopup(stop.commonName, stop._id, typeName, codes, "Failed to load departures."));
+        setPanelHTML(buildErrorPopup(stop.commonName, stop._id, typeName, codes, "Failed to load departures. Retrying in 5 seconds..."));
+        setTimeout(() => {
+          if (activeState.current?.id === id) {
+            fetchAndRender(activeState.current, _curr.offset ?? 0, false);
+          }
+        }, 5 * 1000); 
       }
+      
     }
   }
 

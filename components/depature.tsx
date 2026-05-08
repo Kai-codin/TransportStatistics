@@ -235,7 +235,11 @@ export function useDeparturePanel() {
 
     try {
       const targetISO = offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
-      const code = mode === "train" ? stop.crsCode || stop.tiploc : stop.atcoCode;
+      const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.naptanCode || stop.atcoCode;
+
+      console.log(`Fetching departures for ${stop.commonName} with code ${code} and mode ${mode} at offset ${offsetMin} minutes (ISO: ${targetISO})`);
+      console.log(`All codes for stop:`, { atcoCode: stop.atcoCode, crsCode: stop.crsCode, tiplocCode: stop.tiplocCode, naptanCode: stop.naptanCode });
+
       const showPass = activeState.current?.showPass ?? false;
       const params = new URLSearchParams({ code, type: mode });
       if (targetISO) params.set("datetime", targetISO);

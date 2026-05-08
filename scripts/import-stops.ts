@@ -45,7 +45,7 @@ async function importBatchWithRetry(
 }
 
 async function runImport() {
-  const filePath = path.join(__dirname, "../JSON/stops.JSON");
+  const filePath = path.join(__dirname, "../JSON/rail_stations.JSON");
   console.log(`Reading: ${filePath}`);
 
   const raw = fs.readFileSync(filePath, "utf8");

@@ -9,11 +9,15 @@ import { useMemo } from "react";
 export default function ProfilePage() {
   const { isSignedIn, user } = useUser();
   const trips = useQuery(api.functions.trips.getMyTrips, user ? {} : "skip");
+  type Trip = NonNullable<typeof trips>[number];
 
-  const groupedTrips = useMemo(() => {
+  const groupedTrips = useMemo<Record<string, Trip[]>>(() => {
     if (!trips) return {};
-    return trips.reduce((acc: any, trip) => {
-      const date = new Date(trip.service_date * 1000).toLocaleDateString('en-GB', { 
+    return trips.reduce<Record<string, Trip[]>>((acc, trip) => {
+      const timestamp = trip.service_date > 1_000_000_000_000
+        ? trip.service_date
+        : trip.service_date * 1000;
+      const date = new Date(timestamp).toLocaleDateString('en-GB', { 
         day: 'numeric', month: 'long', year: 'numeric' 
       });
       if (!acc[date]) acc[date] = [];
@@ -53,14 +57,14 @@ export default function ProfilePage() {
       ) : trips.length === 0 ? (
         <div className="text-center py-10 text-slate-400">No trips yet.</div>
       ) : (
-        Object.entries(groupedTrips).map(([date, tripList]: [string, any]) => (
+        Object.entries(groupedTrips).map(([date, tripList]) => (
           <div key={date} className="mb-8">
             <div className="sticky top-0 flex items-center gap-4 bg-ts-bg pb-2 pt-2">
               <h3 className="text-lg font-bold text-white">{date}</h3>
               <span className="text-sm text-slate-500">{tripList.length} trips</span>
             </div>
             <div className="flex flex-col gap-2">
-              {tripList.map((trip: any) => (
+              {tripList.map((trip) => (
                 <TripRow key={trip._id} trip={trip} />
               ))}
             </div>

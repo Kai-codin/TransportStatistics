@@ -10,8 +10,9 @@
 
 import type * as functions_delete_stop_of_type from "../functions/delete_stop_of_type.js";
 import type * as functions_import from "../functions/import.js";
-import type * as functions_import_trips from "../functions/import_trips.js";
+import type * as functions_liveries from "../functions/liveries.js";
 import type * as functions_seed from "../functions/seed.js";
+import type * as functions_stats from "../functions/stats.js";
 import type * as functions_stops from "../functions/stops.js";
 import type * as functions_trains from "../functions/trains.js";
 import type * as functions_trips from "../functions/trips.js";
@@ -25,8 +26,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   "functions/delete_stop_of_type": typeof functions_delete_stop_of_type;
   "functions/import": typeof functions_import;
-  "functions/import_trips": typeof functions_import_trips;
+  "functions/liveries": typeof functions_liveries;
   "functions/seed": typeof functions_seed;
+  "functions/stats": typeof functions_stats;
   "functions/stops": typeof functions_stops;
   "functions/trains": typeof functions_trains;
   "functions/trips": typeof functions_trips;

@@ -51,7 +51,42 @@ export default defineSchema({
     headcode: v.string(),
   })
   .index("by_delay", ["delay"])
-  .index("by_rid", ["rid"]),
+  .index("by_rid", ["rid"])
+  .index("by_uid", ["uid"]),
+
+  units: defineTable({
+    unit_number: v.optional(v.string()),
+    unit_reg: v.string(),
+    type_id: v.string(),
+    operator_id: v.string(),
+    livery_id: v.string(),  
+    search_text: v.optional(v.string()),
+  })
+  .index("type_id", ["type_id"])
+  .index("livery_id", ["livery_id"])
+  .index("unit_reg", ["unit_reg"])
+  .index("unit_number", ["unit_number"])
+  .searchIndex("search_units", { searchField: "search_text" }),
+
+  liveries: defineTable({
+    livery_name: v.string(),
+    css_class: v.string(),  
+  })
+  .index("by_livery_name", ["livery_name"]),
+
+  types: defineTable({
+    type_name: v.string(),
+  })
+  .index("by_type_name", ["type_name"]),
+
+  operators: defineTable({
+    operator_name: v.string(),
+    operator_slug: v.string(),
+    operator_code: v.string(),
+  })
+  .index("by_operator_name", ["operator_name"])
+  .index("by_operator_slug", ["operator_slug"])
+  .index("by_operator_code", ["operator_code"]),
 
   tripLogs: defineTable({
     user: v.string(),
@@ -81,9 +116,10 @@ export default defineSchema({
     actual_departure: v.optional(v.string()),
     scheduled_arrival: v.string(),
     actual_arrival: v.optional(v.string()),
-    ridden_route_geometry: v.any(),
-    full_route_geometry: v.any(),
-    full_locations: v.any(),
+    full_route: v.optional(v.any()),
+    ridden_route: v.optional(v.any()),
+    units: v.optional(v.any()),
+    full_locations: v.optional(v.any()),
     unit_number: v.optional(v.string()),
     unit_reg: v.optional(v.string()),
     unit_type: v.optional(v.string()),

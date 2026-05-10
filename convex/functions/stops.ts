@@ -27,6 +27,17 @@ export const getInBBox = query({
   },
 });
 
+export const getGroupByCode = query({
+  args: {
+    code: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.query("stops").withIndex("by_crsCode", (q) =>
+      q.eq("crsCode", args.code)
+    ).first();
+  }
+});
+
 export const list = query({
   args: {},
   handler: async (ctx) => {

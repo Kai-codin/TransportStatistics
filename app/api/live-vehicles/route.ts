@@ -164,7 +164,7 @@ export async function GET(request: Request) {
       const rids = visibleTrains.map((t: any) => t.rid).filter(Boolean) as string[];
       
       // 2. Lower the chunk size to prevent URL length limits (dropped query params)
-      const CHUNK_SIZE = 25; 
+      const CHUNK_SIZE = 50; 
       const chunks: string[][] = [];
 
       for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
@@ -184,8 +184,8 @@ export async function GET(request: Request) {
         Object.assign(cachedDetails, data);
         
         // Trigger sync for missing ones
-        const chunk = chunks[index];
-        const missingRids = chunk.filter((rid: string) => !data[rid]);
+        //const chunk = chunks[index];
+        const missingRids = rids.filter((rid: string) => !data[rid]);
         if (missingRids.length > 0) {
           convex
             .action(api.functions.trains.syncBatch, { rids: missingRids })
@@ -254,7 +254,7 @@ export async function GET(request: Request) {
               label1: label1,
               link1: details.uid? `https://www.realtimetrains.co.uk/service/gb-nr:${details.uid}/${today}/detailed` : "#",
               label2: getDelayText(t.delay),
-              log_link: `/log?service_id=${t.rid}`,
+              log_link: `/log?service_rid=${t.rid}`,
             },
             debug: isSimpleMode ? undefined : t,
           };
@@ -282,7 +282,7 @@ export async function GET(request: Request) {
             link1: `https://bustimes.org/trips/${b.trip_id}`,
             label2: b.vehicle?.name ?? "Unknown Bus",
             link2: `https://bustimes.org${b.vehicle?.url ?? ""}`,
-            log_link: `/log?reg=${reg ?? ""}&unit=${fleet_number ?? ""}&service_id=${b.trip_id}&vehicle_slug=${vehicleSlug}`,
+            log_link: `/log?service_id=${b.trip_id}&date=${b.date ?? ""}`,
           },
           debug: isSimpleMode ? undefined : b,
         };

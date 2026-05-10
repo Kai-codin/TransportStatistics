@@ -1,6 +1,81 @@
 import { action, mutation, query } from "../_generated/server";
+import { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
+
+export const backfillSearchText = mutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const BATCH_SIZE = 1000;
+
+    const { page, continueCursor, isDone } = await ctx.db
+      .query("units")
+      .paginate({ cursor: args.cursor, numItems: BATCH_SIZE });
+
+    await Promise.all(
+      page.map((unit) =>
+        ctx.db.patch(unit._id, {
+          search_text: `${unit.unit_reg} ${unit.unit_number ?? ""}`.trim(),
+        })
+      )
+    );
+
+    return { continueCursor, isDone, updated: page.length };
+  },
+});
+
+export const getUnitDetails = query({
+  args: { unitIds: v.array(v.id("units")) },
+  handler: async (ctx, args) => {
+    // Fetch all units
+    const units = await Promise.all(
+      args.unitIds.map((id) => ctx.db.get(id))
+    );
+    const validUnits = units.filter((u) => u !== null);
+
+    // Get unique IDs
+    const typeIds = [...new Set(validUnits.map((u) => u.type_id))];
+    const operatorIds = [...new Set(validUnits.map((u) => u.operator_id))];
+    const liveryIds = [...new Set(validUnits.map((u) => u.livery_id))];
+
+    // Fetch all related records in parallel
+    const [types, operators, liveries] = await Promise.all([
+      Promise.all(typeIds.map((id) => ctx.db.get(id as Id<"types">))),
+      Promise.all(operatorIds.map((id) => ctx.db.get(id as Id<"operators">))),
+      Promise.all(liveryIds.map((id) => ctx.db.get(id as Id<"liveries">))),
+    ]);
+
+    return {
+      types: types.filter((t) => t !== null),
+      operators: operators.filter((o) => o !== null),
+      liveries: liveries.filter((l) => l !== null),
+    };
+  },
+});
+
+export const searchForUnits = query({
+  args: { search: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("units")
+      .withSearchIndex("search_units", (q) =>
+        q.search("search_text", args.search)
+      )
+      .collect();
+  },
+});
+
+export const getRidWithUID = query({
+  args: { uid: v.string() },
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("trainDetails")
+      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+      .unique(); // Returns the document or null if not found
+
+    return record;
+  }
+});
 
 // 1. READ: Fast, cheap local cache check
 export const getDetailsForRids = query({

@@ -1,10 +1,38 @@
 'use client';
 
+type TripUnit = {
+  unit_number?: string;
+  unit_reg?: string;
+  unit_type?: string;
+  livery?: string;
+  livery_left?: string;
+};
+
+type TripLike = {
+  transport_type: string;
+  service_number?: string;
+  operator?: string;
+  scheduled_departure?: string;
+  origin_name?: string;
+  destination_name?: string;
+  units?: TripUnit[];
+  unit_number?: string;
+  unit_reg?: string;
+  unit_type?: string;
+  livery_name?: string;
+  livery_css?: string;
+};
+
 interface TripRowProps {
-  trip: any;
+  trip: TripLike;
 }
 
 export const TripRow = ({ trip }: TripRowProps) => {
+  const primaryUnit = Array.isArray(trip.units)
+    ? trip.units.find((unit) =>
+        unit && (unit.unit_number || unit.unit_reg || unit.unit_type || unit.livery || unit.livery_left)
+      )
+    : null;
 
   const getTypePillClasses = (type: string) => {
     switch (type) {
@@ -24,8 +52,13 @@ export const TripRow = ({ trip }: TripRowProps) => {
     }
   };
 
-  const hasUnit = trip.unit_number || trip.unit_reg;
-  const label = [trip.unit_number, trip.unit_reg].filter(Boolean).join(' - ');
+  const liveryCss = primaryUnit?.livery_left || trip.livery_css;
+  const liveryName = primaryUnit?.livery || trip.livery_name;
+  const unitType = primaryUnit?.unit_type || trip.unit_type;
+  const unitNumber = primaryUnit?.unit_number || trip.unit_number;
+  const unitReg = primaryUnit?.unit_reg || trip.unit_reg;
+  const hasUnit = unitNumber || unitReg;
+  const label = [unitNumber, unitReg].filter(Boolean).join(' - ');
 
   return (
     <div className="flex bg-ts-surface border border-ts-border rounded-[--color-ts-r-sm] overflow-hidden hover:border-ts-border-soft transition-colors rounded-lg">
@@ -37,16 +70,16 @@ export const TripRow = ({ trip }: TripRowProps) => {
 
         {/* Livery swatch + name */}
         <div className="flex items-center gap-2.5">
-          {trip.livery_css ? (
+          {liveryCss ? (
             <>
               <div
                 className="w-10 aspect-24/16 border border-ts-border-soft shrink-0"
-                style={{ background: trip.livery_css }}
+                style={{ background: liveryCss }}
                 role="img"
-                aria-label={trip.livery_name || 'Livery'}
+                aria-label={liveryName || 'Livery'}
               />
               <span className="text-[10px] font-medium text-ts-text-2 leading-tight line-clamp-2">
-                {trip.livery_name}
+                {liveryName}
               </span>
             </>
           ) : (
@@ -65,9 +98,9 @@ export const TripRow = ({ trip }: TripRowProps) => {
             <span className="font-mono text-[11px] font-semibold text-ts-text-1 leading-none tracking-wide">
               {label}
             </span>
-            {trip.unit_type && (
+            {unitType && (
               <span className="text-[9px] text-ts-text-2 leading-tight mt-0.5 truncate">
-                {trip.unit_type}
+                {unitType}
               </span>
             )}
           </div>

@@ -5,19 +5,14 @@
       "type": "Bombardier Flexity 2",
       "livery_name": "Blackpool Tramway",
       "livery_css": "linear-gradient(to right, #3c2b3b 15%, #fff 15%)",
-      "fleet_numbers": [
-        "001","002","003","004","005","006","007","008","009",
-        "010","011","012","013","014","015","016","017","018"
-      ]
+      "fleet_numbers": [001,002,003,004,005,006,007,008,009,010,011,012,013,014,015,016,017,018]
     },
     {
       "operator_id": 50,
       "type": "English Electric Balloon (modified)",
       "livery_name": "Blackpool Tramway",
       "livery_css": "linear-gradient(to right, #3c2b3b 15%, #fff 15%)",
-      "fleet_numbers": [
-        700,707,711,718
-      ]
+      "fleet_numbers": [700,707,711,718]
     }
   ]
 }

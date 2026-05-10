@@ -36,7 +36,7 @@ const PANEL_CSS = `
   .dep-header { display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; padding: 4px 8px; margin-bottom: 2px; }
   .dep-header span { font-size: 9px; color: ${C.text3}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; }
   .dep-header span.right { text-align: right; }
-  .dep-row { display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; align-items: center; padding: 9px 8px; border-top: 1px solid ${C.borderSoft}; }
+  .dep-row { cursor:pointer; display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; align-items: center; padding: 9px 8px; border-top: 1px solid ${C.borderSoft}; }
   .dep-row:last-child { border-bottom: 1px solid ${C.borderSoft}; }
   .dep-service a { display: inline-block; background: ${C.accentL}; color: ${C.accent}; font-weight: 700; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid ${C.accentB}; text-decoration: none; white-space: nowrap; }
   .dep-dest { font-size: 12px; color: ${C.text1}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -140,7 +140,7 @@ function buildDeparturesContent(data: any, offsetMin: number, popupId: string, s
 
         const isRar = d.rar === true && !d.scheduled_departure && !d.expected_departure;
 
-        const mainRow = `<div class="dep-row${isPass || isRar ? " dep-pass" : ""}" style="--ncols:${ncols};">
+        const mainRow = `<div onclick="window.location.href='${d.log_link}'" class="dep-row${isPass || isRar ? " dep-pass" : ""}" style="--ncols:${ncols};">
           <div class="dep-service"><a href="${d.service_link}" target="_blank" rel="noopener noreferrer">${d.service || "?"}</a></div>
           <div class="dep-dest" title="${d.destination || ""}">${d.destination || "Unknown"}</div>
           <div class="dep-time" style="${schedStyle}">${sched}</div>

@@ -168,9 +168,12 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
     const stopsSource = map.getSource('stops-source') as maplibregl.GeoJSONSource | undefined;
 
     if (fullRouteSource) {
+      // Ensure we only pass a valid geometry object to the feature
+      const validGeometry = fullGeometry?.type === 'LineString' ? fullGeometry : null;
+      
       fullRouteSource.setData(
-        fullGeometry
-          ? { type: 'Feature', geometry: fullGeometry, properties: {} }
+        validGeometry
+          ? { type: 'Feature', geometry: validGeometry, properties: {} }
           : emptyLineFeature,
       );
     }
@@ -210,11 +213,13 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
   useEffect(() => {
     if (!mapLoaded || !mapInstance.current || hasFitted.current) return;
 
-    const boundsCoords = fullGeometry?.coordinates?.length
+    const stopCoords = fullRoute
+      .map((entry) => entry.stop?.location)
+      .filter((entry): entry is [number, number] => Array.isArray(entry) && entry.length === 2);
+
+    const boundsCoords = (fullGeometry && 'coordinates' in fullGeometry && fullGeometry.coordinates.length > 0)
       ? fullGeometry.coordinates
-      : fullRoute
-          .map((entry) => entry.stop?.location)
-          .filter((entry): entry is [number, number] => Array.isArray(entry) && entry.length === 2);
+      : stopCoords;
 
     if (boundsCoords.length === 0) return;
 

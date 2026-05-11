@@ -19,6 +19,16 @@ const limiter = new RateLimiterRedis({
   duration: 1,
 });
 
+function hashStringToNumber(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
 function log(message: string) {
   if (consoleDebug) console.log(`[Detail API] ${message}`);
 }
@@ -181,11 +191,21 @@ async function handleServiceRidRequest(serviceRid: string, debug: boolean, showP
   return handleTrainRequest(uid, date, debug, showPass);
 }
 
-function mergeTrainStopAndTrack(locations: any[], routeData: any) {
+function mergeTrainStopAndTrack(locations: any[], routeData: any, uid: string, date: string) {
   const geometry = toLineStringGeometry(routeData);
-  if (!geometry?.coordinates?.length) {
-    return locations.map(loc => ({
-      id: loc.id ?? 0,
+  const fullCoords = geometry?.coordinates || [];
+
+  // Helper to generate our unique number ID
+  const generateId = (loc: any, i: number) => {
+    const formatted = formatStop(loc);
+    const stopCode = formatted.stop_code ?? i.toString();
+    return hashStringToNumber(`${uid}-${date}-${stopCode}`);
+  };
+
+  // IF NO GEOMETRY: Just return stops with unique IDs
+  if (fullCoords.length === 0) {
+    return locations.map((loc, i) => ({
+      id: generateId(loc, i), // FIX: Use unique ID here too
       stop: formatStop(loc),
       scheduled_arrival: loc.temporalData?.arrival?.scheduleAdvertised || null,
       scheduled_departure: loc.temporalData?.departure?.scheduleAdvertised || null,
@@ -194,8 +214,6 @@ function mergeTrainStopAndTrack(locations: any[], routeData: any) {
       track: null,
     }));
   }
-
-  const fullCoords = geometry.coordinates;
 
   // Pass 1: find the closest geometry index for each stop
   const closestIndices: number[] = [];
@@ -232,6 +250,10 @@ function mergeTrainStopAndTrack(locations: any[], routeData: any) {
     const formattedStop = formatStop(loc);
     const isLast = i === locations.length - 1;
 
+    const stopCode = formattedStop.stop_code ?? i.toString();
+    const uniqueString = `${uid}-${date}-${stopCode}`;
+    const uniqueId = hashStringToNumber(uniqueString);
+
     let trackSegment: any[] = [];
     if (!isLast) {
       const fromIdx = closestIndices[i];
@@ -240,7 +262,7 @@ function mergeTrainStopAndTrack(locations: any[], routeData: any) {
     }
 
     return {
-      id: i,
+      id: uniqueId, // Now a unique string instead of just 'i'
       stop: formattedStop,
       scheduled_arrival: loc.temporalData?.arrival?.scheduleAdvertised || null,
       scheduled_departure: loc.temporalData?.departure?.scheduleAdvertised || null,
@@ -319,7 +341,7 @@ async function handleTrainRequest(uid: string, date: string, debug: boolean, sho
     );
 
     // 2. Merge Stop and Track
-    const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData);
+    const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData, uid, date);
 
     const responsePayload = {
       service_number: meta?.trainReportingIdentity ?? "Unknown",
@@ -390,8 +412,10 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
         ? stops[index + 1].track
         : null;
 
+      const uniqueId = `bus-${uid}-${date}-${time.stop.atco_code ?? index}`;
+
       return {
-        id: index,
+        id: uniqueId,
         stop: {
           stop_code: time.stop.atco_code,
           name: time.stop.name,

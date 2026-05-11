@@ -156,3 +156,77 @@ export const syncBatch = action({
     }
   },
 });
+
+export const syncAllTrains = action({
+  args: {},
+  handler: async (ctx) => {
+    const res = await fetch("https://map-api.production.signalbox.io/api/locations");
+    if (!res.ok) {
+      console.error(`Signalbox fetch failed: ${res.status}`);
+      return;
+    }
+
+    const data = await res.json();
+    const allTrains: any[] = data.train_locations ?? [];
+    const rids = [
+      ...new Set(allTrains.map((t: any) => t.rid).filter(Boolean)),
+    ] as string[];
+
+    if (!rids.length) return;
+
+    // Check which RIDs we already have — parallel chunks
+    const CHUNK_SIZE = 50;
+    const chunks: string[][] = [];
+    for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
+      chunks.push(rids.slice(i, i + CHUNK_SIZE));
+    }
+
+    const existingMaps = await Promise.all(
+      chunks.map((chunk) =>
+        ctx.runQuery(api.functions.trains.getDetailsForRids, { rids: chunk })
+      )
+    );
+    const known = new Set(existingMaps.flatMap((m) => Object.keys(m)));
+    const missing = rids.filter((rid) => !known.has(rid));
+
+    if (!missing.length) return;
+
+    // Fetch missing in parallel batches
+    const PARALLEL = 10;
+    const validData: any[] = [];
+
+    for (let i = 0; i < missing.length; i += PARALLEL) {
+      const batch = missing.slice(i, i + PARALLEL);
+      const settled = await Promise.allSettled(
+        batch.map((rid) =>
+          fetch(`https://map-api.production.signalbox.io/api/train-information/${rid}`)
+        )
+      );
+
+      for (const result of settled) {
+        if (result.status === "rejected") continue;
+        if (result.value.status === 429) {
+          console.warn("Rate limited, stopping early");
+          // Save what we have so far, continue next cron tick
+          break;
+        }
+        if (result.value.ok) {
+          validData.push(await result.value.json());
+        }
+      }
+
+      if (i + PARALLEL < missing.length) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+
+    if (validData.length > 0) {
+      const SAVE_CHUNK = 100;
+      for (let i = 0; i < validData.length; i += SAVE_CHUNK) {
+        await ctx.runMutation(api.functions.trains.saveTrainDetailsBatch, {
+          trains: validData.slice(i, i + SAVE_CHUNK),
+        });
+      }
+    }
+  },
+});

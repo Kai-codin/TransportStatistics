@@ -182,15 +182,6 @@ export async function GET(request: Request) {
       // 4. Merge results
       results.forEach((data, index) => {
         Object.assign(cachedDetails, data);
-        
-        // Trigger sync for missing ones
-        //const chunk = chunks[index];
-        const missingRids = rids.filter((rid: string) => !data[rid]);
-        if (missingRids.length > 0) {
-          convex
-            .action(api.functions.trains.syncBatch, { rids: missingRids })
-            .catch((err) => console.error("Failed to sync:", err));
-        }
       });
     }
 

@@ -40,7 +40,7 @@ export default defineSchema({
     toc_code: v.string(),
     train_operator: v.string(),
     uid: v.string(),
-    destination_arrival: v.string(),
+    destination_arrival: v.union(v.string(), v.null()),
     destination_name: v.string(),
     destination_crs: v.string(),
     origin_departure: v.string(),
@@ -62,6 +62,7 @@ export default defineSchema({
     livery_id: v.string(),  
     search_text: v.optional(v.string()),
   })
+  .index("by_operator_id", ["operator_id"])
   .index("type_id", ["type_id"])
   .index("livery_id", ["livery_id"])
   .index("unit_reg", ["unit_reg"])
@@ -80,10 +81,12 @@ export default defineSchema({
   .index("by_type_name", ["type_name"]),
 
   operators: defineTable({
+    bustimes_id: v.optional(v.number()),
     operator_name: v.string(),
     operator_slug: v.string(),
     operator_code: v.string(),
   })
+  .index("by_bustimes_id", ["bustimes_id"])
   .index("by_operator_name", ["operator_name"])
   .index("by_operator_slug", ["operator_slug"])
   .index("by_operator_code", ["operator_code"]),

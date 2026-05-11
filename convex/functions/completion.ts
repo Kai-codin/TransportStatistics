@@ -35,12 +35,38 @@ export const getOperatorCompletionStats = query({
     let totalDistanceKm = 0;
     let totalMinutes = 0;
     let operatorName = args.operator_slug;
+    const uniqueRoutes = new Set<string>();
+    const uniqueVehicles = new Set<string>();
 
     if (operatorTrips.length > 0) {
       operatorName = operatorTrips[0].operator; // Grab the readable name from the first trip
     }
 
     for (const trip of operatorTrips) {
+      const serviceId = trip.bustimes_service_id?.toString();
+      const serviceNumber = trip.service_number ?? "Unknown";
+      const origin = trip.origin_name ?? "Unknown";
+      const destination = trip.destination_name ?? "Unknown";
+      const routeLabel = [origin, destination].sort().join(" ↔ ");
+      uniqueRoutes.add(serviceId ? `sid-${serviceId}` : `fallback-${serviceNumber}-${routeLabel}`);
+
+      const units: any[] = Array.isArray(trip.units) ? trip.units : [];
+      for (const unit of units) {
+        const unitNumber = unit?.unit_number ?? "";
+        const unitReg = unit?.unit_reg ?? "";
+        const vehicleKey = `${unitNumber}|${unitReg}`.trim();
+        if (vehicleKey !== "|") {
+          uniqueVehicles.add(vehicleKey);
+        }
+      }
+
+      if (units.length === 0) {
+        const fallbackVehicleKey = `${trip.unit_number ?? ""}|${trip.unit_reg ?? ""}`.trim();
+        if (fallbackVehicleKey !== "|") {
+          uniqueVehicles.add(fallbackVehicleKey);
+        }
+      }
+
       // 1. Calculate Distance
       const coords: [number, number][] = trip.ridden_route?.geometry?.coordinates
         ?? trip.full_route?.coordinates
@@ -65,6 +91,8 @@ export const getOperatorCompletionStats = query({
       totalTrips: operatorTrips.length,
       totalDistanceKm: Math.round(totalDistanceKm),
       totalMinutes: Math.round(totalMinutes),
+      uniqueRoutes: uniqueRoutes.size,
+      uniqueVehiclesRidden: uniqueVehicles.size,
     };
   },
 });

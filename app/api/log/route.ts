@@ -98,10 +98,13 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const type = searchParams.get('type') || 'train';
-  const uid = searchParams.get('uid'); 
-  const date = searchParams.get('date'); 
   const serviceRid = searchParams.get('service_rid');
+  const serviceId = searchParams.get('service_id');
+  const serviceUid = searchParams.get('service_uid');
+  const tripId = searchParams.get('trip_id');
+  const uid = searchParams.get('uid') ?? serviceUid ?? serviceId ?? tripId;
+  const date = searchParams.get('date') ?? searchParams.get('service_date'); 
+  const type = searchParams.get('type') || (serviceRid ? 'train' : (serviceId || tripId ? 'bus' : 'train'));
   const debug = searchParams.get('debug') === 'true';
   const showPass = searchParams.get('show_pass') === 'true';
 
@@ -413,9 +416,9 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
         : null;
 
       const uniqueId = `bus-${uid}-${date}-${time.stop.atco_code ?? index}`;
-
+    
       return {
-        id: uniqueId,
+        id:  hashStringToNumber(uniqueId),
         stop: {
           stop_code: time.stop.atco_code,
           name: time.stop.name,

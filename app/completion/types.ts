@@ -22,8 +22,13 @@ export interface Vehicle {
 }
 
 export interface OperatorStats {
-  uniqueVehiclesRidden: number;
-  totalVehicles: number;
+  operatorName: string;
+  totalTrips: number;
+  totalDistanceKm: number;
+  totalMinutes: number;
+  uniqueRoutes: number;
+  uniqueVehiclesRidden?: number;
+  totalVehicles?: number;
 }
 
 export interface TabProps {

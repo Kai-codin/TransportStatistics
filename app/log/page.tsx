@@ -6,7 +6,6 @@ import { useConvexAuth } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { LogMap } from '@/components/LogMap';
 import { SignInButton, useUser } from '@clerk/nextjs';
-import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   Bus,
@@ -353,8 +352,8 @@ function Field({
 
 export default function LogPage() {
   const [mounted, setMounted] = useState(false);
-
-  const searchParams = useSearchParams();
+  const [searchKey, setSearchKey] = useState('');
+  const [queryReady, setQueryReady] = useState(false);
   const { isSignedIn } = useUser();
   const { isAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
   const logTrip = useMutation(api.functions.trips.logTrip);
@@ -390,9 +389,12 @@ export default function LogPage() {
   const selectedStop = fullRoute.find((stop) => stop.id === selectedStopId) ?? null;
   const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId);
   const selectedUnit = units[selectedUnitIndex] ?? null;
-  const searchKey = searchParams.toString();
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    setSearchKey(window.location.search.startsWith('?') ? window.location.search.slice(1) : '');
+    setQueryReady(true);
+  }, []);
 
   useEffect(() => {
     if (unitSearch.trim().length < 2) {
@@ -432,6 +434,8 @@ export default function LogPage() {
   }, []);
 
   useEffect(() => {
+    if (!queryReady) return;
+
     let cancelled = false;
 
     async function loadTripData() {
@@ -506,7 +510,7 @@ export default function LogPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchKey]);
+  }, [queryReady, searchKey]);
 
   function updateServiceField<K extends keyof ServiceFormState>(field: K, value: ServiceFormState[K]) {
     setServiceForm((current) => ({

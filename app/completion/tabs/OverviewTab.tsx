@@ -3,39 +3,49 @@
 import type { TabProps } from "../types";
 
 export function OverviewTab({ operatorSlug, stats }: Pick<TabProps, "operatorSlug" | "stats">) {
-  const pct =
-    stats && stats.totalVehicles > 0
-      ? Math.round((stats.uniqueVehiclesRidden / stats.totalVehicles) * 100)
-      : 0;
+  const totalMinutes = stats?.totalMinutes ?? 0;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  const cards = [
+    {
+      label: "Total trips",
+      value: stats?.totalTrips ?? 0,
+    },
+    {
+      label: "Distance traveled",
+      value: `${(stats?.totalDistanceKm ?? 0).toLocaleString()} km`,
+    },
+    {
+      label: "Time spent",
+      value: `${hours}h ${String(minutes).padStart(2, "0")}m`,
+    },
+    {
+      label: "Unique routes",
+      value: stats?.uniqueRoutes ?? 0,
+    },
+    {
+      label: "Unique vehicles",
+      value: stats?.uniqueVehiclesRidden ?? 0,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Progress bar */}
-      <div className="bg-ts-surface border border-ts-border rounded-xl p-6">
-        <div className="flex items-end justify-between mb-3">
-          <div>
-            <p className="text-[10px] font-bold text-ts-text-3 uppercase tracking-widest mb-1">
-              Fleet Completion
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => (
+          <div
+            key={card.label}
+            className="rounded-2xl border border-[var(--color-ts-border-soft)] bg-[var(--color-ts-surface)] p-5 shadow-sm"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-ts-text-3)]">
+              {card.label}
             </p>
-            <p className="text-3xl font-black text-ts-text-1 leading-none">
-              {pct}
-              <span className="text-lg text-ts-text-3 font-bold">%</span>
+            <p className="mt-3 text-3xl font-black leading-none text-[var(--color-ts-text-1)] tabular-nums">
+              {card.value}
             </p>
           </div>
-          <p className="text-sm text-ts-text-3 font-medium pb-1">
-            {stats?.uniqueVehiclesRidden ?? 0} / {stats?.totalVehicles ?? 0} vehicles
-          </p>
-        </div>
-        <div className="h-2 w-full bg-ts-surface-3 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-ts-accent rounded-full transition-all duration-700"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="py-12 text-center text-ts-text-3 text-sm">
-        More overview stats coming soon
+        ))}
       </div>
     </div>
   );

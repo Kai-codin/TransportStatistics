@@ -12,12 +12,32 @@ export const getOperatorByCode = query({
   },
 });
 
+export const getOperatorsByCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("operators")
+      .withIndex("by_operator_code", (q) => q.eq("operator_code", args.code))
+      .collect();
+  },
+});
+
 export const getOperatorUnits = query({
   args: { operatorId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("units")
       .withIndex("by_operator_id", (q) => q.eq("operator_id", args.operatorId))
+      .collect();
+  },
+});
+
+export const getUserTripsByUser = query({
+  args: { user: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tripLogs")
+      .withIndex("by_user", (q) => q.eq("user", args.user))
       .collect();
   },
 });

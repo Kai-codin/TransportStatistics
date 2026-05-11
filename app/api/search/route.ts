@@ -4,8 +4,31 @@ import { api } from "@/convex/_generated/api";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+interface SearchResult {
+  id: string;
+  source: "train" | "bus";
+  unit_number: string;
+  unit_reg: string;
+  withdrawn?: boolean; // Optional, since trains don't have it
+  type: {
+    type_id: string;
+    type_name: string;
+  };
+  operator: {
+    operator_id: string | number;
+    operator_name: string;
+    operator_slug: string;
+    operator_code: string | number;
+  };
+  livery: {
+    livery_id: string;
+    livery_name: string;
+    livery_css: string;
+  };
+}
+
 // --- Train search ---
-async function searchTrains(q: string) {
+async function searchTrains(q: string): Promise<SearchResult[]> {
   const units = await convex.query(api.functions.trains.searchForUnits, {
     search: q,
   });
@@ -46,7 +69,7 @@ async function searchTrains(q: string) {
 }
 
 // --- Bus search ---
-async function searchBuses(q: string) {
+async function searchBuses(q: string): Promise<SearchResult[]> {
   const stripped = q.replace(/\s+/g, "");
   const res = await fetch(
     `https://bustimes.org/api/vehicles/?search=${encodeURIComponent(stripped)}`
@@ -109,11 +132,11 @@ export async function GET(request: Request) {
     results = [...trains, ...buses];
   }
 
-  return NextResponse.json(
-    results.sort((a, b) => {
-      const aWithdrawn = 'withdrawn' in a ? (a.withdrawn ? 1 : 0) : 0;
-      const bWithdrawn = 'withdrawn' in b ? (b.withdrawn ? 1 : 0) : 0;
-      return aWithdrawn - bWithdrawn;
-    })
-  );
+  const sortedResults = results.sort((a, b) => {
+    const aVal = a.withdrawn ? 1 : 0;
+    const bVal = b.withdrawn ? 1 : 0;
+    return aVal - bVal;
+  });
+
+  return NextResponse.json(sortedResults);
 }

@@ -1,4 +1,3 @@
-// app/api/vehicles/route.ts
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
@@ -79,14 +78,15 @@ export async function GET(req: NextRequest) {
   );
 
   const bustimesVehicles = rawBustimesVehicles.map((bv: any) => {
+    const bvNumber = String(bv.fleet_code ?? bv.fleet_number ?? "").toUpperCase();
+    const bvReg = String(bv.reg ?? "").toUpperCase();
+
     const vehicleTrips = relevantTrips.filter((trip: any) => {
       const tripUnits = Array.isArray(trip.units) ? trip.units : [];
 
       return tripUnits.some((tripUnit: any) => {
         const tripUnitNumber = String(tripUnit.unit_number ?? "").toUpperCase();
         const tripUnitReg = String(tripUnit.unit_reg ?? "").toUpperCase();
-        const bvNumber = String(bv.fleet_code ?? "").toUpperCase();
-        const bvReg = String(bv.reg ?? "").toUpperCase();
 
         return (
           (bvNumber && tripUnitNumber === bvNumber && bvReg && tripUnitReg === bvReg) ||
@@ -97,10 +97,11 @@ export async function GET(req: NextRequest) {
     });
 
     const prevLiveryTrip = vehicleTrips.find((trip: any) => {
-      const matchingUnit = (Array.isArray(trip.units) ? trip.units : []).find((tripUnit: any) =>
-        String(tripUnit.unit_reg ?? "").toUpperCase() === String(bv.reg ?? "").toUpperCase() ||
-        String(tripUnit.unit_number ?? "").toUpperCase() === String(bv.fleet_code ?? "").toUpperCase()
-      );
+      const matchingUnit = (Array.isArray(trip.units) ? trip.units : []).find((tripUnit: any) => {
+        const tripUnitNumber = String(tripUnit.unit_number ?? "").toUpperCase();
+        const tripUnitReg = String(tripUnit.unit_reg ?? "").toUpperCase();
+        return tripUnitNumber === bvNumber || tripUnitReg === bvReg;
+      });
 
       if (!matchingUnit) return false;
 
@@ -109,10 +110,11 @@ export async function GET(req: NextRequest) {
       return matchingUnit.livery !== currentBTName || matchingUnit.livery_left !== currentBTCss;
     });
 
-    const prevUnitData = prevLiveryTrip?.units?.find((tripUnit: any) =>
-      String(tripUnit.unit_reg ?? "").toUpperCase() === String(bv.reg ?? "").toUpperCase() ||
-      String(tripUnit.unit_number ?? "").toUpperCase() === String(bv.fleet_code ?? "").toUpperCase()
-    );
+    const prevUnitData = prevLiveryTrip?.units?.find((tripUnit: any) => {
+      const tripUnitNumber = String(tripUnit.unit_number ?? "").toUpperCase();
+      const tripUnitReg = String(tripUnit.unit_reg ?? "").toUpperCase();
+      return tripUnitNumber === bvNumber || tripUnitReg === bvReg;
+    });
 
     return {
       "bt-id": bv.id,
@@ -140,11 +142,11 @@ export async function GET(req: NextRequest) {
   });
 
   const customVehicles = units.map((unit: any) => {
+    const unitNumber = String(unit.unit_number ?? "").toUpperCase();
+    const unitReg = String(unit.unit_reg ?? "").toUpperCase();
+
     const matchingTrips = relevantTrips.filter((trip: any) => {
       const tripUnits = Array.isArray(trip.units) ? trip.units : [];
-      const unitNumber = String(unit.unit_number ?? "").toUpperCase();
-      const unitReg = String(unit.unit_reg ?? "").toUpperCase();
-
       return tripUnits.some((tripUnit: any) => {
         const tripUnitNumber = String(tripUnit.unit_number ?? "").toUpperCase();
         const tripUnitReg = String(tripUnit.unit_reg ?? "").toUpperCase();
@@ -157,18 +159,27 @@ export async function GET(req: NextRequest) {
     });
 
     const currentType = typeMap.get(unit.type_id);
-  const finalVehicles = [...bustimesVehicles, ...customVehicles].filter((vehicle, index, array) => {
-    const vehicleKey = buildVehicleKey(String(vehicle.unit_number ?? ""), String(vehicle.reg ?? ""));
-    return array.findIndex((candidate) =>
-      buildVehicleKey(String(candidate.unit_number ?? ""), String(candidate.reg ?? "")) === vehicleKey
-    ) === index;
-  });
+    const currentLivery = liveryMap.get(unit.livery_id);
+
+    const prevLiveryTrip = matchingTrips.find((trip: any) => {
       const matchingUnit = (Array.isArray(trip.units) ? trip.units : []).find((tripUnit: any) => {
-  finalVehicles.sort(sortVehicles);
+        const tripUnitNumber = String(tripUnit.unit_number ?? "").toUpperCase();
+        const tripUnitReg = String(tripUnit.unit_reg ?? "").toUpperCase();
+        return tripUnitNumber === unitNumber || tripUnitReg === unitReg;
+      });
+
+      if (!matchingUnit) return false;
+
+      const currentName = currentLivery?.livery_name || "Unknown";
+      const currentCss = currentLivery?.css_class || "";
       return matchingUnit.livery !== currentName || matchingUnit.livery_left !== currentCss;
     });
 
-    const prevUnitData = prevLiveryTrip?.units?.find((tripUnit: any) => buildVehicleKey(tripUnit) === buildVehicleKey(unit));
+    const prevUnitData = prevLiveryTrip?.units?.find((tripUnit: any) => {
+      const tripUnitNumber = String(tripUnit.unit_number ?? "").toUpperCase();
+      const tripUnitReg = String(tripUnit.unit_reg ?? "").toUpperCase();
+      return tripUnitNumber === unitNumber || tripUnitReg === unitReg;
+    });
 
     return {
       "bt-id": unit._id,
@@ -193,19 +204,14 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  finalVehicles.sort((a, b) => {
-    const aNum = parseInt(a.unit_number, 10);
-    const bNum = parseInt(b.unit_number, 10);
-
-    if (!isNaN(aNum) && !isNaN(bNum) && aNum !== bNum) {
-      return aNum - bNum;
-    }
-
-    return String(a.unit_number).localeCompare(String(b.unit_number), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+  const mergedVehicles = [...bustimesVehicles, ...customVehicles].filter((vehicle, index, array) => {
+    const vehicleKey = buildVehicleKey(String(vehicle.unit_number ?? ""), String(vehicle.reg ?? ""));
+    return array.findIndex((candidate) =>
+      buildVehicleKey(String(candidate.unit_number ?? ""), String(candidate.reg ?? "")) === vehicleKey
+    ) === index;
   });
 
-  return NextResponse.json(finalVehicles);
+  mergedVehicles.sort(sortVehicles);
+
+  return NextResponse.json(mergedVehicles);
 }

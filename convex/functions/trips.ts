@@ -53,6 +53,39 @@ export const getMyTrips = query({
   },
 });
 
+function getDateBounds(dateKey: string) {
+  const start = new Date(`${dateKey}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+export const getMyTripsByDate = query({
+  args: {
+    user: v.string(),
+    date: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.date === 'all') {
+      return await ctx.db
+        .query("tripLogs")
+        .withIndex("by_service_date", (q) => q.eq("user", args.user))
+        .order("desc")
+        .collect();
+    }
+
+    const { start, end } = getDateBounds(args.date);
+
+    return await ctx.db
+      .query("tripLogs")
+      .withIndex("by_service_date", (q) =>
+        q.eq("user", args.user).gte("service_date", start).lt("service_date", end)
+      )
+      .order("desc")
+      .collect();
+  },
+});
+
 export const logTrip = mutation({
   args: tripLogArgs,
   handler: async (ctx, args) => {

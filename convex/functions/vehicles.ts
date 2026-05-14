@@ -1,6 +1,7 @@
 // convex/vehicles.ts
 import { v } from "convex/values";
 import { query } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 
 export const getOperatorByCode = query({
   args: { code: v.string() },
@@ -32,6 +33,25 @@ export const getOperatorUnits = query({
   },
 });
 
+export const getHistoricalRoutesByOperatorIds = query({
+  args: { operatorIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<Doc<"historicalRoutes">[]> => {
+    const uniqueOperatorIds = [...new Set(args.operatorIds)];
+    const routes: Doc<"historicalRoutes">[] = [];
+
+    for (const operatorId of uniqueOperatorIds) {
+      const operatorRoutes = await ctx.db
+        .query("historicalRoutes")
+        .withIndex("by_operator_id", (q) => q.eq("operator_id", operatorId))
+        .collect();
+
+      routes.push(...operatorRoutes);
+    }
+
+    return routes;
+  },
+});
+
 export const getUserTripsByUser = query({
   args: { user: v.string() },
   handler: async (ctx, args) => {
@@ -50,5 +70,23 @@ export const getUserTripsByOperator = query({
       .withIndex("by_user", (q) => q.eq("user", args.user))
       .filter((q) => q.eq(q.field("operator"), args.operatorName))
       .collect();
+  },
+});
+
+export const getUserTripsByOperators = query({
+  args: { user: v.string(), operatorNames: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const uniqueNames = [...new Set(args.operatorNames)];
+    const tripGroups = await Promise.all(
+      uniqueNames.map((operatorName) =>
+        ctx.db
+          .query("tripLogs")
+          .withIndex("by_user_and_operator", (q) =>
+            q.eq("user", args.user).eq("operator", operatorName)
+          )
+          .collect()
+      )
+    );
+    return tripGroups.flat();
   },
 });

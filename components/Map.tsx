@@ -68,6 +68,18 @@ export const Map = forwardRef<MapHandle, {}>((_props, ref) => {
       mapInstance.current = map;
       setMapLoaded(true);
 
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: false, showZoom: true })
+      );
+      map.addControl(
+        new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+          showUserLocation: true,
+        }),
+        'top-right'
+      );
+
       // Layers setup
       map.addSource('vehicles-source', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'vehicles-layer', type: 'circle', source: 'vehicles-source', paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'] }, layout: { visibility: 'none' } });

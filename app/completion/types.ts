@@ -21,6 +21,19 @@ export interface Vehicle {
   };
 }
 
+export interface RouteInfo {
+  "bt-id"?: string | number;
+  bustimes_id?: number;
+  bustimes_slug?: string;
+  service_number: string;
+  route_name: string;
+  inbound_destination?: string;
+  outbound_destination?: string;
+  withdrawn: boolean;
+  ridden: boolean;
+  times_ridden: number;
+}
+
 export interface OperatorStats {
   operatorName: string;
   totalTrips: number;

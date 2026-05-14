@@ -91,6 +91,18 @@ export default defineSchema({
   .index("by_operator_slug", ["operator_slug"])
   .index("by_operator_code", ["operator_code"]),
 
+  historicalRoutes: defineTable({
+    bustimes_service_id: v.optional(v.number()),
+    bustimes_service_slug: v.optional(v.string()),
+    service_number: v.string(),
+    operator_id: v.string(),
+    inbound_destination: v.string(),
+    outbound_destination: v.string(),
+  })
+  .index("by_bustimes_service_id", ["bustimes_service_id"])
+  .index("by_operator_id", ["operator_id"])
+  .index("by_service_number", ["service_number"]),
+
   tripLogs: defineTable({
     user: v.string(),
     on_trip_with: v.array(v.string()),
@@ -131,5 +143,6 @@ export default defineSchema({
     notes: v.optional(v.string()),
   })
     .index("by_user", ["user"])
+    .index("by_user_and_operator", ["user", "operator"])
     .index("by_service_date", ["user", "service_date"]),
 });

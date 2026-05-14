@@ -7,22 +7,14 @@ import { FleetRow } from "./FleetRow";
 export function FleetTab({ operatorCode }: Pick<TabProps, "operatorCode">) {
   const [showWithdrawn, setShowWithdrawn] = useState(false);
   const [fleet, setFleet] = useState<Vehicle[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(Boolean(operatorCode));
 
   useEffect(() => {
     if (!operatorCode || fleet.length > 0) return;
-    setIsLoading(true);
     fetch(`/api/vehicles?code=${operatorCode}`)
       .then((res) => res.json())
       .then((data) => {
-        const sorted = (Array.isArray(data) ? data : []).sort((a: Vehicle, b: Vehicle) => {
-          const aNum = parseInt(a.unit_number, 10);
-          const bNum = parseInt(b.unit_number, 10);
-          return !isNaN(aNum) && !isNaN(bNum)
-            ? aNum - bNum
-            : a.unit_number.localeCompare(b.unit_number);
-        });
-        setFleet(sorted);
+        setFleet(Array.isArray(data) ? data : []);
       })
       .finally(() => setIsLoading(false));
   }, [operatorCode, fleet.length]);
@@ -47,7 +39,6 @@ export function FleetTab({ operatorCode }: Pick<TabProps, "operatorCode">) {
 
   // Static counts for the summary cards (optional: if you want the cards to stay static, keep these)
   const withdrawnTotal = fleet.filter((v) => v.withdrawn).length;
-  const activeTotal = fleet.filter((v) => !v.withdrawn).length;
 
   return (
     <div className="space-y-5">

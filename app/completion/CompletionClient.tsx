@@ -141,8 +141,8 @@ function OperatorDetail({ operatorSlug, operatorName, operatorCode }: { operator
 
   const stats = useQuery(
     api.functions.completion.getOperatorCompletionStats,
-    isLoaded && user && operatorSlug
-      ? { user: user.id, operator_slug: operatorSlug }
+    isLoaded && user && operatorName && activeTab === "overview"
+      ? { user: user.id, operator_name: operatorName }
       : "skip"
   );
 
@@ -192,7 +192,7 @@ function OperatorDetail({ operatorSlug, operatorName, operatorCode }: { operator
         <OverviewTab operatorSlug={operatorSlug} stats={stats ?? undefined} />
       )}
       {activeTab === "fleet" && <FleetTab operatorCode={operatorCode} />}
-      {activeTab === "routes" && <RoutesTab operatorSlug={operatorSlug} />}
+      {activeTab === "routes" && <RoutesTab operatorCode={operatorCode} />}
     </div>
   );
 }

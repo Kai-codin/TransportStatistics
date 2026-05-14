@@ -21,61 +21,55 @@ function formatDate(timestamp: number): string {
 }
 
 export const getOperatorCompletionStats = query({
-  args: { user: v.string(), operator_slug: v.string() },
+  args: { user: v.string(), operator_name: v.string() },
   handler: async (ctx, args) => {
-    // Fetch all trips for the user
-    const allTrips = await ctx.db
+    const operatorTrips = await ctx.db
       .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.user))
+      .withIndex("by_user_and_operator", (q) =>
+        q.eq("user", args.user).eq("operator", args.operator_name)
+      )
       .collect();
-
-    // Filter down to the specific operator
-    const operatorTrips = allTrips.filter(t => t.operator_slug === args.operator_slug);
 
     let totalDistanceKm = 0;
     let totalMinutes = 0;
-    let operatorName = args.operator_slug;
     const uniqueRoutes = new Set<string>();
     const uniqueVehicles = new Set<string>();
 
-    if (operatorTrips.length > 0) {
-      operatorName = operatorTrips[0].operator; // Grab the readable name from the first trip
-    }
-
     for (const trip of operatorTrips) {
+      // Routes
       const serviceId = trip.bustimes_service_id?.toString();
       const serviceNumber = trip.service_number ?? "Unknown";
       const origin = trip.origin_name ?? "Unknown";
       const destination = trip.destination_name ?? "Unknown";
       const routeLabel = [origin, destination].sort().join(" ↔ ");
-      uniqueRoutes.add(serviceId ? `sid-${serviceId}` : `fallback-${serviceNumber}-${routeLabel}`);
+      uniqueRoutes.add(
+        serviceId
+          ? `sid-${serviceId}`
+          : `fallback-${serviceNumber}-${routeLabel}`
+      );
 
+      // Vehicles
       const units: any[] = Array.isArray(trip.units) ? trip.units : [];
-      for (const unit of units) {
-        const unitNumber = unit?.unit_number ?? "";
-        const unitReg = unit?.unit_reg ?? "";
-        const vehicleKey = `${unitNumber}|${unitReg}`.trim();
-        if (vehicleKey !== "|") {
-          uniqueVehicles.add(vehicleKey);
+      if (units.length > 0) {
+        for (const unit of units) {
+          const vehicleKey = `${unit?.unit_number ?? ""}|${unit?.unit_reg ?? ""}`.trim();
+          if (vehicleKey !== "|") uniqueVehicles.add(vehicleKey);
         }
+      } else {
+        const fallbackKey = `${trip.unit_number ?? ""}|${trip.unit_reg ?? ""}`.trim();
+        if (fallbackKey !== "|") uniqueVehicles.add(fallbackKey);
       }
 
-      if (units.length === 0) {
-        const fallbackVehicleKey = `${trip.unit_number ?? ""}|${trip.unit_reg ?? ""}`.trim();
-        if (fallbackVehicleKey !== "|") {
-          uniqueVehicles.add(fallbackVehicleKey);
-        }
-      }
-
-      // 1. Calculate Distance
-      const coords: [number, number][] = trip.ridden_route?.geometry?.coordinates
-        ?? trip.full_route?.coordinates
-        ?? [];
+      // Distance
+      const coords: [number, number][] =
+        trip.ridden_route?.geometry?.coordinates ??
+        trip.full_route?.coordinates ??
+        [];
       for (let i = 1; i < coords.length; i++) {
         totalDistanceKm += haversineKm(coords[i - 1], coords[i]);
       }
 
-      // 2. Calculate Time spent
+      // Time
       const dep = trip.actual_departure ?? trip.scheduled_departure;
       const arr = trip.actual_arrival ?? trip.scheduled_arrival;
       if (dep && arr) {
@@ -87,7 +81,7 @@ export const getOperatorCompletionStats = query({
     }
 
     return {
-      operatorName,
+      operatorName: args.operator_name,
       totalTrips: operatorTrips.length,
       totalDistanceKm: Math.round(totalDistanceKm),
       totalMinutes: Math.round(totalMinutes),

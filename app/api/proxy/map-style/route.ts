@@ -50,7 +50,13 @@ export async function GET() {
   try {
     const response = await fetch(PRIMARY_STYLE_URL, {
       signal: controller.signal,
-      cache: 'no-store'
+      cache: 'no-store',
+      headers: {
+        'Origin': 'https://dev.transportstatistics.com',
+        'Referer': 'https://dev.transportstatistics.com/',
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json, text/plain, */*'
+      }
     });
 
     if (!response.ok) throw new Error(`Primary style returned non-200 status: ${response.status}`);

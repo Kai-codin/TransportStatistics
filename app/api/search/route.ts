@@ -56,9 +56,10 @@ async function searchTrains(q: string): Promise<SearchResult[]> {
     },
     operator: {
       operator_id: unit.operator_id,
-      operator_name: operatorsMap[unit.operator_id]?.operator_name ?? "",
-      operator_slug: operatorsMap[unit.operator_id]?.operator_slug ?? "",
-      operator_code: operatorsMap[unit.operator_id]?.operator_code ?? "",
+      operator_name: operatorsMap[unit.operator_id]?.display_name ?? "",
+      // Grab the first element of the array, or fall back to an empty string
+      operator_slug: operatorsMap[unit.operator_id]?.operator_slugs?.[0] ?? "", 
+      operator_code: operatorsMap[unit.operator_id]?.operator_codes?.[0] ?? "",
     },
     livery: {
       livery_id: unit.livery_id,

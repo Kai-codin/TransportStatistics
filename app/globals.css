@@ -188,3 +188,8 @@ body {
 .custom-popup .maplibregl-popup-tip {
   border-top-color: #111827;
 }
+
+.maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

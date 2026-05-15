@@ -53,7 +53,12 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
 ) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
+  const onStopClickRef = useRef(onStopClick);
   const [mapLoaded, setMapLoaded] = useState(false);
+
+  useEffect(() => {
+    onStopClickRef.current = onStopClick;
+  }, [onStopClick]);
 
   useEffect(() => {
     if (!mapContainer.current || mapInstance.current) return;
@@ -61,8 +66,9 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: '/api/proxy/map-style',
-      center: [-1.5, 52.5],
-      zoom: 6,
+      center: [-1.47, 53.38],
+      zoom: 12,
+      attributionControl: false,
     });
 
     map.on('load', () => {
@@ -133,12 +139,12 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
         const feature = event.features?.[0];
         const value = feature?.properties?.id;
         if (typeof value === 'number') {
-          onStopClick(value);
+          onStopClickRef.current(value);
           return;
         }
         if (typeof value === 'string') {
           const parsed = Number(value);
-          if (!Number.isNaN(parsed)) onStopClick(parsed);
+          if (!Number.isNaN(parsed)) onStopClickRef.current(parsed);
         }
       });
 
@@ -156,7 +162,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
       map.remove();
       mapInstance.current = null;
     };
-  }, [onStopClick]);
+  }, []);
 
   // Effect 1: update data only (no fitBounds)
   useEffect(() => {
@@ -237,8 +243,8 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
   }), []);
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-[20px] border border-ts-border-soft bg-ts-surface">
-      <div ref={mapContainer} className="h-full w-full" />
+  <div className="relative h-full w-full overflow-hidden bg-ts-surface">
+    <div ref={mapContainer} className="h-full w-full" />
       {!mapLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-ts-surface text-sm text-ts-text-2">
           Initializing map...

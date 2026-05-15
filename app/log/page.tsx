@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Bus,
   CheckCircle2,
-  List,
   LoaderCircle,
   Map,
   NotebookText,
@@ -19,6 +18,8 @@ import {
   Save,
   TramFront,
   TrainFront,
+  X,
+  GripVertical,
 } from 'lucide-react';
 
 type TabKey = 'Route' | 'Vehicle' | 'Service' | 'Notes';
@@ -203,48 +204,29 @@ function dedupeCoordinates(coordinates: [number, number][]) {
 
 function buildFullGeometry(fullRoute: RouteStop[], geometry?: RouteGeometry | null) {
   if (geometry?.coordinates?.length) return geometry;
-
   const coordinates: [number, number][] = [];
-
   fullRoute.forEach((stop) => {
-    if (Array.isArray(stop.track) && stop.track.length > 0) {
-      coordinates.push(...stop.track);
-      return;
-    }
-    if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) {
-      coordinates.push(stop.stop.location);
-    }
+    if (Array.isArray(stop.track) && stop.track.length > 0) { coordinates.push(...stop.track); return; }
+    if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) coordinates.push(stop.stop.location);
   });
-
   const deduped = dedupeCoordinates(coordinates);
   return deduped.length > 0 ? { type: 'LineString' as const, coordinates: deduped } : null;
 }
 
 function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toStopId: number | null): RiddenRoute | null {
   if (fromStopId === null || toStopId === null || fromStopId === toStopId) return null;
-
-  const fromIndex = fullRoute.findIndex((stop) => stop.id === fromStopId);
-  const toIndex = fullRoute.findIndex((stop) => stop.id === toStopId);
-
+  const fromIndex = fullRoute.findIndex((s) => s.id === fromStopId);
+  const toIndex = fullRoute.findIndex((s) => s.id === toStopId);
   if (fromIndex === -1 || toIndex === -1 || fromIndex > toIndex) return null;
-
   const stops = fullRoute.slice(fromIndex, toIndex + 1);
   const coordinates = dedupeCoordinates(
     stops.flatMap((stop, index) => {
-      const isLastStop = index === stops.length - 1;
-
-      // Don't include the last stop's track — it leads to the *next* stop beyond the selection
-      if (!isLastStop && Array.isArray(stop.track) && stop.track.length > 0) {
-        return stop.track;
-      }
-      // For the last stop, just pin its location
-      if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) {
-        return [stop.stop.location];
-      }
+      const isLast = index === stops.length - 1;
+      if (!isLast && Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
+      if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) return [stop.stop.location];
       return [];
     }),
   );
-
   return {
     from_stop_id: fromStopId,
     to_stop_id: toStopId,
@@ -255,21 +237,10 @@ function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toS
   };
 }
 
-function getStartScheduledTime(stop?: RouteStop) {
-  return toTimeInputValue(stop?.scheduled_departure || stop?.scheduled_arrival);
-}
-
-function getStartActualTime(stop?: RouteStop) {
-  return toTimeInputValue(stop?.actual_departure || stop?.actual_arrival);
-}
-
-function getEndScheduledTime(stop?: RouteStop) {
-  return toTimeInputValue(stop?.scheduled_arrival || stop?.scheduled_departure);
-}
-
-function getEndActualTime(stop?: RouteStop) {
-  return toTimeInputValue(stop?.actual_arrival || stop?.actual_departure);
-}
+function getStartScheduledTime(stop?: RouteStop) { return toTimeInputValue(stop?.scheduled_departure || stop?.scheduled_arrival); }
+function getStartActualTime(stop?: RouteStop) { return toTimeInputValue(stop?.actual_departure || stop?.actual_arrival); }
+function getEndScheduledTime(stop?: RouteStop) { return toTimeInputValue(stop?.scheduled_arrival || stop?.scheduled_departure); }
+function getEndActualTime(stop?: RouteStop) { return toTimeInputValue(stop?.actual_arrival || stop?.actual_departure); }
 
 function mapVehicleModeToTransportType(mode: VehicleMode): StoredTransportType {
   if (mode === 'Train') return 'Rail';
@@ -279,76 +250,72 @@ function mapVehicleModeToTransportType(mode: VehicleMode): StoredTransportType {
 }
 
 function serializeJson(value: unknown) {
-  try {
-    return JSON.stringify(value ?? null);
-  } catch {
-    return 'null';
-  }
+  try { return JSON.stringify(value ?? null); } catch { return 'null'; }
 }
 
 function resolveRequest(searchParams: URLSearchParams): RequestResolution {
   const serviceUid = searchParams.get('service_uid');
   if (serviceUid) {
     const parts = serviceUid.split(':');
-    if (parts.length < 3) {
-      throw new Error('Expected `service_uid` in the format `gb-nr:UID:YYYY-MM-DD`.');
-    }
-    const uid = parts[1];
-    const date = parts[2];
-    return {
-      url: `/api/log?date=${encodeURIComponent(date)}&type=train&uid=${encodeURIComponent(uid)}`,
-      vehicleMode: 'Train',
-      date,
-      label: `Train ${uid} on ${date}`,
-    };
+    if (parts.length < 3) throw new Error('Expected `service_uid` in the format `gb-nr:UID:YYYY-MM-DD`.');
+    const uid = parts[1]; const date = parts[2];
+    return { url: `/api/log?date=${encodeURIComponent(date)}&type=train&uid=${encodeURIComponent(uid)}`, vehicleMode: 'Train', date, label: `Train ${uid} on ${date}` };
   }
-
   const serviceId = searchParams.get('service_id');
   const date = searchParams.get('date');
   if (serviceId && date) {
-    return {
-      url: `/api/log?date=${encodeURIComponent(date)}&type=bus&uid=${encodeURIComponent(serviceId)}`,
-      vehicleMode: 'Bus',
-      date,
-      label: `Bus ${serviceId} on ${date}`,
-    };
+    return { url: `/api/log?date=${encodeURIComponent(date)}&type=bus&uid=${encodeURIComponent(serviceId)}`, vehicleMode: 'Bus', date, label: `Bus ${serviceId} on ${date}` };
   }
-
   const serviceRid = searchParams.get('service_rid');
   if (serviceRid) {
-    return {
-      url: `/api/log?service_rid=${encodeURIComponent(serviceRid)}`,
-      vehicleMode: 'Train',
-      date: '',
-      label: `Train RID ${serviceRid}`,
-    };
+    return { url: `/api/log?service_rid=${encodeURIComponent(serviceRid)}`, vehicleMode: 'Train', date: '', label: `Train RID ${serviceRid}` };
   }
-
   throw new Error('Missing query parameters. Use `service_uid`, `service_id` with `date`, or `service_rid`.');
 }
 
-function textInputClassName() {
-  return 'h-11 rounded-xl border border-ts-border bg-ts-surface-2 px-3 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20';
+// ─── UI helpers ─────────────────────────────────────────────────────────────
+
+function inputCls() {
+  return 'h-12 w-full rounded-2xl border border-ts-border bg-ts-surface-2 px-4 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20 placeholder:text-ts-text-3';
 }
 
-function sectionClassName() {
-  return 'rounded-[20px] border border-ts-border bg-ts-surface p-4 md:p-5';
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-2">
-      <span className="text-xs font-medium uppercase tracking-[0.12em] text-ts-text-3">{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</span>
       {children}
     </label>
   );
 }
+
+function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-3xl border border-ts-border bg-ts-surface p-4 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function SegmentedControl({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="inline-flex rounded-full border border-ts-border bg-ts-surface-2 p-1 gap-0.5">
+      {options.map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => onChange(opt)}
+          className={`rounded-full px-4 py-2 text-sm font-semibold transition active:scale-95 ${
+            value === opt ? 'bg-ts-accent text-ts-text-inv shadow-md shadow-ts-accent/20' : 'text-ts-text-3 hover:text-ts-text-1'
+          }`}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function LogPage() {
   const [mounted, setMounted] = useState(false);
@@ -374,19 +341,18 @@ export default function LogPage() {
   const [fromStopId, setFromStopId] = useState<number | null>(null);
   const [toStopId, setToStopId] = useState<number | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<number | null>(null);
+  const [stopSheetOpen, setStopSheetOpen] = useState(false);
   const [units, setUnits] = useState<TripUnit[]>([]);
   const [selectedUnitIndex, setSelectedUnitIndex] = useState(0);
-
   const [unitSearch, setUnitSearch] = useState('');
   const [unitSearchResults, setUnitSearchResults] = useState<SearchResult[]>([]);
   const [unitSearchLoading, setUnitSearchLoading] = useState(false);
   const [unitSearchOpen, setUnitSearchOpen] = useState(false);
   const unitSearchRef = useRef<HTMLDivElement>(null);
-
   const [draggedUnitIndex, setDraggedUnitIndex] = useState<number | null>(null);
   const [dragOverUnitIndex, setDragOverUnitIndex] = useState<number | null>(null);
 
-  const selectedStop = fullRoute.find((stop) => stop.id === selectedStopId) ?? null;
+  const selectedStop = fullRoute.find((s) => s.id === selectedStopId) ?? null;
   const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId);
   const selectedUnit = units[selectedUnitIndex] ?? null;
 
@@ -397,13 +363,8 @@ export default function LogPage() {
   }, []);
 
   useEffect(() => {
-    if (unitSearch.trim().length < 2) {
-      setUnitSearchResults([]);
-      setUnitSearchOpen(false);
-      return;
-    }
-
-    const timeout = setTimeout(async () => {
+    if (unitSearch.trim().length < 2) { setUnitSearchResults([]); setUnitSearchOpen(false); return; }
+    const t = setTimeout(async () => {
       setUnitSearchLoading(true);
       try {
         const type = vehicleMode === 'Train' ? 'train' : vehicleMode === 'Bus' ? 'bus' : '';
@@ -413,63 +374,40 @@ export default function LogPage() {
         const data: SearchResult[] = await res.json();
         setUnitSearchResults(data);
         setUnitSearchOpen(data.length > 0);
-      } catch {
-        setUnitSearchResults([]);
-      } finally {
-        setUnitSearchLoading(false);
-      }
+      } catch { setUnitSearchResults([]); }
+      finally { setUnitSearchLoading(false); }
     }, 350);
-
-    return () => clearTimeout(timeout);
+    return () => clearTimeout(t);
   }, [unitSearch, vehicleMode]);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (unitSearchRef.current && !unitSearchRef.current.contains(e.target as Node)) {
-        setUnitSearchOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const fn = (e: MouseEvent) => {
+      if (unitSearchRef.current && !unitSearchRef.current.contains(e.target as Node)) setUnitSearchOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
   }, []);
 
   useEffect(() => {
     if (!queryReady) return;
-
     let cancelled = false;
-
-    async function loadTripData() {
+    async function load() {
       try {
-        setLoading(true);
-        setLoadError('');
-        setSaveError('');
-        setSaveSuccess('');
-
-        const resolution = resolveRequest(new URLSearchParams(searchKey));
+        setLoading(true); setLoadError(''); setSaveError(''); setSaveSuccess('');
+        const res = resolveRequest(new URLSearchParams(searchKey));
         if (cancelled) return;
-
-        setVehicleMode(resolution.vehicleMode);
-        setSourceLabel(resolution.label);
-
-        const response = await fetch(resolution.url, { cache: 'no-store' });
+        setVehicleMode(res.vehicleMode);
+        setSourceLabel(res.label);
+        const response = await fetch(res.url, { cache: 'no-store' });
         const payload = (await response.json()) as ApiLogResponse;
-
-        if (!response.ok) {
-          throw new Error(payload.details || payload.message || payload.error || 'Failed to load service details.');
-        }
-
+        if (!response.ok) throw new Error(payload.details || payload.message || payload.error || 'Failed to load.');
         const route = Array.isArray(payload.full_route) ? payload.full_route : [];
         const resolvedGeometry = buildFullGeometry(route, payload.full_route_geometry);
         const initialUnits = payload.unit ? [normalizeUnit(payload.unit)] : [];
-        const firstStop = route[0];
-        const lastStop = route[route.length - 1];
-
+        const firstStop = route[0]; const lastStop = route[route.length - 1];
         if (cancelled) return;
-
-        setFullRoute(route);
-        setFullGeometry(resolvedGeometry);
-        setUnits(initialUnits);
-        setSelectedUnitIndex(0);
+        setFullRoute(route); setFullGeometry(resolvedGeometry);
+        setUnits(initialUnits); setSelectedUnitIndex(0);
         setSelectedStopId(firstStop?.id ?? null);
         setFromStopId(route.length > 1 ? firstStop?.id ?? null : null);
         setToStopId(route.length > 1 ? lastStop?.id ?? null : null);
@@ -478,7 +416,7 @@ export default function LogPage() {
           service_number: safeString(payload.service_number),
           operator: safeString(payload.operator),
           operator_slug: safeString(payload.operator_slug),
-          service_date: toDateInputValue(payload.service_date, resolution.date),
+          service_date: toDateInputValue(payload.service_date, res.date),
           origin_name: safeString(payload.origin_name),
           origin_stop_code: safeString(payload.origin_stop_code),
           destination_name: safeString(payload.destination_name),
@@ -490,254 +428,132 @@ export default function LogPage() {
           bustimes_service_id: payload.bustimes_service_id ? String(payload.bustimes_service_id) : '',
           bustimes_service_slug: safeString(payload.bustimes_service_slug),
         });
-      } catch (error) {
+      } catch (err) {
         if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : 'Unable to load this service.');
-          setFullRoute([]);
-          setFullGeometry(null);
-          setUnits([]);
-          setServiceForm(EMPTY_SERVICE_FORM);
+          setLoadError(err instanceof Error ? err.message : 'Unable to load this service.');
+          setFullRoute([]); setFullGeometry(null); setUnits([]); setServiceForm(EMPTY_SERVICE_FORM);
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+      } finally { if (!cancelled) setLoading(false); }
     }
-
-    void loadTripData();
-
-    return () => {
-      cancelled = true;
-    };
+    void load();
+    return () => { cancelled = true; };
   }, [queryReady, searchKey]);
 
   function updateServiceField<K extends keyof ServiceFormState>(field: K, value: ServiceFormState[K]) {
-    setServiceForm((current) => ({
-      ...current,
-      [field]: value,
+    setServiceForm((c) => ({ ...c, [field]: value }));
+  }
+
+  function syncFormFromRoute(route: RouteStop[], nextFrom: number | null, nextTo: number | null) {
+    const rr = buildRiddenRoute(route, nextFrom, nextTo);
+    if (!rr) return;
+    const first = rr.stops[0]; const last = rr.stops[rr.stops.length - 1];
+    setServiceForm((c) => ({
+      ...c,
+      origin_name: safeString(first?.stop.name),
+      origin_stop_code: safeString(first?.stop.stop_code),
+      destination_name: safeString(last?.stop.name),
+      destination_stop_code: safeString(last?.stop.stop_code),
+      scheduled_departure: getStartScheduledTime(first),
+      actual_departure: getStartActualTime(first),
+      scheduled_arrival: getEndScheduledTime(last),
+      actual_arrival: getEndActualTime(last),
     }));
   }
 
   function selectSearchResult(result: SearchResult) {
-    const filled: TripUnit = {
-      unit_number: result.unit_number,
-      unit_reg: result.unit_reg,
-      unit_type: result.type.type_name,
-      livery: result.livery.livery_name,
-      livery_left: result.livery.livery_css,
-    };
-
-    setUnits((current) => {
-      // Bus: always replace the current slot (only one unit for a bus)
+    const filled: TripUnit = { unit_number: result.unit_number, unit_reg: result.unit_reg, unit_type: result.type.type_name, livery: result.livery.livery_name, livery_left: result.livery.livery_css };
+    setUnits((cur) => {
       if (vehicleMode === 'Bus') {
-        const next = current.length === 0 ? [filled] : [...current];
+        const next = cur.length === 0 ? [filled] : [...cur];
         if (next.length > 0) next[selectedUnitIndex] = filled;
-        setSelectedUnitIndex(0);
+        setSelectedUnitIndex(0); return next;
+      }
+      if (cur.some((u) => u.unit_number === filled.unit_number && u.unit_reg === filled.unit_reg)) return cur;
+      const hasData = cur[selectedUnitIndex] && (cur[selectedUnitIndex].unit_number || cur[selectedUnitIndex].unit_reg || cur[selectedUnitIndex].unit_type);
+      if (cur.length === 0 || !hasData) {
+        const next = [...cur];
+        if (next.length === 0) { next.push(filled); setSelectedUnitIndex(0); } else next[selectedUnitIndex] = filled;
         return next;
       }
-
-      // Train/Tram/Other: deduplicate
-      const unitExists = current.some(
-        (u) => u.unit_number === filled.unit_number && u.unit_reg === filled.unit_reg,
-      );
-      if (unitExists) return current;
-
-      const currentHasData =
-        current[selectedUnitIndex] &&
-        (current[selectedUnitIndex].unit_number ||
-          current[selectedUnitIndex].unit_reg ||
-          current[selectedUnitIndex].unit_type);
-
-      if (current.length === 0 || !currentHasData) {
-        const next = [...current];
-        if (next.length === 0) {
-          next.push(filled);
-          setSelectedUnitIndex(0);
-        } else {
-          next[selectedUnitIndex] = filled;
-        }
-        return next;
-      }
-
-      // Slot has data — add as new unit
-      const next = [...current, filled];
-      setSelectedUnitIndex(next.length - 1);
-      return next;
+      const next = [...cur, filled]; setSelectedUnitIndex(next.length - 1); return next;
     });
-
-    setUnitSearch('');
-    setUnitSearchOpen(false);
-    setUnitSearchResults([]);
-  }
-
-  function syncServiceFormWithSelection(route: RouteStop[], nextFromStopId: number | null, nextToStopId: number | null) {
-    const nextRiddenRoute = buildRiddenRoute(route, nextFromStopId, nextToStopId);
-    if (!nextRiddenRoute) return;
-
-    const firstStop = nextRiddenRoute.stops[0];
-    const lastStop = nextRiddenRoute.stops[nextRiddenRoute.stops.length - 1];
-
-    setServiceForm((current) => ({
-      ...current,
-      origin_name: safeString(firstStop?.stop.name),
-      origin_stop_code: safeString(firstStop?.stop.stop_code),
-      destination_name: safeString(lastStop?.stop.name),
-      destination_stop_code: safeString(lastStop?.stop.stop_code),
-      scheduled_departure: getStartScheduledTime(firstStop),
-      actual_departure: getStartActualTime(firstStop),
-      scheduled_arrival: getEndScheduledTime(lastStop),
-      actual_arrival: getEndActualTime(lastStop),
-    }));
+    setUnitSearch(''); setUnitSearchOpen(false); setUnitSearchResults([]);
   }
 
   function updateUnitField(field: keyof TripUnit, value: string) {
-    setUnits((current) =>
-      current.map((unit, index) =>
-        index === selectedUnitIndex
-          ? {
-              ...unit,
-              [field]: value,
-            }
-          : unit,
-      ),
-    );
+    setUnits((c) => c.map((u, i) => i === selectedUnitIndex ? { ...u, [field]: value } : u));
   }
 
   function addUnit() {
     if (vehicleMode === 'Bus') return;
-    setUnits((current) => {
-      const next = [...current, { ...EMPTY_UNIT }];
-      setSelectedUnitIndex(next.length - 1);
-      return next;
-    });
-    setActiveTab('Vehicle');
+    setUnits((c) => { const next = [...c, { ...EMPTY_UNIT }]; setSelectedUnitIndex(next.length - 1); return next; });
   }
 
   function removeSelectedUnit() {
-    setUnits((current) => {
-      if (current.length === 0) return current;
-
-      const next = current.filter((_, index) => index !== selectedUnitIndex);
-
-      if (next.length === 0) {
-        setSelectedUnitIndex(0);
-        return next;
-      }
-
-      setSelectedUnitIndex(Math.min(selectedUnitIndex, next.length - 1));
+    setUnits((c) => {
+      if (!c.length) return c;
+      const next = c.filter((_, i) => i !== selectedUnitIndex);
+      setSelectedUnitIndex(next.length ? Math.min(selectedUnitIndex, next.length - 1) : 0);
       return next;
     });
   }
 
   function setStartStop(stopId: number) {
     if (stopId === toStopId) return;
-    let nextToStopId = toStopId;
-
+    let nextTo = toStopId;
     if (toStopId !== null) {
-      const fromIndex = fullRoute.findIndex((stop) => stop.id === stopId);
-      const toIndex = fullRoute.findIndex((stop) => stop.id === toStopId);
-      if (fromIndex !== -1 && toIndex !== -1 && fromIndex > toIndex) {
-        nextToStopId = null;
-      }
+      const fi = fullRoute.findIndex((s) => s.id === stopId);
+      const ti = fullRoute.findIndex((s) => s.id === toStopId);
+      if (fi !== -1 && ti !== -1 && fi > ti) nextTo = null;
     }
-
-    setFromStopId(stopId);
-    setToStopId(nextToStopId);
-    setSelectedStopId(stopId);
-    syncServiceFormWithSelection(fullRoute, stopId, nextToStopId);
+    setFromStopId(stopId); setToStopId(nextTo); setSelectedStopId(stopId);
+    syncFormFromRoute(fullRoute, stopId, nextTo);
   }
 
   function setEndStop(stopId: number) {
     if (stopId === fromStopId) return;
-    let nextFromStopId = fromStopId;
-
+    let nextFrom = fromStopId;
     if (fromStopId !== null) {
-      const fromIndex = fullRoute.findIndex((stop) => stop.id === fromStopId);
-      const toIndex = fullRoute.findIndex((stop) => stop.id === stopId);
-      if (fromIndex !== -1 && toIndex !== -1 && toIndex < fromIndex) {
-        nextFromStopId = null;
-      }
+      const fi = fullRoute.findIndex((s) => s.id === fromStopId);
+      const ti = fullRoute.findIndex((s) => s.id === stopId);
+      if (fi !== -1 && ti !== -1 && ti < fi) nextFrom = null;
     }
-
-    setFromStopId(nextFromStopId);
-    setToStopId(stopId);
-    setSelectedStopId(stopId);
-    syncServiceFormWithSelection(fullRoute, nextFromStopId, stopId);
+    setFromStopId(nextFrom); setToStopId(stopId); setSelectedStopId(stopId);
+    syncFormFromRoute(fullRoute, nextFrom, stopId);
   }
 
   function resetToFullRoute() {
-    const firstStop = fullRoute[0];
-    const lastStop = fullRoute[fullRoute.length - 1];
-    const nextFromStopId = fullRoute.length > 1 ? firstStop?.id ?? null : null;
-    const nextToStopId = fullRoute.length > 1 ? lastStop?.id ?? null : null;
-    setFromStopId(nextFromStopId);
-    setToStopId(nextToStopId);
-    setSelectedStopId(firstStop?.id ?? null);
-    syncServiceFormWithSelection(fullRoute, nextFromStopId, nextToStopId);
+    const first = fullRoute[0]; const last = fullRoute[fullRoute.length - 1];
+    const f = fullRoute.length > 1 ? first?.id ?? null : null;
+    const t = fullRoute.length > 1 ? last?.id ?? null : null;
+    setFromStopId(f); setToStopId(t); setSelectedStopId(first?.id ?? null);
+    syncFormFromRoute(fullRoute, f, t);
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (isConvexAuthLoading) {
-      setSaveError('Convex auth is still loading. Wait a moment and try again.');
-      return;
-    }
-
-    if (!isAuthenticated) {
-      setSaveError('You need to sign in before saving a log.');
-      return;
-    }
-
-    if (fromStopId !== null && toStopId !== null && fromStopId === toStopId) {
-      setSaveError('Start and end cannot be the same stop.');
-      setActiveTab('Route');
-      return;
-    }
-
-    if (fullRoute.length > 1 && !riddenRoute) {
-      setSaveError('Pick a valid start and end stop before saving.');
-      setActiveTab('Route');
-      return;
-    }
-
-    if (!serviceForm.service_date) {
-      setSaveError('Service date is required.');
-      setActiveTab('Service');
-      return;
-    }
-
+    if (isConvexAuthLoading) { setSaveError('Auth still loading.'); return; }
+    if (!isAuthenticated) { setSaveError('Sign in before saving.'); return; }
+    if (fromStopId !== null && toStopId !== null && fromStopId === toStopId) { setSaveError('Start and end cannot be the same stop.'); setActiveTab('Route'); return; }
+    if (fullRoute.length > 1 && !riddenRoute) { setSaveError('Pick valid start and end stops.'); setActiveTab('Route'); return; }
+    if (!serviceForm.service_date) { setSaveError('Service date is required.'); setActiveTab('Service'); return; }
     try {
-      setSaving(true);
-      setSaveError('');
-      setSaveSuccess('');
-
-      const cleanedUnits = units
-        .map((unit) => ({
-          unit_number: unit.unit_number.trim() || undefined,
-          unit_reg: unit.unit_reg.trim() || undefined,
-          unit_type: unit.unit_type.trim() || undefined,
-          livery: unit.livery.trim() || undefined,
-          livery_left: unit.livery_left.trim() || undefined,
-        }))
-        .filter((unit) =>
-          Boolean(unit.unit_number || unit.unit_reg || unit.unit_type || unit.livery || unit.livery_left),
-        );
-
-      const parsedBustimesServiceId = serviceForm.bustimes_service_id.trim()
-        ? Number(serviceForm.bustimes_service_id)
-        : undefined;
-
+      setSaving(true); setSaveError(''); setSaveSuccess('');
+      const cleanedUnits = units.map((u) => ({
+        unit_number: u.unit_number.trim() || undefined,
+        unit_reg: u.unit_reg.trim() || undefined,
+        unit_type: u.unit_type.trim() || undefined,
+        livery: u.livery.trim() || undefined,
+        livery_left: u.livery_left.trim() || undefined,
+      })).filter((u) => Boolean(u.unit_number || u.unit_reg || u.unit_type || u.livery || u.livery_left));
+      const parsedBustimesServiceId = serviceForm.bustimes_service_id.trim() ? Number(serviceForm.bustimes_service_id) : undefined;
       await logTrip({
         service_number: serviceForm.service_number.trim() || 'Unknown',
         operator: serviceForm.operator.trim() || 'Unknown',
         operator_slug: serviceForm.operator_slug.trim() || 'unknown',
         service_date: new Date(`${serviceForm.service_date}T00:00:00`).getTime(),
         transport_type: mapVehicleModeToTransportType(vehicleMode),
-        bustimes_service_id: typeof parsedBustimesServiceId === 'number' && !Number.isNaN(parsedBustimesServiceId)
-          ? parsedBustimesServiceId
-          : undefined,
+        bustimes_service_id: typeof parsedBustimesServiceId === 'number' && !Number.isNaN(parsedBustimesServiceId) ? parsedBustimesServiceId : undefined,
         bustimes_service_slug: serviceForm.bustimes_service_slug.trim() || undefined,
         origin_name: serviceForm.origin_name.trim() || 'Unknown Origin',
         origin_stop_code: serviceForm.origin_stop_code.trim() || '',
@@ -752,39 +568,35 @@ export default function LogPage() {
         units: cleanedUnits,
         notes: notes.trim() || undefined,
       });
-
-      setSaveSuccess('Trip log saved.');
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Failed to save trip log.');
-    } finally {
-      setSaving(false);
-    }
+      setSaveSuccess('Trip saved!');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save.');
+    } finally { setSaving(false); }
   }
 
-  function renderStopActions(stop: RouteStop, index: number) {
-    const isFirstStop = index === 0;
-    const isLastStop = index === fullRoute.length - 1;
-    const isStartDisabled = isLastStop || stop.id === toStopId;
-    const isEndDisabled = isFirstStop || stop.id === fromStopId;
+  // ─── Stop actions ──────────────────────────────────────────────────────────
 
+  function renderStopActions({ stop, index, onDone }: { stop: RouteStop; index: number; onDone?: () => void }) {
+    const isFirst = index === 0;
+    const isLast = index === fullRoute.length - 1;
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        {!isLastStop && (
+      <div className="flex gap-2 pt-2">
+        {!isLast && (
           <button
             type="button"
-            onClick={() => setStartStop(stop.id)}
-            disabled={isStartDisabled}
-            className="rounded-full border border-ts-border px-3 py-1 text-xs font-medium text-ts-text-1 transition hover:border-ts-accent hover:text-ts-accent disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => { setStartStop(stop.id); onDone?.(); }}
+            disabled={stop.id === toStopId}
+            className="flex-1 rounded-2xl border border-ts-border py-3 text-sm font-semibold text-ts-text-1 transition active:scale-95 hover:border-ts-accent hover:text-ts-accent disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Start here
           </button>
         )}
-        {!isFirstStop && (
+        {!isFirst && (
           <button
             type="button"
-            onClick={() => setEndStop(stop.id)}
-            disabled={isEndDisabled}
-            className="rounded-full border border-ts-border px-3 py-1 text-xs font-medium text-ts-text-1 transition hover:border-ts-accent hover:text-ts-accent disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => { setEndStop(stop.id); onDone?.(); }}
+            disabled={stop.id === fromStopId}
+            className="flex-1 rounded-2xl border border-ts-border py-3 text-sm font-semibold text-ts-text-1 transition active:scale-95 hover:border-ts-accent hover:text-ts-accent disabled:opacity-40 disabled:cursor-not-allowed"
           >
             End here
           </button>
@@ -793,188 +605,202 @@ export default function LogPage() {
     );
   }
 
+  // ─── Route tab ──────────────────────────────────────────────────────────────
+
   function renderRouteTab() {
     return (
-      <div className="flex flex-col gap-4">
-        <section className={sectionClassName()}>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-ts-text-1">Ridden route</p>
-              <p className="mt-1 text-sm text-ts-text-2">
-                {riddenRoute
-                  ? `${riddenRoute.origin_name} to ${riddenRoute.destination_name}`
-                  : 'Choose the stops you travelled between.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex rounded-full border border-ts-border bg-ts-surface-2 p-1">
-                {ROUTE_MODES.map((mode) => {
-                  const active = routeMode === mode;
-                  const Icon = mode === 'Map' ? Map : List;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setRouteMode(mode)}
-                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
-                        active
-                          ? 'bg-ts-accent text-ts-text-inv'
-                          : 'text-ts-text-2 hover:text-ts-text-1'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {mode}
-                    </button>
-                  );
-                })}
+      <div className="flex flex-1 flex-col sm:gap-3">
+        {/* Desktop Summary / Mobile List Toggle */}
+        <div className={`sm:block ${routeMode === 'Map' ? 'hidden' : 'block mb-3 px-4 sm:px-0'}`}>
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-bold text-ts-text-1">
+                  {riddenRoute ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}` : 'Select journey stops'}
+                </p>
+                <p className="mt-0.5 text-xs text-ts-text-3">
+                  {riddenRoute ? `${riddenRoute.stops.length} stops` : 'Tap a stop on the map or list below'}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={resetToFullRoute}
-                className="rounded-full border border-ts-border px-4 py-2 text-sm font-medium text-ts-text-1 transition hover:border-ts-accent hover:text-ts-accent"
+                className="shrink-0 rounded-full border border-ts-border px-3 py-1.5 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95"
               >
-                Reset to full route
+                Full route
               </button>
             </div>
-          </div>
-        </section>
-
-        {routeMode === 'Map' ? (
-          <section className={`relative ${sectionClassName()} p-3`}>
-            <div className="h-[440px]">
-              <LogMap
-                fullRoute={fullRoute}
-                fullGeometry={fullGeometry}
-                highlightedGeometry={riddenRoute?.geometry ?? fullGeometry}
-                onStopClick={setSelectedStopId}
-                fromStopId={fromStopId}
-                toStopId={toStopId}
+            <div className="mt-3">
+              <SegmentedControl
+                options={ROUTE_MODES}
+                value={routeMode}
+                onChange={(v) => setRouteMode(v as RouteMode)}
               />
             </div>
+          </Card>
+        </div>
 
-            {selectedStop && (
-              <div className="pointer-events-none absolute right-6 top-6 max-w-[280px]">
-                <div className="pointer-events-auto rounded-2xl border border-ts-border bg-ts-bg/95 p-4 shadow-xl backdrop-blur">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-ts-text-1">{selectedStop.stop.name || 'Stop'}</p>
-                      <p className="mt-1 text-xs text-ts-text-3">{selectedStop.stop.stop_code || 'No stop code'}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedStopId(null)}
-                      className="text-xs text-ts-text-3 transition hover:text-ts-text-1"
-                    >
-                      Close
-                    </button>
+        {/* Map */}
+        {routeMode === 'Map' ? (
+          <div className="grid relative flex-1 min-h-[450px] overflow-hidden bg-ts-surface sm:rounded-3xl sm:border sm:border-ts-border">
+            <LogMap
+              fullRoute={fullRoute}
+              fullGeometry={fullGeometry}
+              highlightedGeometry={riddenRoute?.geometry ?? fullGeometry}
+              onStopClick={(id) => { setSelectedStopId(id); setStopSheetOpen(true); }}
+              fromStopId={fromStopId}
+              toStopId={toStopId}
+            />
+
+            {/* Mobile Floating Overlay */}
+            <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-3 px-3 sm:hidden">
+              <div className="pointer-events-auto w-full rounded-2xl border border-ts-border bg-ts-bg/85 p-3 shadow-xl backdrop-blur-md">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-ts-text-1">
+                      {riddenRoute ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}` : 'Select stops'}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wider text-ts-text-3">
+                      {riddenRoute ? `${riddenRoute.stops.length} stops` : 'Tap map to start'}
+                    </p>
                   </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-ts-text-2">
-                    <div>
-                      <div className="text-ts-text-3">Sched</div>
-                      <div>{formatDisplayTime(selectedStop.scheduled_departure || selectedStop.scheduled_arrival)}</div>
-                    </div>
-                    <div>
-                      <div className="text-ts-text-3">Actual</div>
-                      <div>{formatDisplayTime(selectedStop.actual_departure || selectedStop.actual_arrival)}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">{renderStopActions(selectedStop, fullRoute.findIndex((stop) => stop.id === selectedStop.id))}</div>
+                  <button
+                    type="button"
+                    onClick={resetToFullRoute}
+                    className="shrink-0 rounded-full bg-ts-accent/10 px-2.5 py-1 text-[10px] font-bold text-ts-accent"
+                  >
+                    Reset
+                  </button>
                 </div>
               </div>
-            )}
-          </section>
-        ) : (
-          <section className={`${sectionClassName()} p-3`}>
-            <div className="flex flex-col gap-2">
-              {fullRoute.map((stop, index) => {
-                const isSelected = selectedStopId === stop.id;
-                const isStart = fromStopId === stop.id;
-                const isEnd = toStopId === stop.id;
+              <div className="pointer-events-auto scale-90">
+                <SegmentedControl
+                  options={ROUTE_MODES}
+                  value={routeMode}
+                  onChange={(v) => setRouteMode(v as RouteMode)}
+                />
+              </div>
+            </div>
 
-                return (
+            {/* Bottom sheet */}
+            {selectedStop && stopSheetOpen && (
+              <div className="absolute inset-x-0 bottom-0 z-10 rounded-t-3xl border-t border-ts-border bg-ts-bg/98 px-4 pb-12 pt-3 shadow-2xl backdrop-blur-xl sm:pb-6">
+                <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ts-border" />
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-bold text-ts-text-1">{selectedStop.stop.name || 'Stop'}</p>
+                    <p className="mt-0.5 text-xs text-ts-text-3">{selectedStop.stop.stop_code || 'No stop code'}</p>
+                  </div>
+                  <button type="button" onClick={() => setStopSheetOpen(false)} className="rounded-full bg-ts-surface-2 p-2 text-ts-text-3 hover:text-ts-text-1 transition">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Scheduled', val: formatDisplayTime(selectedStop.scheduled_departure || selectedStop.scheduled_arrival) },
+                    { label: 'Actual', val: formatDisplayTime(selectedStop.actual_departure || selectedStop.actual_arrival) },
+                  ].map(({ label, val }) => (
+                    <div key={label} className="rounded-2xl bg-ts-surface-2 px-3 py-2.5 border border-ts-border-soft">
+                      <div className="text-[10px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</div>
+                      <div className="mt-1 font-mono text-sm font-bold text-ts-text-1">{val}</div>
+                    </div>
+                  ))}
+                </div>
+                {renderStopActions({ stop: selectedStop, index: fullRoute.findIndex((s) => s.id === selectedStop.id), onDone: () => setStopSheetOpen(false) })}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* List */
+          <div className="flex flex-col gap-2 px-4 sm:px-0">
+            {fullRoute.map((stop, index) => {
+              const isSelected = selectedStopId === stop.id;
+              const isStart = fromStopId === stop.id;
+              const isEnd = toStopId === stop.id;
+              const inRidden = riddenRoute?.stops.some((s) => s.id === stop.id) ?? false;
+
+              return (
+                <div key={stop.id} className="flex gap-0 items-stretch">
+                  {/* Timeline */}
+                  <div className="flex flex-col items-center w-8 shrink-0 pt-5 pb-0">
+                    <div className={`h-3 w-3 rounded-full border-2 shrink-0 z-10 ${
+                      isStart ? 'border-ts-accent bg-ts-accent' :
+                      isEnd ? 'border-sky-400 bg-sky-400' :
+                      inRidden ? 'border-ts-accent/60 bg-ts-accent/20' :
+                      'border-ts-border bg-ts-surface-2'
+                    }`} />
+                    {index < fullRoute.length - 1 && (
+                      <div className={`w-0.5 flex-1 mt-1 ${inRidden && !isEnd ? 'bg-ts-accent/40' : 'bg-ts-border'}`} style={{ minHeight: 12 }} />
+                    )}
+                  </div>
+
+                  {/* Card */}
                   <button
-                    key={stop.id}
                     type="button"
-                    onClick={() => setSelectedStopId(stop.id)}
-                    className={`rounded-2xl border p-4 text-left transition ${
-                      isSelected
+                    onClick={() => { setSelectedStopId(stop.id); setStopSheetOpen(isSelected ? !stopSheetOpen : true); }}
+                    className={`flex-1 mb-2 rounded-3xl border p-3.5 text-left transition active:scale-[0.99] ${
+                      isSelected && stopSheetOpen
                         ? 'border-ts-accent bg-ts-accent/10'
-                        : 'border-ts-border bg-ts-surface-2 hover:border-ts-border-soft'
+                        : inRidden
+                        ? 'border-ts-border-soft bg-ts-surface-2'
+                        : 'border-ts-border bg-ts-surface'
                     }`}
                   >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {isStart && (
-                            <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-300">
-                              Start
-                            </span>
-                          )}
-                          {isEnd && (
-                            <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-300">
-                              End
-                            </span>
-                          )}
-                          <span className="text-xs text-ts-text-3">{stop.stop.stop_code || 'No code'}</span>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-ts-text-1">{stop.stop.name || 'Stop'}</p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-sm text-ts-text-2 sm:grid-cols-4">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.12em] text-ts-text-3">Sched Arr</div>
-                          <div className="mt-1 font-mono">{formatDisplayTime(stop.scheduled_arrival)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.12em] text-ts-text-3">Sched Dep</div>
-                          <div className="mt-1 font-mono">{formatDisplayTime(stop.scheduled_departure)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.12em] text-ts-text-3">Actual Arr</div>
-                          <div className="mt-1 font-mono">{formatDisplayTime(stop.actual_arrival)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.12em] text-ts-text-3">Actual Dep</div>
-                          <div className="mt-1 font-mono">{formatDisplayTime(stop.actual_departure)}</div>
-                        </div>
-                      </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {isStart && <span className="rounded-full bg-ts-accent/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-ts-accent">Start</span>}
+                      {isEnd && <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-sky-400">End</span>}
+                      {stop.stop.stop_code && <span className="text-[10px] text-ts-text-3">{stop.stop.stop_code}</span>}
                     </div>
-
-                    <div className="mt-4">{renderStopActions(stop, index)}</div>
+                    <p className="mt-1 text-sm font-bold text-ts-text-1">{stop.stop.name || 'Stop'}</p>
+                    {(stop.scheduled_departure || stop.scheduled_arrival || stop.actual_departure || stop.actual_arrival) && (
+                      <div className="mt-1.5 flex gap-4 text-xs text-ts-text-3">
+                        {(stop.scheduled_departure || stop.scheduled_arrival) && (
+                          <span>S <span className="font-mono text-ts-text-2">{formatDisplayTime(stop.scheduled_departure || stop.scheduled_arrival)}</span></span>
+                        )}
+                        {(stop.actual_departure || stop.actual_arrival) && (
+                          <span>A <span className="font-mono text-ts-text-2">{formatDisplayTime(stop.actual_departure || stop.actual_arrival)}</span></span>
+                        )}
+                      </div>
+                    )}
+                    {isSelected && stopSheetOpen && (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        {renderStopActions({ stop, index })}
+                      </div>
+                    )}
                   </button>
-                );
-              })}
-            </div>
-          </section>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     );
   }
 
+  // ─── Vehicle tab ──────────────────────────────────────────────────────────
+
   function renderVehicleTab() {
-    const modeIcon = (mode: VehicleMode) => {
-      if (mode === 'Bus') return Bus;
-      if (mode === 'Train') return TrainFront;
-      if (mode === 'Tram') return TramFront;
+    const modeIcon = (m: VehicleMode) => {
+      if (m === 'Bus') return Bus;
+      if (m === 'Train') return TrainFront;
+      if (m === 'Tram') return TramFront;
       return NotebookText;
     };
 
     return (
-      <div className="flex flex-col gap-4">
-        <section className={sectionClassName()}>
-          <div className="inline-flex flex-wrap rounded-full border border-ts-border bg-ts-surface-2 p-1">
+      <div className="flex flex-col gap-3">
+        <Card>
+          <div className="flex flex-wrap gap-2">
             {VEHICLE_MODES.map((mode) => {
-              const active = vehicleMode === mode;
               const Icon = modeIcon(mode);
+              const active = vehicleMode === mode;
               return (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setVehicleMode(mode)}
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
-                    active ? 'bg-ts-accent text-ts-text-inv' : 'text-ts-text-2 hover:text-ts-text-1'
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition active:scale-95 ${
+                    active ? 'border-ts-accent bg-ts-accent/10 text-ts-accent' : 'border-ts-border text-ts-text-2 hover:text-ts-text-1'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -983,398 +809,241 @@ export default function LogPage() {
               );
             })}
           </div>
-        </section>
+        </Card>
 
-        {/* Search combobox */}
-        <section className={sectionClassName()}>
-          <div className="mb-3 text-xs font-medium uppercase tracking-[0.12em] text-ts-text-3">
-            Search vehicle
-          </div>
+        <Card>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">Search vehicle</p>
           <div ref={unitSearchRef} className="relative">
             <div className="relative">
               <input
                 value={unitSearch}
                 onChange={(e) => setUnitSearch(e.target.value)}
                 onFocus={() => unitSearchResults.length > 0 && setUnitSearchOpen(true)}
-                placeholder={vehicleMode === 'Bus' ? 'Search by reg or fleet number…' : 'Search by unit or reg…'}
-                className={`${textInputClassName()} w-full pr-10`}
+                placeholder={vehicleMode === 'Bus' ? 'Reg or fleet number…' : 'Unit or reg…'}
+                className={`${inputCls()} pr-10`}
               />
-              {unitSearchLoading && (
-                <LoaderCircle className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ts-accent" />
-              )}
+              {unitSearchLoading && <LoaderCircle className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ts-accent" />}
             </div>
-
             {unitSearchOpen && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-ts-border bg-ts-surface shadow-2xl">
-                {unitSearchResults.map((result) => (
+              <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-3xl border border-ts-border bg-ts-surface shadow-2xl">
+                {unitSearchResults.map((r) => (
                   <button
-                    key={`${result.source}-${result.id}`}
+                    key={`${r.source}-${r.id}`}
                     type="button"
-                    onClick={() => selectSearchResult(result)}
-                    className="flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-ts-surface-2 first:rounded-t-2xl last:rounded-b-2xl"
+                    onClick={() => selectSearchResult(r)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-ts-surface-2 first:rounded-t-3xl last:rounded-b-3xl"
                   >
-                    {/* Livery swatch */}
-                    <div
-                      className="h-9 w-14 shrink-0 rounded-lg border border-ts-border-soft"
-                      style={{
-                        background: result.livery.livery_css || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))',
-                      }}
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-ts-text-1">
-                          {[result.unit_number, result.unit_reg].filter(Boolean).join(' · ')}
-                        </span>
-                        {result.withdrawn && (
-                          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-300">
-                            Withdrawn
-                          </span>
-                        )}
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                          result.source === 'train'
-                            ? 'bg-sky-500/15 text-sky-300'
-                            : 'bg-emerald-500/15 text-emerald-300'
-                        }`}>
-                          {result.source}
-                        </span>
+                    <div className="h-9 w-14 shrink-0 rounded-xl border border-ts-border-soft" style={{ background: r.livery.livery_css || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }} />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-sm font-bold text-ts-text-1">{[r.unit_number, r.unit_reg].filter(Boolean).join(' · ')}</span>
+                        {r.withdrawn && <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-300">Withdrawn</span>}
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${r.source === 'train' ? 'bg-sky-500/15 text-sky-300' : 'bg-ts-accent/15 text-ts-accent'}`}>{r.source}</span>
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-ts-text-3">
-                        {result.type.type_name}
-                        {result.type.type_name && result.operator.operator_name ? ' · ' : ''}
-                        {result.operator.operator_name}
-                      </div>
-                      <div className="mt-0.5 text-xs text-ts-text-3">{result.livery.livery_name}</div>
+                      <div className="mt-0.5 truncate text-xs text-ts-text-3">{r.type.type_name}{r.type.type_name && r.operator.operator_name ? ' · ' : ''}{r.operator.operator_name}</div>
                     </div>
                   </button>
                 ))}
               </div>
             )}
           </div>
-        </section>
+        </Card>
 
-        <section className={sectionClassName()}>
-          <div className="flex gap-3 overflow-x-auto pb-1">
+        {/* Unit carousel */}
+        <Card>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">Formation</p>
+          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
             {units.map((unit, index) => {
               const isActive = selectedUnitIndex === index;
               const isDragging = draggedUnitIndex === index;
               const isDragOver = dragOverUnitIndex === index;
-
               return (
                 <div
-                  key={`${unit.unit_number || 'unit'}-${index}`}
+                  key={`${unit.unit_number || 'u'}-${index}`}
                   draggable
                   onDragStart={() => setDraggedUnitIndex(index)}
                   onDragEnd={() => {
                     if (draggedUnitIndex !== null && dragOverUnitIndex !== null && draggedUnitIndex !== dragOverUnitIndex) {
-                      setUnits((current) => {
-                        const next = [...current];
+                      setUnits((cur) => {
+                        const next = [...cur];
                         const [moved] = next.splice(draggedUnitIndex, 1);
                         next.splice(dragOverUnitIndex, 0, moved);
-
-                        // Keep selectedUnitIndex pointing at the same unit
-                        if (selectedUnitIndex === draggedUnitIndex) {
-                          setSelectedUnitIndex(dragOverUnitIndex);
-                        } else if (
-                          selectedUnitIndex > draggedUnitIndex &&
-                          selectedUnitIndex <= dragOverUnitIndex
-                        ) {
-                          setSelectedUnitIndex(selectedUnitIndex - 1);
-                        } else if (
-                          selectedUnitIndex < draggedUnitIndex &&
-                          selectedUnitIndex >= dragOverUnitIndex
-                        ) {
-                          setSelectedUnitIndex(selectedUnitIndex + 1);
-                        }
-
+                        if (selectedUnitIndex === draggedUnitIndex) setSelectedUnitIndex(dragOverUnitIndex);
+                        else if (selectedUnitIndex > draggedUnitIndex && selectedUnitIndex <= dragOverUnitIndex) setSelectedUnitIndex(selectedUnitIndex - 1);
+                        else if (selectedUnitIndex < draggedUnitIndex && selectedUnitIndex >= dragOverUnitIndex) setSelectedUnitIndex(selectedUnitIndex + 1);
                         return next;
                       });
                     }
-                    setDraggedUnitIndex(null);
-                    setDragOverUnitIndex(null);
+                    setDraggedUnitIndex(null); setDragOverUnitIndex(null);
                   }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOverUnitIndex(index);
-                  }}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverUnitIndex(index); }}
                   onDragLeave={() => setDragOverUnitIndex(null)}
-                  className={`min-w-[160px] max-w-[160px] cursor-grab rounded-2xl border p-4 text-center transition select-none active:cursor-grabbing ${
-                    isDragging
-                      ? 'opacity-40 scale-95'
-                      : isDragOver
-                      ? 'border-ts-accent bg-ts-accent/5 scale-105'
-                      : isActive
-                      ? 'border-ts-accent bg-ts-accent/10'
-                      : 'border-ts-border bg-ts-surface-2 hover:border-ts-border-soft'
-                  }`}
                   onClick={() => setSelectedUnitIndex(index)}
+                  className={`min-w-[130px] cursor-grab select-none rounded-2xl border p-3 text-center transition active:cursor-grabbing active:scale-95 ${
+                    isDragging ? 'scale-95 opacity-40' :
+                    isDragOver ? 'scale-105 border-ts-accent bg-ts-accent/5' :
+                    isActive ? 'border-ts-accent bg-ts-accent/10' :
+                    'border-ts-border bg-ts-surface-2'
+                  }`}
                 >
-                  <div className="text-sm font-semibold text-ts-text-1">
-                    {[unit.unit_number, unit.unit_reg].filter(Boolean).join(' - ')}
-                  </div>
-                  <div className="text-xs font-semibold text-ts-text-3">{unit.unit_type || ''}</div>
-                  <div
-                    className="mx-auto mt-4 aspect-[24/16] w-2/3 border border-ts-border-soft"
-                    style={{
-                      background: unit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))',
-                    }}
-                  />
+                  <GripVertical className="mx-auto mb-1 h-3 w-3 text-ts-text-3" />
+                  <div className="truncate text-xs font-bold text-ts-text-1">{[unit.unit_number, unit.unit_reg].filter(Boolean).join(' - ') || 'New unit'}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-ts-text-3">{unit.unit_type || '—'}</div>
+                  <div className="mx-auto mt-3 aspect-[24/16] w-3/4 rounded-lg border border-ts-border-soft" style={{ background: unit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }} />
                 </div>
               );
             })}
-
             {vehicleMode !== 'Bus' && (
               <button
                 type="button"
                 onClick={addUnit}
-                className="flex min-w-[150px] items-center justify-center rounded-2xl border border-dashed border-ts-border bg-ts-surface-2 p-4 text-sm font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent"
+                className="flex min-w-[110px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ts-border bg-ts-surface-2 p-4 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95"
               >
-                <span className="inline-flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add unit
-                </span>
+                <Plus className="h-5 w-5" />
+                Add unit
               </button>
             )}
           </div>
-        </section>
+        </Card>
 
-        {/* rest of selected unit form unchanged */}
-        <section className={sectionClassName()}>
+        {/* Unit detail */}
+        <Card>
           {selectedUnit ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="flex items-center justify-between md:col-span-2">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-ts-text-1">Selected unit</div>
-                  <div className="mt-1 text-xs text-ts-text-3">
-                    {selectedUnit.unit_number || selectedUnit.unit_reg || 'New unit'}
-                  </div>
+                  <p className="font-bold text-ts-text-1">Unit details</p>
+                  <p className="mt-0.5 text-xs text-ts-text-3">{selectedUnit.unit_number || selectedUnit.unit_reg || 'New unit'}</p>
                 </div>
                 <button
                   type="button"
                   onClick={removeSelectedUnit}
-                  className="rounded-full border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition hover:border-red-400/50 hover:bg-red-500/15 hover:text-red-200"
+                  className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/15 active:scale-95"
                 >
-                  Remove unit
+                  Remove
                 </button>
               </div>
-              <Field label="Unit / Fleet number">
-                <input value={selectedUnit.unit_number} onChange={(e) => updateUnitField('unit_number', e.target.value)} className={textInputClassName()} />
-              </Field>
-              <Field label="Registration">
-                <input value={selectedUnit.unit_reg} onChange={(e) => updateUnitField('unit_reg', e.target.value)} className={textInputClassName()} />
-              </Field>
-              <Field label="Vehicle type">
-                <input value={selectedUnit.unit_type} onChange={(e) => updateUnitField('unit_type', e.target.value)} className={textInputClassName()} />
-              </Field>
-              <Field label="Livery name">
-                <input value={selectedUnit.livery} onChange={(e) => updateUnitField('livery', e.target.value)} className={textInputClassName()} />
-              </Field>
-              <div className="grid gap-4 md:col-span-2 md:grid-cols-[minmax(0,1fr)_150px] md:items-start">
-                <Field label="Livery CSS">
-                  <textarea
-                    value={selectedUnit.livery_left}
-                    onChange={(e) => updateUnitField('livery_left', e.target.value)}
-                    className="min-h-[100px] rounded-xl border border-ts-border bg-ts-surface-2 px-3 py-3 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20"
-                  />
-                </Field>
-                <div>
-                  <div className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-ts-text-3">Preview</div>
-                  <div
-                    className="livery-cell aspect-[24/16] w-full rounded-xl border border-ts-border-soft"
-                    style={{
-                      background: selectedUnit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))',
-                    }}
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Fleet / Unit"><input value={selectedUnit.unit_number} onChange={(e) => updateUnitField('unit_number', e.target.value)} className={inputCls()} /></Field>
+                <Field label="Registration"><input value={selectedUnit.unit_reg} onChange={(e) => updateUnitField('unit_reg', e.target.value)} className={inputCls()} /></Field>
+                <Field label="Vehicle type"><input value={selectedUnit.unit_type} onChange={(e) => updateUnitField('unit_type', e.target.value)} className={inputCls()} /></Field>
+                <Field label="Livery"><input value={selectedUnit.livery} onChange={(e) => updateUnitField('livery', e.target.value)} className={inputCls()} /></Field>
               </div>
+              <Field label="Livery CSS">
+                <div className="flex gap-3">
+                  <textarea value={selectedUnit.livery_left} onChange={(e) => updateUnitField('livery_left', e.target.value)} className="min-h-[90px] flex-1 rounded-2xl border border-ts-border bg-ts-surface-2 px-3 py-3 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20" />
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-ts-text-3">Preview</div>
+                    <div className="aspect-[24/16] w-20 rounded-xl border border-ts-border-soft" style={{ background: selectedUnit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }} />
+                  </div>
+                </div>
+              </Field>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-ts-border p-8 text-sm text-ts-text-2">
-              {vehicleMode === 'Bus'
-                ? 'No unit came back from the API for this bus service.'
-                : 'Add a unit or search above, then pick it to edit the details here.'}
+            <div className="py-8 text-center text-sm text-ts-text-3">
+              {vehicleMode === 'Bus' ? 'No unit found for this service.' : 'Search for a vehicle or add a unit above.'}
             </div>
           )}
-        </section>
+        </Card>
       </div>
     );
   }
+
+  // ─── Service tab ──────────────────────────────────────────────────────────
 
   function renderServiceTab() {
     return (
-      <div className="flex flex-col gap-4">
-        <section className={sectionClassName()}>
-          <div className="mb-4 flex items-center gap-2">
-            <Route className="h-4 w-4 text-ts-accent" />
-            <h2 className="text-sm font-semibold text-ts-text-1">Basic</h2>
+      <div className="flex flex-col gap-3">
+        <Card>
+          <p className="mb-4 text-sm font-bold text-ts-text-1">Basic info</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Service number"><input value={serviceForm.service_number} onChange={(e) => updateServiceField('service_number', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Operator"><input value={serviceForm.operator} onChange={(e) => updateServiceField('operator', e.target.value)} className={inputCls()} /></Field>
+            <div className="col-span-2">
+              <Field label="Service date"><input type="date" value={serviceForm.service_date} onChange={(e) => updateServiceField('service_date', e.target.value)} className={inputCls()} /></Field>
+            </div>
+            <Field label="Origin"><input value={serviceForm.origin_name} onChange={(e) => updateServiceField('origin_name', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Destination"><input value={serviceForm.destination_name} onChange={(e) => updateServiceField('destination_name', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Sched departure"><input type="time" value={serviceForm.scheduled_departure} onChange={(e) => updateServiceField('scheduled_departure', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Actual departure"><input type="time" value={serviceForm.actual_departure} onChange={(e) => updateServiceField('actual_departure', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Sched arrival"><input type="time" value={serviceForm.scheduled_arrival} onChange={(e) => updateServiceField('scheduled_arrival', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Actual arrival"><input type="time" value={serviceForm.actual_arrival} onChange={(e) => updateServiceField('actual_arrival', e.target.value)} className={inputCls()} /></Field>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Service number">
-              <input
-                value={serviceForm.service_number}
-                onChange={(event) => updateServiceField('service_number', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Operator">
-              <input
-                value={serviceForm.operator}
-                onChange={(event) => updateServiceField('operator', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Service date">
-              <input
-                type="date"
-                value={serviceForm.service_date}
-                onChange={(event) => updateServiceField('service_date', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Origin">
-              <input
-                value={serviceForm.origin_name}
-                onChange={(event) => updateServiceField('origin_name', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Destination">
-              <input
-                value={serviceForm.destination_name}
-                onChange={(event) => updateServiceField('destination_name', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Scheduled departure">
-              <input
-                type="time"
-                value={serviceForm.scheduled_departure}
-                onChange={(event) => updateServiceField('scheduled_departure', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Actual departure">
-              <input
-                type="time"
-                value={serviceForm.actual_departure}
-                onChange={(event) => updateServiceField('actual_departure', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Scheduled arrival">
-              <input
-                type="time"
-                value={serviceForm.scheduled_arrival}
-                onChange={(event) => updateServiceField('scheduled_arrival', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Actual arrival">
-              <input
-                type="time"
-                value={serviceForm.actual_arrival}
-                onChange={(event) => updateServiceField('actual_arrival', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
+        </Card>
+        <Card>
+          <p className="mb-4 text-sm font-bold text-ts-text-1">Extra</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bustimes ID"><input value={serviceForm.bustimes_service_id} onChange={(e) => updateServiceField('bustimes_service_id', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Bustimes slug"><input value={serviceForm.bustimes_service_slug} onChange={(e) => updateServiceField('bustimes_service_slug', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Operator slug"><input value={serviceForm.operator_slug} onChange={(e) => updateServiceField('operator_slug', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Origin stop code"><input value={serviceForm.origin_stop_code} onChange={(e) => updateServiceField('origin_stop_code', e.target.value)} className={inputCls()} /></Field>
+            <Field label="Destination stop code"><input value={serviceForm.destination_stop_code} onChange={(e) => updateServiceField('destination_stop_code', e.target.value)} className={inputCls()} /></Field>
           </div>
-        </section>
-
-        <section className={sectionClassName()}>
-          <div className="mb-4 flex items-center gap-2">
-            <NotebookText className="h-4 w-4 text-ts-accent" />
-            <h2 className="text-sm font-semibold text-ts-text-1">Extra</h2>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Bustimes service ID">
-              <input
-                value={serviceForm.bustimes_service_id}
-                onChange={(event) => updateServiceField('bustimes_service_id', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Bustimes service slug">
-              <input
-                value={serviceForm.bustimes_service_slug}
-                onChange={(event) => updateServiceField('bustimes_service_slug', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Operator slug">
-              <input
-                value={serviceForm.operator_slug}
-                onChange={(event) => updateServiceField('operator_slug', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Origin stop code">
-              <input
-                value={serviceForm.origin_stop_code}
-                onChange={(event) => updateServiceField('origin_stop_code', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-            <Field label="Destination stop code">
-              <input
-                value={serviceForm.destination_stop_code}
-                onChange={(event) => updateServiceField('destination_stop_code', event.target.value)}
-                className={textInputClassName()}
-              />
-            </Field>
-          </div>
-        </section>
+        </Card>
       </div>
     );
   }
+
+  // ─── Notes tab ────────────────────────────────────────────────────────────
 
   function renderNotesTab() {
     return (
-      <section className={sectionClassName()}>
+      <Card>
         <Field label="Trip notes">
           <textarea
             value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="Add anything useful about the journey."
-            className="min-h-[260px] rounded-2xl border border-ts-border bg-ts-surface-2 px-4 py-4 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20"
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Anything worth remembering…"
+            className="min-h-[200px] w-full rounded-2xl border border-ts-border bg-ts-surface-2 px-4 py-3 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20 placeholder:text-ts-text-3"
           />
         </Field>
-      </section>
+      </Card>
     );
   }
 
+  // ─── Tab icons ────────────────────────────────────────────────────────────
+
+  const tabIcons: Record<TabKey, ReactNode> = {
+    Route: <Map className="h-[18px] w-[18px]" />,
+    Vehicle: <TrainFront className="h-[18px] w-[18px]" />,
+    Service: <Route className="h-[18px] w-[18px]" />,
+    Notes: <NotebookText className="h-[18px] w-[18px]" />,
+  };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-8">
-      <div className="flex flex-col gap-4 rounded-[24px] border border-ts-border bg-ts-surface px-5 py-5 md:flex-row md:items-center md:justify-between md:px-6">
-        <div>
-          <h1 className="text-2xl font-bold text-ts-text-1 md:text-3xl">Log Trip</h1>
-          <p className="mt-1 text-sm text-ts-text-2">{sourceLabel || 'Resolve a service from the query string to start logging.'}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {saveSuccess && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-2 text-sm font-medium text-emerald-300">
-              <CheckCircle2 className="h-4 w-4" />
-              {saveSuccess}
-            </span>
-          )}
-          <button
-            type="submit"
-            form="log-trip-form"
-            suppressHydrationWarning
-            disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
-            className="inline-flex items-center gap-2 rounded-full bg-ts-accent px-5 py-3 text-sm font-semibold text-ts-text-inv transition hover:bg-ts-accent-h disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save log
-          </button>
-        </div>
-      </div>
+    <div className="flex min-h-svh flex-col bg-ts-bg">
+      {/* Sticky header + tabs */}
+      <div className="sticky top-0 z-1 border-b border-ts-border bg-ts-bg/96 backdrop-blur-xl">
+        <div className="mx-auto max-w-2xl px-4 lg:max-w-5xl">
+          {/* Title row */}
+          <div className="flex items-center justify-between gap-3 py-3">
+            <div className="min-w-0">
+              <h1 className="text-lg font-black tracking-tight text-ts-text-1 sm:text-xl">Log Trip</h1>
+              {sourceLabel && <p className="truncate text-xs text-ts-text-3">{sourceLabel}</p>}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {saveSuccess && (
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-ts-accent/15 px-3 py-1 text-xs font-semibold text-ts-accent">
+                  <CheckCircle2 className="h-3.5 w-3.5" />{saveSuccess}
+                </span>
+              )}
+              <button
+                type="submit"
+                form="log-trip-form"
+                suppressHydrationWarning
+                disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv shadow-lg shadow-ts-accent/25 transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save
+              </button>
+            </div>
+          </div>
 
-      <form id="log-trip-form" onSubmit={handleSave} className="flex flex-col gap-6">
-        <input type="hidden" name="full_route" value={serializeJson(fullRoute)} readOnly />
-        <input type="hidden" name="ridden_route" value={serializeJson(riddenRoute)} readOnly />
-
-        <div className="border-b border-ts-border">
-          <div className="flex gap-6 overflow-x-auto px-1">
+          {/* Tab bar */}
+          <div className="flex">
             {TABS.map((tab) => {
               const active = activeTab === tab;
               return (
@@ -1382,73 +1051,81 @@ export default function LogPage() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`relative py-3 text-sm font-medium whitespace-nowrap transition ${
-                    active ? 'text-ts-accent' : 'text-ts-text-2 hover:text-ts-text-1'
+                  className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition active:scale-95 sm:flex-row sm:justify-center sm:gap-2 sm:text-sm sm:normal-case sm:tracking-normal ${
+                    active ? 'text-ts-accent' : 'text-ts-text-3 hover:text-ts-text-2'
                   }`}
                 >
-                  {tab}
-                  <span
-                    className={`absolute bottom-0 left-0 h-[2px] w-full transition ${
-                      active ? 'bg-ts-accent opacity-100' : 'opacity-0'
-                    }`}
-                  />
+                  {tabIcons[tab]}
+                  <span>{tab}</span>
+                  <span className={`absolute bottom-0 left-0 h-[2px] w-full rounded-full transition-opacity ${active ? 'bg-ts-accent opacity-100' : 'opacity-0'}`} />
                 </button>
               );
             })}
           </div>
         </div>
+      </div>
 
-        {loading ? (
-          <div className={`${sectionClassName()} flex items-center gap-3 text-sm text-ts-text-2`}>
-            <LoaderCircle className="h-4 w-4 animate-spin text-ts-accent" />
-            Loading service details...
-          </div>
-        ) : loadError ? (
-          <div className={`${sectionClassName()} flex items-start gap-3 text-sm text-red-300`}>
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>{loadError}</div>
-          </div>
-        ) : (
-          <>
-            {activeTab === 'Route' && renderRouteTab()}
-            {activeTab === 'Vehicle' && renderVehicleTab()}
-            {activeTab === 'Service' && renderServiceTab()}
-            {activeTab === 'Notes' && renderNotesTab()}
-          </>
-        )}
+      {/* Content */}
+      <form id="log-trip-form" onSubmit={handleSave} className="flex flex-1 flex-col">
+        <input type="hidden" name="full_route" value={serializeJson(fullRoute)} readOnly />
+        <input type="hidden" name="ridden_route" value={serializeJson(riddenRoute)} readOnly />
 
-        <div className="sticky bottom-4 flex flex-col gap-3 rounded-[22px] border border-ts-border bg-ts-bg/92 p-4 shadow-xl backdrop-blur md:flex-row md:items-center md:justify-between">
-          <div className="text-sm text-ts-text-2">
-            {riddenRoute
-              ? `Logging ${riddenRoute.origin_name} to ${riddenRoute.destination_name}`
-              : 'Choose a start and end stop to build the ridden route.'}
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {isSignedIn && !isConvexAuthLoading && !isAuthenticated && (
-              <span className="text-sm text-amber-300">
-                Signed in, but Convex auth is not connected. This app is currently wired for Clerk-backed Convex auth.
-              </span>
-            )}
-            {!isSignedIn && (
-              <SignInButton mode="modal">
+        <div className={`mx-auto w-full max-w-2xl flex-1 lg:max-w-5xl flex flex-col ${
+          activeTab === 'Route' && routeMode === 'Map' ? 'px-0 py-0 pb-2' : 'px-4 py-4 pb-2'
+        }`}>
+          {loading ? (
+            <Card className="flex items-center gap-3 text-sm text-ts-text-2">
+              <LoaderCircle className="h-5 w-5 animate-spin text-ts-accent" />
+              Loading service…
+            </Card>
+          ) : loadError ? (
+            <Card className="flex items-start gap-3 text-sm text-red-300">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+              <span>{loadError}</span>
+            </Card>
+          ) : (
+            <>
+              {activeTab === 'Route' && renderRouteTab()}
+              {activeTab === 'Vehicle' && renderVehicleTab()}
+              {activeTab === 'Service' && renderServiceTab()}
+              {activeTab === 'Notes' && renderNotesTab()}
+            </>
+          )}
+        </div>
+
+        {/* Sticky footer */}
+        <div className="sticky bottom-0 z-30 border-t border-ts-border bg-ts-bg/96 backdrop-blur-xl">
+          <div className="mx-auto max-w-2xl px-4 py-3 lg:max-w-5xl">
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 flex-1 truncate text-xs text-ts-text-3">
+                {riddenRoute
+                  ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}`
+                  : 'Choose start and end stops'}
+              </p>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {saveSuccess && <span className="text-xs font-semibold text-ts-accent sm:hidden">{saveSuccess}</span>}
+                {saveError && <span className="max-w-[200px] truncate text-xs text-red-300">{saveError}</span>}
+                {!isSignedIn && (
+                  <SignInButton mode="modal">
+                    <button type="button" className="rounded-full border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95">
+                      Sign in
+                    </button>
+                  </SignInButton>
+                )}
+                {isSignedIn && !isConvexAuthLoading && !isAuthenticated && (
+                  <span className="text-xs text-amber-400">Auth not connected</span>
+                )}
                 <button
-                  type="button"
-                  className="rounded-full border border-ts-border px-4 py-2 text-sm font-medium text-ts-text-1 transition hover:border-ts-accent hover:text-ts-accent"
+                  type="submit"
+                  suppressHydrationWarning
+                  disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
+                  className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv shadow-lg shadow-ts-accent/20 transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Sign in to save
+                  {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save log
                 </button>
-              </SignInButton>
-            )}
-            {saveError && <span className="text-sm text-red-300">{saveError}</span>}
-            <button
-              type="submit"
-              suppressHydrationWarning
-              disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
-              className="inline-flex items-center gap-2 rounded-full bg-ts-accent px-5 py-3 text-sm font-semibold text-ts-text-inv transition hover:bg-ts-accent-h disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save log
-            </button>
+              </div>
+            </div>
           </div>
         </div>
       </form>

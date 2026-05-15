@@ -11,11 +11,14 @@ import { OverviewTab } from "./tabs/OverviewTab";
 import { FleetTab } from "./tabs/FleetTab";
 import { RoutesTab } from "./tabs/RoutesTab";
 
+// Updated to match your new merged schema
 interface Operator {
   _id: string;
-  operator_code: string;
-  operator_name: string;
-  operator_slug: string;
+  display_name: string;
+  operator_names: string[];
+  operator_slugs: string[];
+  operator_codes: string[];
+  bustimes_id?: number;
 }
 
 type Tab = "overview" | "fleet" | "routes";
@@ -27,7 +30,11 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 function OperatorCard({ operator }: { operator: Operator }) {
-  const href = `/completion?operator=${operator.operator_slug}&name=${encodeURIComponent(operator.operator_name)}&code=${operator.operator_code}`;
+  // Use the first slug and code for the link, but display the primary name
+  const primarySlug = operator.operator_slugs[0];
+  const primaryCode = operator.operator_codes[0];
+  
+  const href = `/completion?operator=${primarySlug}&name=${encodeURIComponent(operator.display_name)}&code=${primaryCode}`;
 
   return (
     <Link
@@ -36,7 +43,7 @@ function OperatorCard({ operator }: { operator: Operator }) {
     >
       <div className="flex items-start justify-between">
         <p className="text-[13px] font-bold text-[var(--color-ts-text-2)] leading-snug group-hover:text-[var(--color-ts-text-1)] transition-colors">
-          {operator.operator_name}
+          {operator.display_name}
         </p>
         <ChevronRight
           size={13}
@@ -44,8 +51,8 @@ function OperatorCard({ operator }: { operator: Operator }) {
         />
       </div>
       <div className="flex items-start justify-between">
-        <span className="p-1 text-[12px] rounded-md bg-[var(--color-ts-accent-light)] border border-[var(--color-ts-accent-border)] flex items-center justify-center shrink-0">
-          {operator.operator_code}
+        <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-[var(--color-ts-accent-light)] border border-[var(--color-ts-accent-border)] text-[var(--color-ts-accent)] flex items-center justify-center shrink-0">
+          {primaryCode}
         </span>
       </div>
     </Link>
@@ -66,11 +73,15 @@ function OperatorGrid() {
       .finally(() => setIsLoading(false));
   }, [showAll]);
 
-  const filtered = operators.filter(
-    (o) =>
-      o.operator_name.toLowerCase().includes(search.toLowerCase()) ||
-      o.operator_code.toLowerCase().includes(search.toLowerCase())
-  );
+  // Updated filter: Case-insensitive search across display_name, names, and codes
+  const filtered = operators.filter((o) => {
+    const term = search.toLowerCase();
+    return (
+      o.display_name.toLowerCase().includes(term) ||
+      o.operator_names.some((n) => n.toLowerCase().includes(term)) ||
+      o.operator_codes.some((c) => c.toLowerCase().includes(term))
+    );
+  });
 
   return (
     <div className="space-y-7">
@@ -87,7 +98,7 @@ function OperatorGrid() {
           />
           <input
             type="text"
-            placeholder="Search operators…"
+            placeholder="Search codes or names…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[var(--color-ts-surface)] border border-[var(--color-ts-border-soft)] rounded-xl pl-9 pr-4 py-2.5 text-[12px] text-[var(--color-ts-text-2)] placeholder:text-[var(--color-ts-text-3)] outline-none focus:border-[var(--color-ts-accent-border)] transition-colors"
@@ -99,7 +110,7 @@ function OperatorGrid() {
           className={`px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap ${
             showAll
               ? "bg-[var(--color-ts-surface-3)] border-[var(--color-ts-accent-border)] text-[var(--color-ts-accent)]"
-              : "bg-[var(--color-ts-surface)] border-[var(--color-ts-border-soft)] text-[var(--color-ts-text-3)] hover:border-[var(--color-ts-border)] hover:text-[var(--color-ts-text-2)]"
+              : "bg-[var(--color-ts-surface)] border border-[var(--color-ts-border-soft)] text-[var(--color-ts-text-3)] hover:border-[var(--color-ts-border)] hover:text-[var(--color-ts-text-2)]"
           }`}
         >
           {showAll ? "All operators" : "My operators"}
@@ -138,11 +149,12 @@ function OperatorGrid() {
 function OperatorDetail({ operatorSlug, operatorName, operatorCode }: { operatorSlug: string; operatorName: string; operatorCode: string; }) {
   const { user, isLoaded } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
 
   const stats = useQuery(
     api.functions.completion.getOperatorCompletionStats,
     isLoaded && user && operatorName && activeTab === "overview"
-      ? { user: user.id, operator_name: operatorName }
+      ? { user: user.id, operator_name: operatorName, timeZone }
       : "skip"
   );
 

@@ -609,7 +609,7 @@ export default function LogPage() {
 
   function renderRouteTab() {
     return (
-      <div className="flex flex-1 flex-col sm:gap-3">
+      <div className="flex flex-col gap-3 sm:pt-4">
         {/* Desktop Summary / Mobile List Toggle */}
         <div className={`sm:block ${routeMode === 'Map' ? 'hidden' : 'block mb-3 px-4 sm:px-0'}`}>
           <Card>
@@ -684,7 +684,7 @@ export default function LogPage() {
 
             {/* Bottom sheet */}
             {selectedStop && stopSheetOpen && (
-              <div className="absolute inset-x-0 bottom-0 z-10 rounded-t-3xl border-t border-ts-border bg-ts-bg/98 px-4 pb-12 pt-3 shadow-2xl backdrop-blur-xl sm:pb-6">
+              <div className="absolute inset-x-0 bottom-0 z-0 rounded-t-3xl border-t border-ts-border bg-ts-bg/98 px-4 pb-12 pt-3 sm:pb-6">
                 <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ts-border" />
                 <div className="flex items-start justify-between">
                   <div>
@@ -723,7 +723,7 @@ export default function LogPage() {
                 <div key={stop.id} className="flex gap-0 items-stretch">
                   {/* Timeline */}
                   <div className="flex flex-col items-center w-8 shrink-0 pt-5 pb-0">
-                    <div className={`h-3 w-3 rounded-full border-2 shrink-0 z-10 ${
+                    <div className={`h-3 w-3 rounded-full border-2 shrink-0 z-0 ${
                       isStart ? 'border-ts-accent bg-ts-accent' :
                       isEnd ? 'border-sky-400 bg-sky-400' :
                       inRidden ? 'border-ts-accent/60 bg-ts-accent/20' :
@@ -825,7 +825,7 @@ export default function LogPage() {
               {unitSearchLoading && <LoaderCircle className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ts-accent" />}
             </div>
             {unitSearchOpen && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-3xl border border-ts-border bg-ts-surface shadow-2xl">
+              <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-3xl border border-ts-border bg-ts-surface">
                 {unitSearchResults.map((r) => (
                   <button
                     key={`${r.source}-${r.id}`}
@@ -1034,7 +1034,7 @@ export default function LogPage() {
                 form="log-trip-form"
                 suppressHydrationWarning
                 disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv shadow-lg shadow-ts-accent/25 transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save
@@ -1071,10 +1071,10 @@ export default function LogPage() {
         <input type="hidden" name="ridden_route" value={serializeJson(riddenRoute)} readOnly />
 
         <div className={`mx-auto w-full max-w-2xl flex-1 lg:max-w-5xl flex flex-col ${
-          activeTab === 'Route' && routeMode === 'Map' ? 'px-0 py-0 pb-2' : 'px-4 py-4 pb-2'
+          activeTab === 'Route' && routeMode === 'Map' ? 'px-0 py-0 grid' : 'px-4 py-4 pb-2'
         }`}>
           {loading ? (
-            <Card className="flex items-center gap-3 text-sm text-ts-text-2">
+            <Card className="flex items-center gap-3 text-sm text-ts-text-2 sm:mt-4 rounded-none sm:rounded-3xl sm:max-h-15 text-center justify-center  ">
               <LoaderCircle className="h-5 w-5 animate-spin text-ts-accent" />
               Loading service…
             </Card>
@@ -1119,7 +1119,7 @@ export default function LogPage() {
                   type="submit"
                   suppressHydrationWarning
                   disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv shadow-lg shadow-ts-accent/20 transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save log

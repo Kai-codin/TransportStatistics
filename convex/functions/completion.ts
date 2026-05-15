@@ -15,14 +15,44 @@ function haversineKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatDate(timestamp: number): string {
-  const d = new Date(timestamp);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function getDateParts(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+
+  return {
+    year: parts.find((part) => part.type === "year")?.value ?? "0000",
+    month: parts.find((part) => part.type === "month")?.value ?? "00",
+    day: parts.find((part) => part.type === "day")?.value ?? "00",
+  };
 }
 
-export const getOperatorCompletionStats = query({
-  args: { user: v.string(), operator_name: v.string() },
+function formatDate(timestamp: number, timeZone: string): string {
+  const { year, month, day } = getDateParts(timestamp, timeZone);
+  return `${year}-${month}-${day}`;
+}
+
+export const getOperatorByAnyCode = query({
+  args: { code: v.string() },
   handler: async (ctx, args) => {
+    const searchCode = args.code.toLowerCase();
+    const allOperators = await ctx.db.query("operators").collect();
+
+    // MUST return the result of the find
+    return allOperators.find((op) => 
+      (op.operator_codes ?? []).some(c => c.toLowerCase() === searchCode) ||
+      (op.operator_slugs ?? []).some(s => s.toLowerCase() === searchCode)
+    );
+  },
+});
+
+export const getOperatorCompletionStats = query({
+  args: { user: v.string(), operator_name: v.string(), timeZone: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const timeZone = args.timeZone ?? "UTC";
     const operatorTrips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user_and_operator", (q) =>
@@ -73,8 +103,8 @@ export const getOperatorCompletionStats = query({
       const dep = trip.actual_departure ?? trip.scheduled_departure;
       const arr = trip.actual_arrival ?? trip.scheduled_arrival;
       if (dep && arr) {
-        const depDate = new Date(`${formatDate(trip.service_date)}T${dep}`);
-        const arrDate = new Date(`${formatDate(trip.service_date)}T${arr}`);
+        const depDate = new Date(`${formatDate(trip.service_date, timeZone)}T${dep}`);
+        const arrDate = new Date(`${formatDate(trip.service_date, timeZone)}T${arr}`);
         const diff = (arrDate.getTime() - depDate.getTime()) / 60000;
         if (diff > 0 && diff < 1440) totalMinutes += diff;
       }

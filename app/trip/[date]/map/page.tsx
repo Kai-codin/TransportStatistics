@@ -46,12 +46,13 @@ function getRouteColor(trip: any, idx: number) {
 export default function TripDateMapPage({ params }: { params: Promise<{ date: string }> }) {
   const { date } = use(params);
   const { user } = useUser();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
 
   const trips = useQuery(api.functions.trips.getMyTripsByDate, 
-    user?.id ? { user: user.id, date: date } : "skip"
+    user?.id ? { user: user.id, date: date, timeZone } : "skip"
   );
 
   useEffect(() => {

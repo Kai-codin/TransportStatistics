@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import { fetchQuery } from "convex/nextjs";
 
+// ─── Helper Functions ────────────────────────────────────────────────────────
+
 async function fetchAllBustimesServices(url: string) {
   const allResults: any[] = [];
   let nextUrl: string | null = url;
@@ -59,6 +61,8 @@ function formatHistoricalRouteName(route: {
   );
 }
 
+// ─── Main Handler ────────────────────────────────────────────────────────────
+
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
@@ -70,49 +74,64 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Operator code is required" }, { status: 400 });
   }
 
-  const operators = await fetchQuery(api.functions.vehicles.getOperatorsByCode, {
+  // 1. Resolve the merged operator record
+  const operator = await fetchQuery(api.functions.completion.getOperatorByAnyCode, {
     code: operatorCode,
   });
 
-  const operatorIds = [...new Set(operators.map((o) => o._id))];
-  const operatorNames = [...new Set(operators.map((o) => o.operator_name))];
+  if (!operator) {
+    return NextResponse.json({ error: "Operator not found" }, { status: 404 });
+  }
 
+  // 2. Extract metadata for queries
+  const operatorId = operator._id;
+  const operatorNames = operator.operator_names ?? [];
+
+  // 3. Parallel Data Fetching
   const [rawBustimesRoutes, relevantTrips, historicalRouteGroups] = await Promise.all([
     fetchAllBustimesServices(
       `https://bustimes.org/api/services/?operator=${encodeURIComponent(operatorCode)}`
     ),
+    // Query trips using the array of names to handle merged aliases
     fetchQuery(api.functions.vehicles.getUserTripsByOperators, {
       user: userId,
       operatorNames,
     }),
-    operatorIds.length > 0
-      ? fetchQuery((api as any).functions.vehicles.getHistoricalRoutesByOperatorIds, {
-          operatorIds,
-        })
-      : Promise.resolve([]),
+    // Fetch historical routes using the master operator ID
+    fetchQuery((api as any).functions.vehicles.getHistoricalRoutesByOperatorIds, {
+      operatorIds: [operatorId],
+    }),
   ]);
 
+  // 4. Index Trip Data for fast matching
   const tripIdsByServiceId = new Map<string, Set<string>>();
   const tripIdsByServiceSlug = new Map<string, Set<string>>();
   const tripIdsByServiceNumber = new Map<string, Set<string>>();
 
   for (const trip of relevantTrips) {
     const tripId = String(trip._id);
-    addTripIdToIndex(tripIdsByServiceId, String(trip.bustimes_service_id ?? ""), tripId);
-    addTripIdToIndex(
-      tripIdsByServiceSlug,
-      normalizeServiceNumber(trip.bustimes_service_slug ?? ""),
-      tripId
-    );
-    addTripIdToIndex(
-      tripIdsByServiceNumber,
-      normalizeServiceNumber(trip.service_number ?? ""),
-      tripId
-    );
+    if (trip.bustimes_service_id) {
+      addTripIdToIndex(tripIdsByServiceId, String(trip.bustimes_service_id), tripId);
+    }
+    if (trip.bustimes_service_slug) {
+      addTripIdToIndex(
+        tripIdsByServiceSlug,
+        normalizeServiceNumber(trip.bustimes_service_slug),
+        tripId
+      );
+    }
+    if (trip.service_number) {
+      addTripIdToIndex(
+        tripIdsByServiceNumber,
+        normalizeServiceNumber(trip.service_number),
+        tripId
+      );
+    }
   }
 
   const routeMap = new Map<string, any>();
 
+  // 5. Process Active Routes (from BusTimes)
   for (const service of rawBustimesRoutes) {
     const serviceNumber = normalizeServiceNumber(service.line_name ?? "");
     const routeKey = serviceNumber || (service.id ? `bt-${service.id}` : "");
@@ -137,9 +156,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // 6. Process Historical Routes
   for (const historicalRoute of historicalRouteGroups as any[]) {
     const serviceNumber = normalizeServiceNumber(historicalRoute.service_number ?? "");
     if (!serviceNumber) continue;
+    
+    // Use serviceNumber as key to avoid duplicates with active routes
     if (routeMap.has(serviceNumber)) continue;
 
     const matchingTripCount = countMatchingTrips([

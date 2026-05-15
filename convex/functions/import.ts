@@ -5,7 +5,6 @@ import { Id } from "../_generated/dataModel";
 export const importBatch = mutation({
   args: { features: v.array(v.any()) },
   handler: async (ctx, args) => {
-    // 1. Sanitization — filter bad coords, missing type, and null naptanCode strings
     const validFeatures = args.features.filter(
       (f) =>
         f?.atcoCode &&
@@ -19,7 +18,6 @@ export const importBatch = mutation({
       return { inserted: 0, updated: 0, skipped: args.features.length };
     }
 
-    // 2. Look up ONLY the stops we need by atcoCode index (no full table scan)
     const atcoCodes = validFeatures.map((f) => String(f.atcoCode));
     const existingStops = await Promise.all(
       atcoCodes.map((code) =>
@@ -44,7 +42,6 @@ export const importBatch = mutation({
         name: feature.name ?? "Unknown",
         commonName: feature.commonName ?? feature.name ?? "Unknown",
         atcoCode: String(feature.atcoCode),
-        // v.optional() means undefined = omitted, null is NOT valid
         crsCode: feature.crsCode ?? undefined,
         tiplocCode: feature.tiplocCode ?? undefined,
         naptanCode: feature.naptanCode ?? undefined,
@@ -76,7 +73,6 @@ export const importBatch = mutation({
     return { inserted, updated, skipped };
   },
 });
-
 
 export const importTrips = mutation({
   args: {
@@ -170,16 +166,6 @@ export const importTrips = mutation({
   },
 });
 
-interface TrainEntry {
-  operator: string;
-  fleetnumber: string;
-  type: string;
-  livery: {
-    name: string;
-    css: string;
-  };
-}
-
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 }
@@ -207,35 +193,22 @@ export const importTrains = mutation({
     ),
   },
   handler: async (ctx, { trains }) => {
-    // ── Pre-fetch all existing unit numbers in one query ──────────────
-    // This avoids one DB read per unit in the loop below.
-    const existingUnits = await ctx.db.query("units").collect();
-    const existingUnitNumbers = new Set(
-      existingUnits.map((u) => u.unit_number).filter(Boolean)
-    );
-
-    // ── Pre-fetch all existing liveries, types, operators ─────────────
     const [allLiveries, allTypes, allOperators] = await Promise.all([
       ctx.db.query("liveries").collect(),
       ctx.db.query("types").collect(),
       ctx.db.query("operators").collect(),
     ]);
 
-    // ── Seed in-memory caches from pre-fetched data ───────────────────
-    const liveryCache = new Map<string, string>();
-    for (const l of allLiveries) {
-      liveryCache.set(`${l.livery_name}||${l.css_class}`, l._id);
-    }
-
-    const typeCache = new Map<string, string>();
-    for (const t of allTypes) {
-      typeCache.set(t.type_name, t._id);
-    }
-
-    const operatorCache = new Map<string, string>();
+    const liveryCache = new Map(allLiveries.map(l => [`${l.livery_name}||${l.css_class}`, l._id]));
+    const typeCache = new Map(allTypes.map(t => [t.type_name, t._id]));
+    
+    const operatorCache = new Map<string, Id<"operators">>();
     for (const o of allOperators) {
-      operatorCache.set(o.operator_slug, o._id);
+      (o.operator_slugs ?? []).forEach(s => operatorCache.set(s, o._id));
     }
+
+    const existingUnits = await ctx.db.query("units").collect();
+    const existingUnitNumbers = new Set(existingUnits.map((u) => u.unit_number));
 
     let newLiveries = 0;
     let newTypes = 0;
@@ -243,8 +216,7 @@ export const importTrains = mutation({
     let newUnits = 0;
     let skippedUnits = 0;
 
-    for (const train of trains as TrainEntry[]) {
-      // ── 1. Resolve / create livery ──────────────────────────────────
+    for (const train of trains) {
       const liveryKey = `${train.livery.name}||${train.livery.css}`;
       let liveryId = liveryCache.get(liveryKey);
 
@@ -257,71 +229,47 @@ export const importTrains = mutation({
         newLiveries++;
       }
 
-      // ── 2. Resolve / create type ────────────────────────────────────
       let typeId = typeCache.get(train.type);
-
       if (!typeId) {
         typeId = await ctx.db.insert("types", { type_name: train.type });
         typeCache.set(train.type, typeId);
         newTypes++;
       }
 
-      // ── 3. Resolve / create operator ────────────────────────────────
       const slug = toSlug(train.operator);
       let operatorId = operatorCache.get(slug);
-
       if (!operatorId) {
         operatorId = await ctx.db.insert("operators", {
-          operator_name: train.operator,
-          operator_slug: slug,
-          operator_code: toCode(train.operator),
+          display_name: train.operator,
+          operator_names: [train.operator],
+          operator_slugs: [slug],
+          operator_codes: [toCode(train.operator)],
         });
         operatorCache.set(slug, operatorId);
         newOperators++;
       }
 
-      // ── 4. Resolve / create unit ────────────────────────────────────
       const unit_number = train.fleetnumber;
-
       if (existingUnitNumbers.has(unit_number)) {
         skippedUnits++;
         continue;
       }
 
-      // its a train it will never have a unit reg
-      const unitReg = ``;
       await ctx.db.insert("units", {
         unit_number,
-        unit_reg: unitReg,
+        unit_reg: "",
         type_id: typeId,
         operator_id: operatorId,
         livery_id: liveryId,
         search_text: unit_number,
       });
-      existingUnitNumbers.add(unit_number); // prevent duplicates within this batch
+      existingUnitNumbers.add(unit_number);
       newUnits++;
     }
 
-    return {
-      newLiveries,
-      newTypes,
-      newOperators,
-      newUnits,
-      skippedUnits,
-      totalProcessed: trains.length,
-    };
+    return { newLiveries, newTypes, newOperators, newUnits, skippedUnits, totalProcessed: trains.length };
   },
 });
-
-
-
-interface FleetEntry {
-  operator_id: number;
-  type: string;
-  livery_name: string;
-  livery_css: string;
-  fleet_numbers: number[];
-}
 
 export const importBulkUnits = mutation({
   args: {
@@ -336,7 +284,6 @@ export const importBulkUnits = mutation({
     ),
   },
   handler: async (ctx, { fleet }) => {
-    // ── Pre-fetch everything upfront to stay under the 4096 read limit ──
     const [existingUnits, allLiveries, allTypes, allOperators] = await Promise.all([
       ctx.db.query("units").collect(),
       ctx.db.query("liveries").collect(),
@@ -344,24 +291,13 @@ export const importBulkUnits = mutation({
       ctx.db.query("operators").collect(),
     ]);
 
-    const existingUnitNumbers = new Set(
-      existingUnits.map((u) => u.unit_number).filter(Boolean)
-    );
-
-    const liveryCache = new Map<string, string>(); // "name||css" → _id
-    for (const l of allLiveries) {
-      liveryCache.set(`${l.livery_name}||${l.css_class}`, l._id);
-    }
-
-    const typeCache = new Map<string, string>(); // type_name → _id
-    for (const t of allTypes) {
-      typeCache.set(t.type_name, t._id);
-    }
-
-    // Keyed by operator_code (the old numeric ID stored as string)
-    const operatorCache = new Map<string, string>(); // operator_code → _id
+    const existingUnitNumbers = new Set(existingUnits.map((u) => u.unit_number));
+    const liveryCache = new Map(allLiveries.map(l => [`${l.livery_name}||${l.css_class}`, l._id]));
+    const typeCache = new Map(allTypes.map(t => [t.type_name, t._id]));
+    
+    const operatorCache = new Map<string, Id<"operators">>();
     for (const o of allOperators) {
-      operatorCache.set(o.operator_code, o._id);
+      (o.operator_codes ?? []).forEach(c => operatorCache.set(c, o._id));
     }
 
     let newLiveries = 0;
@@ -371,11 +307,9 @@ export const importBulkUnits = mutation({
     let skippedUnits = 0;
     let totalProcessed = 0;
 
-    for (const entry of fleet as FleetEntry[]) {
-      // ── 1. Resolve / create livery ──────────────────────────────────
+    for (const entry of fleet) {
       const liveryKey = `${entry.livery_name}||${entry.livery_css}`;
       let liveryId = liveryCache.get(liveryKey);
-
       if (!liveryId) {
         liveryId = await ctx.db.insert("liveries", {
           livery_name: entry.livery_name,
@@ -385,34 +319,29 @@ export const importBulkUnits = mutation({
         newLiveries++;
       }
 
-      // ── 2. Resolve / create type ────────────────────────────────────
       let typeId = typeCache.get(entry.type);
-
       if (!typeId) {
         typeId = await ctx.db.insert("types", { type_name: entry.type });
         typeCache.set(entry.type, typeId);
         newTypes++;
       }
 
-      // ── 3. Resolve / create operator by old numeric ID ──────────────
       const operatorCode = String(entry.operator_id);
       let operatorId = operatorCache.get(operatorCode);
-
       if (!operatorId) {
         operatorId = await ctx.db.insert("operators", {
-          operator_name: operatorCode,
-          operator_slug: operatorCode,
-          operator_code: operatorCode,
+          display_name: operatorCode,
+          operator_names: [operatorCode],
+          operator_slugs: [operatorCode],
+          operator_codes: [operatorCode],
         });
         operatorCache.set(operatorCode, operatorId);
         newOperators++;
       }
 
-      // ── 4. Loop over each fleet number and resolve / create unit ────
       for (const fleetNumber of entry.fleet_numbers) {
         totalProcessed++;
         const unit_number = String(fleetNumber);
-
         if (existingUnitNumbers.has(unit_number)) {
           skippedUnits++;
           continue;
@@ -420,7 +349,7 @@ export const importBulkUnits = mutation({
 
         await ctx.db.insert("units", {
           unit_number,
-          unit_reg: ``, // No unit reg its a train
+          unit_reg: "",
           type_id: typeId,
           operator_id: operatorId,
           livery_id: liveryId,
@@ -431,13 +360,6 @@ export const importBulkUnits = mutation({
       }
     }
 
-    return {
-      newLiveries,
-      newTypes,
-      newOperators,
-      newUnits,
-      skippedUnits,
-      totalProcessed,
-    };
+    return { newLiveries, newTypes, newOperators, newUnits, skippedUnits, totalProcessed };
   },
 });

@@ -81,15 +81,16 @@ export default defineSchema({
   .index("by_type_name", ["type_name"]),
 
   operators: defineTable({
+    display_name: v.string(),
+    operator_names: v.array(v.string()),
+    operator_slugs: v.array(v.string()),
+    operator_codes: v.array(v.string()),
     bustimes_id: v.optional(v.number()),
-    operator_name: v.string(),
-    operator_slug: v.string(),
-    operator_code: v.string(),
   })
   .index("by_bustimes_id", ["bustimes_id"])
-  .index("by_operator_name", ["operator_name"])
-  .index("by_operator_slug", ["operator_slug"])
-  .index("by_operator_code", ["operator_code"]),
+  .index("by_operator_names", ["operator_names"])
+  .index("by_operator_slugs", ["operator_slugs"])
+  .index("by_operator_codes", ["operator_codes"]),
 
   historicalRoutes: defineTable({
     bustimes_service_id: v.optional(v.number()),

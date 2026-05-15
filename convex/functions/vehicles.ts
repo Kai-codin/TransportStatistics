@@ -1,4 +1,3 @@
-// convex/vehicles.ts
 import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
@@ -8,8 +7,8 @@ export const getOperatorByCode = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("operators")
-      .withIndex("by_operator_code", (q) => q.eq("operator_code", args.code))
-      .first(); // Returns the first match instead of crashing if there are multiple
+      .withIndex("by_operator_codes", (q) => q.eq("operator_codes", args.code as any))
+      .first(); 
   },
 });
 
@@ -18,13 +17,13 @@ export const getOperatorsByCode = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("operators")
-      .withIndex("by_operator_code", (q) => q.eq("operator_code", args.code))
+      .withIndex("by_operator_codes", (q) => q.eq("operator_codes", args.code as any))
       .collect();
   },
 });
 
 export const getOperatorUnits = query({
-  args: { operatorId: v.string() },
+  args: { operatorId: v.id("operators") },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("units")
@@ -42,7 +41,7 @@ export const getHistoricalRoutesByOperatorIds = query({
     for (const operatorId of uniqueOperatorIds) {
       const operatorRoutes = await ctx.db
         .query("historicalRoutes")
-        .withIndex("by_operator_id", (q) => q.eq("operator_id", operatorId))
+        .withIndex("by_operator_id", (q) => q.eq("operator_id", operatorId as any))
         .collect();
 
       routes.push(...operatorRoutes);

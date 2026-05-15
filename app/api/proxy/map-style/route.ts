@@ -56,13 +56,13 @@ export async function GET(request: Request) {
       cache: 'no-store'
     });
 
-    if (!response.ok) throw new Error('Primary style returned non-200 status');
+    if (!response.ok) throw new Error(`Primary style returned non-200 status: ${response.status}`);
 
     const styleData = await response.json();
     return NextResponse.json(sanitizeStyle(styleData, false));
 
   } catch (error) {
-    console.warn("Primary style unreachable, switching to fallback.");
+    console.warn(`Primary style unreachable, switching to fallback. Error: ${error.message}`);
 
     if (FALLBACK_STYLE_URL) {
       try {
@@ -70,10 +70,14 @@ export async function GET(request: Request) {
 
         if (fallbackResponse.ok) {
           const fallbackData = await fallbackResponse.json();
+          fallbackData.metadata = {
+            ...fallbackData.metadata,
+            note: `Primary style unreachable, switching to fallback. Error: ${error.message}`
+};
           return NextResponse.json(sanitizeStyle(fallbackData, true));
         }
       } catch (fallbackError) {
-        console.warn('Hosted fallback style unavailable, using local fallback style.');
+        console.warn(`Hosted fallback style unavailable, using local fallback style. Error: ${fallbackError.message}`);
       }
     }
 

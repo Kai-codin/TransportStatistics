@@ -37,7 +37,7 @@ export const getOperatorsBySlugs = query({
     for (const slug of args.slugs) {
       const op = await ctx.db
         .query("operators")
-        .withIndex("by_operator_slug", (q) => q.eq("operator_slug", slug))
+        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", slug as any))
         .unique();
       if (op) results.push(op);
     }
@@ -57,58 +57,31 @@ export const upsertOperator = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("operators")
-      .withIndex("by_operator_slug", (q) => q.eq("operator_slug", args.slug))
+      .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", args.slug as any))
       .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        operator_name: args.name,
-        operator_code: args.noc,
+        display_name: args.name,
+        operator_names: Array.from(new Set([...(existing.operator_names ?? []), args.name])),
+        operator_codes: Array.from(new Set([...(existing.operator_codes ?? []), args.noc])),
+        bustimes_id: args.bustimes_id ?? existing.bustimes_id,
       });
       return existing._id;
     }
 
     return await ctx.db.insert("operators", {
-      operator_name: args.name,
-      operator_slug: args.slug,
-      operator_code: args.noc,
+      display_name: args.name,
+      operator_names: [args.name],
+      operator_slugs: [args.slug],
+      operator_codes: [args.noc],
       bustimes_id: args.bustimes_id,
     });
   },
 });
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-async function fetchFromBusTimes(
-  slug: string,
-): Promise<BusTimesOperator | null> {
-  const nameQuery = slug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join("+");
-
-  const slugRes = await fetch(
-    `https://bustimes.org/api/operators/?slug=${encodeURIComponent(slug)}`,
-  );
-  const slugData: BusTimesResponse = await slugRes.json();
-  if (slugData.results?.length > 0) return slugData.results[0];
-
-  const nameRes = await fetch(
-    `https://bustimes.org/api/operators/?name=${nameQuery}`,
-  );
-  const nameData: BusTimesResponse = await nameRes.json();
-  if (nameData.results?.length > 0) return nameData.results[0];
-
-  const partialRes = await fetch(
-    `https://bustimes.org/api/operators/?name__icontains=${nameQuery}`,
-  );
-  const partialData: BusTimesResponse = await partialRes.json();
-  if (partialData.results?.length > 0) return partialData.results[0];
-
-  return null;
-}
-
 // ─── Actions ─────────────────────────────────────────────────────────────────
+
 export const getUserTripSlugs = query({
   args: { userId: v.string() },
   handler: async (ctx, args): Promise<string[]> => {
@@ -123,7 +96,6 @@ export const getUserTripSlugs = query({
 export const getUserRiddenOperators = query({
   args: { userId: v.string() },
   handler: async (ctx, args): Promise<Doc<"operators">[]> => {
-    // Step 1: get all trip slugs
     const trips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user", (q) => q.eq("user", args.userId))
@@ -131,21 +103,38 @@ export const getUserRiddenOperators = query({
 
     if (!trips.length) return [];
 
-    const riddenSlugs = [...new Set(trips.map((t) => t.operator_slug))];
+    // Clean and normalize slugs from trip logs
+    const riddenSlugs = [...new Set(
+      trips.map((t) => t.operator_slug?.toLowerCase().trim()).filter(Boolean)
+    )];
 
-    // Step 2: fetch operators in one pass — no round-trips
-    const ops: Doc<"operators">[] = [];
+    const results: Doc<"operators">[] = [];
+    
+    // We'll fetch all operators once to do a manual "in-memory" match 
+    // as a fallback if the index match is being finicky with array types.
+    const allOps = await ctx.db.query("operators").collect();
+
     for (const slug of riddenSlugs) {
-      const op = await ctx.db
+      // 1. Try the optimized index path first
+      let op = await ctx.db
         .query("operators")
-        .withIndex("by_operator_slug", (q) => q.eq("operator_slug", slug))
+        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", slug as any))
         .unique();
-      if (op) ops.push(op);
+      
+      // 2. Fallback: Manual search in the local list (prevents index/type mismatches)
+      if (!op) {
+        op = allOps.find(o => 
+          o.operator_slugs?.some(s => s.toLowerCase() === slug)
+        ) ?? null;
+      }
+      
+      if (op && !results.some(r => r._id === op._id)) {
+        results.push(op);
+      }
     }
 
-    // Sort here so the API route doesn't have to
-    return ops.sort((a, b) =>
-      a.operator_name.localeCompare(b.operator_name)
+    return results.sort((a, b) => 
+      (a.display_name ?? "").localeCompare(b.display_name ?? "")
     );
   },
 });

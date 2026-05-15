@@ -46,7 +46,7 @@ function ContributionHeatmap({
       startDate = new Date(year, 0, 1);
       endDate = new Date(year, 11, 31);
     } else {
-      startDate = firstTripDate ? new Date(firstTripDate) : new Date();
+      startDate = firstTripDate ? parseDateKey(firstTripDate) : new Date();
       const eighteenMonthsAgo = new Date();
       eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
       if (startDate < eighteenMonthsAgo) startDate = eighteenMonthsAgo;
@@ -83,7 +83,7 @@ function ContributionHeatmap({
           lastMonth = currentMonth;
         }
 
-        const key = tempDate.toISOString().split("T")[0];
+        const key = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, "0")}-${String(tempDate.getDate()).padStart(2, "0")}`;
 
         // If a specific year is chosen, out-of-bounds days get a count of -1 (hidden)
         const inTargetYear = !year || currentYear === year;
@@ -186,10 +186,16 @@ function ContributionHeatmap({
   );
 }
 
+function parseDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 // --- Main Page ---
 
 export default function StatsPage() {
   const { user } = useUser();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   const [selectedYear, setSelectedYear] = useState<number | undefined>(
     new Date().getFullYear(),
   );
@@ -198,7 +204,7 @@ export default function StatsPage() {
   // 1. Define stats FIRST so it is available for the hooks below
   const stats = useQuery(
     api.functions.stats.getUserStats,
-    user?.id ? { user: user.id, year: selectedYear } : "skip",
+    user?.id ? { user: user.id, year: selectedYear, timeZone } : "skip",
   );
 
   // 2. Now you can safely use stats.dailyCounts in useMemo

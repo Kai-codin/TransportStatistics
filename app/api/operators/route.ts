@@ -1,4 +1,3 @@
-// app/api/operators/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -11,14 +10,17 @@ export async function GET(req: NextRequest) {
   const allMode = searchParams.get("all") === "1";
 
   // ── ALL MODE ────────────────────────────────────────────────────────────
-  // Just read from the local table. Sync is a separate concern (cron/webhook).
   if (allMode) {
     try {
       const allOperators = await convex.query(
         api.functions.operators.getAllOperators, {}
       );
 
-      allOperators.sort((a, b) => a.operator_name.localeCompare(b.operator_name));
+      // FIX: Changed operator_name to display_name
+      allOperators.sort((a, b) => 
+        (a.display_name ?? "").localeCompare(b.display_name ?? "")
+      );
+
       return NextResponse.json({
         mode: "all",
         total: allOperators.length,
@@ -42,7 +44,11 @@ export async function GET(req: NextRequest) {
         { userId }
     );
 
-    operators.sort((a, b) => a.operator_name.localeCompare(b.operator_name));
+    // FIX: Changed operator_name to display_name
+    operators.sort((a, b) => 
+      (a.display_name ?? "").localeCompare(b.display_name ?? "")
+    );
+
     return NextResponse.json({
       mode: "user",
       total: operators.length,

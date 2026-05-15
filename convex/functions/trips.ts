@@ -39,6 +39,25 @@ const tripLogArgs = {
   notes: v.optional(v.string()),
 };
 
+function normalizeServiceDate(value: number) {
+  return value > 1_000_000_000_000 ? value : value * 1000;
+}
+
+function formatDateKey(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+
+  return `${year}-${month}-${day}`;
+}
+
 export const getMyTrips = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -53,36 +72,29 @@ export const getMyTrips = query({
   },
 });
 
-function getDateBounds(dateKey: string) {
-  const start = new Date(`${dateKey}T00:00:00`);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start: start.getTime(), end: end.getTime() };
-}
-
 export const getMyTripsByDate = query({
   args: {
     user: v.string(),
     date: v.string(),
+    timeZone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const timeZone = args.timeZone ?? "UTC";
+    const allTrips = await ctx.db
+      .query("tripLogs")
+      .withIndex("by_user", (q) => q.eq("user", args.user))
+      .collect();
+
     if (args.date === 'all') {
-      return await ctx.db
-        .query("tripLogs")
-        .withIndex("by_service_date", (q) => q.eq("user", args.user))
-        .order("desc")
-        .collect();
+      return [...allTrips].sort((a, b) => normalizeServiceDate(b.service_date) - normalizeServiceDate(a.service_date));
     }
 
-    const { start, end } = getDateBounds(args.date);
-
-    return await ctx.db
-      .query("tripLogs")
-      .withIndex("by_service_date", (q) =>
-        q.eq("user", args.user).gte("service_date", start).lt("service_date", end)
-      )
-      .order("desc")
-      .collect();
+    return allTrips
+      .filter((trip) => {
+        const timestamp = normalizeServiceDate(trip.service_date);
+        return formatDateKey(timestamp, timeZone) === args.date;
+      })
+      .sort((a, b) => normalizeServiceDate(b.service_date) - normalizeServiceDate(a.service_date));
   },
 });
 

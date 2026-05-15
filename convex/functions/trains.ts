@@ -1,7 +1,16 @@
 import { action, mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { Doc } from "../_generated/dataModel";
+import { QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
+
+type TrainDetailsDoc = Doc<"trainDetails">;
+
+type SignalboxTrainRecord = {
+  rid?: string | null;
+  [key: string]: unknown;
+};
 
 export const backfillSearchText = mutation({
   args: { cursor: v.union(v.string(), v.null()) },
@@ -65,15 +74,33 @@ export const searchForUnits = query({
   },
 });
 
+async function getLatestTrainDetailsByIndex(
+  ctx: QueryCtx,
+  indexName: "by_uid" | "by_rid",
+  field: "uid" | "rid",
+  value: string,
+) {
+  const records = await ctx.db
+    .query("trainDetails")
+    .withIndex(indexName, (q) => q.eq(field, value))
+    .collect();
+
+  if (records.length === 0) {
+    return { latest: null, duplicates: [] as typeof records };
+  }
+
+  const sorted = [...records].sort((a, b) => b._creationTime - a._creationTime);
+  return {
+    latest: sorted[0],
+    duplicates: sorted.slice(1),
+  };
+}
+
 export const getRidWithUID = query({
   args: { uid: v.string() },
   handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("trainDetails")
-      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
-      .unique(); // Returns the document or null if not found
-
-    return record;
+    const { latest } = await getLatestTrainDetailsByIndex(ctx, "by_uid", "uid", args.uid);
+    return latest;
   }
 });
 
@@ -83,14 +110,14 @@ export const getDetailsForRids = query({
   handler: async (ctx, args) => {
     const details = await Promise.all(
       args.rids.map((rid) =>
-        ctx.db.query("trainDetails").withIndex("by_rid", (q) => q.eq("rid", rid)).unique()
+        getLatestTrainDetailsByIndex(ctx, "by_rid", "rid", rid)
       )
     );
 
     return details.reduce((acc, curr) => {
-      if (curr) acc[curr.rid] = curr;
+      if (curr.latest) acc[curr.latest.rid] = curr.latest;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, TrainDetailsDoc>);
   },
 });
 
@@ -110,13 +137,20 @@ export const saveTrainDetailsBatch = mutation({
       const existing = await ctx.db
         .query("trainDetails")
         .withIndex("by_rid", (q) => q.eq("rid", train.rid))
-        .unique();
+        .collect();
 
-      if (!existing) {
+      const sortedExisting = [...existing].sort((a, b) => b._creationTime - a._creationTime);
+      const record = sortedExisting[0] ?? null;
+
+      if (sortedExisting.length > 1) {
+        await Promise.all(sortedExisting.slice(1).map((duplicate) => ctx.db.delete(duplicate._id)));
+      }
+
+      if (!record) {
         await ctx.db.insert("trainDetails", train);
       } else {
         // Optional: Patch/Update if the data is stale
-        await ctx.db.patch(existing._id, train);
+        await ctx.db.patch(record._id, train);
       }
     }
   },
@@ -128,14 +162,14 @@ export const syncBatch = action({
   handler: async (ctx, args) => {
     // 1. Helper to sleep between requests
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-    const validData = [];
+    const validData: SignalboxTrainRecord[] = [];
 
     for (const rid of args.rids) {
       try {
         const response = await fetch(`https://map-api.production.signalbox.io/api/train-information/${rid}`);
         
         if (response.ok) {
-          validData.push(await response.json());
+          validData.push(await response.json() as SignalboxTrainRecord);
         } else if (response.status === 429) {
 //          console.warn(`Rate limited for RID ${rid}. Backing off...`);
           // If we hit a 429, wait longer before continuing
@@ -166,10 +200,10 @@ export const syncAllTrains = action({
       return;
     }
 
-    const data = await res.json();
-    const allTrains: any[] = data.train_locations ?? [];
+    const data = (await res.json()) as { train_locations?: SignalboxTrainRecord[] };
+    const allTrains: SignalboxTrainRecord[] = data.train_locations ?? [];
     const rids = [
-      ...new Set(allTrains.map((t: any) => t.rid).filter(Boolean)),
+      ...new Set(allTrains.map((t) => t.rid).filter((rid): rid is string => Boolean(rid))),
     ] as string[];
 
     if (!rids.length) return;
@@ -193,7 +227,7 @@ export const syncAllTrains = action({
 
     // Fetch missing in parallel batches
     const PARALLEL = 10;
-    const validData: any[] = [];
+    const validData: SignalboxTrainRecord[] = [];
 
     for (let i = 0; i < missing.length; i += PARALLEL) {
       const batch = missing.slice(i, i + PARALLEL);

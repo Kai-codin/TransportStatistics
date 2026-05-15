@@ -13,6 +13,7 @@ import type * as functions_completion from "../functions/completion.js";
 import type * as functions_delete_stop_of_type from "../functions/delete_stop_of_type.js";
 import type * as functions_import from "../functions/import.js";
 import type * as functions_liveries from "../functions/liveries.js";
+import type * as functions_migrations from "../functions/migrations.js";
 import type * as functions_operators from "../functions/operators.js";
 import type * as functions_seed from "../functions/seed.js";
 import type * as functions_stats from "../functions/stats.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   "functions/delete_stop_of_type": typeof functions_delete_stop_of_type;
   "functions/import": typeof functions_import;
   "functions/liveries": typeof functions_liveries;
+  "functions/migrations": typeof functions_migrations;
   "functions/operators": typeof functions_operators;
   "functions/seed": typeof functions_seed;
   "functions/stats": typeof functions_stats;

@@ -2,8 +2,9 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 
 export const getUserStats = query({
-  args: { user: v.string(), year: v.optional(v.number()) },
+  args: { user: v.string(), year: v.optional(v.number()), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    const timeZone = args.timeZone ?? "UTC";
     const allTrips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user", (q) => q.eq("user", args.user))
@@ -11,11 +12,11 @@ export const getUserStats = query({
 
     if (allTrips.length === 0) return null;
 
-    const availableYears = [...new Set(allTrips.map(t => new Date(t.service_date).getFullYear()))]
+    const availableYears = [...new Set(allTrips.map((t) => getYearFromTimestamp(t.service_date, timeZone)))]
       .sort((a, b) => b - a);
 
     const trips = args.year 
-      ? allTrips.filter(t => new Date(t.service_date).getFullYear() === args.year)
+      ? allTrips.filter((t) => getYearFromTimestamp(t.service_date, timeZone) === args.year)
       : allTrips;
     
     if (trips.length === 0) return null;
@@ -78,8 +79,8 @@ export const getUserStats = query({
       const dep = trip.actual_departure ?? trip.scheduled_departure;
       const arr = trip.actual_arrival ?? trip.scheduled_arrival;
       if (dep && arr) {
-        const depDate = new Date(`${formatDate(trip.service_date)}T${dep}`);
-        const arrDate = new Date(`${formatDate(trip.service_date)}T${arr}`);
+        const depDate = new Date(`${formatDate(trip.service_date, timeZone)}T${dep}`);
+        const arrDate = new Date(`${formatDate(trip.service_date, timeZone)}T${arr}`);
         const diff = (arrDate.getTime() - depDate.getTime()) / 60000;
         if (diff > 0 && diff < 1440) totalMinutes += diff;
       }
@@ -88,8 +89,8 @@ export const getUserStats = query({
     // --- Trips per month ---
     const tripsByMonth: Record<string, number> = {};
     for (const trip of trips) {
-      const d = new Date(trip.service_date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const { year, month } = getDateParts(trip.service_date, timeZone);
+      const key = `${year}-${month}`;
       tripsByMonth[key] = (tripsByMonth[key] ?? 0) + 1;
     }
     const tripsPerMonth = Object.entries(tripsByMonth)
@@ -148,8 +149,8 @@ export const getUserStats = query({
     const uniqueRoutes = Object.keys(routeGroups).length;
 
     const tripDates = [...new Set(trips.map((t) => {
-      const d = new Date(t.service_date);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const { year, month, day } = getDateParts(t.service_date, timeZone);
+      return `${year}-${month}-${day}`;
     }))].sort();
 
     let totalDelayMins = 0;
@@ -187,7 +188,7 @@ export const getUserStats = query({
       }
 
       // 4. Time Heatmap
-      const date = new Date(trip.service_date);
+      const date = new Date(`${formatDate(trip.service_date, timeZone)}T00:00:00`);
       dayOfWeekCounts[days[date.getDay()]]++;
     }
 
@@ -213,13 +214,13 @@ export const getUserStats = query({
     .slice(0, 10);
 
     // --- Streaks (4) ---
-    const sortedDates = [...new Set(trips.map(t => formatDate(t.service_date)))].sort();
+    const sortedDates = [...new Set(trips.map((t) => formatDate(t.service_date, timeZone)))].sort();
     let maxStreak = 0;
     let currentStreak = 0;
     for (let i = 0; i < sortedDates.length; i++) {
         if (i > 0) {
-            const prev = new Date(sortedDates[i-1]);
-            const curr = new Date(sortedDates[i]);
+          const prev = new Date(`${sortedDates[i - 1]}T00:00:00`);
+          const curr = new Date(`${sortedDates[i]}T00:00:00`);
             const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 3600 * 24);
             if (diffDays === 1) {
                 currentStreak++;
@@ -237,7 +238,7 @@ export const getUserStats = query({
 
     const dailyCounts: Record<string, number> = {};
     for (const trip of trips) {
-        const dateKey = formatDate(trip.service_date);
+      const dateKey = formatDate(trip.service_date, timeZone);
         dailyCounts[dateKey] = (dailyCounts[dateKey] ?? 0) + 1;
     }
 
@@ -294,7 +295,26 @@ function haversineKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatDate(timestamp: number): string {
-  const d = new Date(timestamp);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function getDateParts(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+
+  return {
+    year: parts.find((part) => part.type === "year")?.value ?? "0000",
+    month: parts.find((part) => part.type === "month")?.value ?? "00",
+    day: parts.find((part) => part.type === "day")?.value ?? "00",
+  };
+}
+
+function getYearFromTimestamp(timestamp: number, timeZone: string) {
+  return Number(getDateParts(timestamp, timeZone).year);
+}
+
+function formatDate(timestamp: number, timeZone: string): string {
+  const { year, month, day } = getDateParts(timestamp, timeZone);
+  return `${year}-${month}-${day}`;
 }

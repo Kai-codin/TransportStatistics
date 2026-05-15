@@ -2,7 +2,9 @@
 import { NextResponse } from 'next/server';
 
 const PRIMARY_STYLE_URL = "https://tiles.fluffynet.dev/styles/dark/style.json";
-const FALLBACK_STYLE_URL = process.env.MAPTILER_KEY ? `https://api.maptiler.com/maps/openstreetmap/style.json?key=${process.env.MAPTILER_KEY}` : null;
+const FALLBACK_STYLE_URL = process.env.MAPTILER_KEY 
+  ? `https://api.maptiler.com/maps/openstreetmap/style.json?key=${process.env.MAPTILER_KEY}` 
+  : null;
 
 const LOCAL_FALLBACK_STYLE = {
   version: 8,
@@ -25,28 +27,23 @@ const LOCAL_FALLBACK_STYLE = {
   ],
 };
 
-// Helper function to sanitize attribution
+// Helper function to sanitize attribution (Deep clones to prevent object mutation)
 const sanitizeStyle = (styleData: any, isFallback: boolean = false) => {
-  if (isFallback) {
-    if (styleData.sources) {
-      for (const key in styleData.sources) {
-        // Overwrite the attribution for every source
-        styleData.sources[key].attribution = `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`;
+  const clonedStyle = JSON.parse(JSON.stringify(styleData));
+
+  if (clonedStyle.sources) {
+    for (const key in clonedStyle.sources) {
+      if (isFallback) {
+        clonedStyle.sources[key].attribution = `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`;
+      } else {
+        clonedStyle.sources[key].attribution = `Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> | Hosted by <a href="https://tiles.fluffynet.dev/" target="_blank" rel="noopener noreferrer">FluffyNet</a>`;
       }
     }
-    return styleData;
-  } else {
-    if (styleData.sources) {
-      for (const key in styleData.sources) {
-        // Overwrite the attribution for every source
-        styleData.sources[key].attribution = `Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> | Hosted by <a href="https://tiles.fluffynet.dev/" target="_blank" rel="noopener noreferrer">FluffyNet</a>`;
-      }
-    }
-    return styleData;
   }
+  return clonedStyle;
 };
 
-export async function GET(request: Request) {
+export async function GET() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
 
@@ -62,7 +59,9 @@ export async function GET(request: Request) {
     return NextResponse.json(sanitizeStyle(styleData, false));
 
   } catch (error) {
-    console.warn(`Primary style unreachable, switching to fallback. Error: ${error.message}`);
+    // Safely extract the error message from 'unknown' type
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`Primary style unreachable, switching to fallback. Error: ${errorMessage}`);
 
     if (FALLBACK_STYLE_URL) {
       try {
@@ -72,16 +71,19 @@ export async function GET(request: Request) {
           const fallbackData = await fallbackResponse.json();
           fallbackData.metadata = {
             ...fallbackData.metadata,
-            note: `Primary style unreachable, switching to fallback. Error: ${error.message}`
-};
+            note: `Primary style unreachable, switching to fallback. Error: ${errorMessage}`
+          };
           return NextResponse.json(sanitizeStyle(fallbackData, true));
         }
       } catch (fallbackError) {
-        console.warn(`Hosted fallback style unavailable, using local fallback style. Error: ${fallbackError.message}`);
+        // Safely handle the nested catch block error as well
+        const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        console.warn(`Hosted fallback style unavailable, using local fallback style. Error: ${fallbackErrorMessage}`);
       }
     }
 
-    return NextResponse.json(LOCAL_FALLBACK_STYLE);
+    // Pass true here so it formats the local fallback properly and safely returns a copy
+    return NextResponse.json(sanitizeStyle(LOCAL_FALLBACK_STYLE, true));
   } finally {
     clearTimeout(timeoutId);
   }

@@ -14,6 +14,7 @@ async function fetchAllBustimesVehicles(url: string) {
     const data: { results: any[]; next: string | null } = await res.json();
     allResults.push(...(data.results ?? []));
     nextUrl = data.next;
+    console.log(`Fetched ${allResults.length} vehicles so far...`);
   }
   return allResults;
 }
@@ -43,13 +44,19 @@ function collectTripIds(indices: Array<Set<string> | undefined>) {
 }
 
 function sortVehicles(
-  a: { unit_number: string; ridden?: boolean },
-  b: { unit_number: string; ridden?: boolean }
+  a: { unit_number: string | null; ridden?: boolean },
+  b: { unit_number: string | null; ridden?: boolean }
 ) {
   if (a.ridden !== b.ridden) return Number(b.ridden) - Number(a.ridden);
+  
+  // Handle nulls: push them to the bottom of their respective ridden group
+  if (a.unit_number === null) return 1;
+  if (b.unit_number === null) return -1;
+
   const aNum = parseInt(a.unit_number, 10);
   const bNum = parseInt(b.unit_number, 10);
   if (!isNaN(aNum) && !isNaN(bNum) && aNum !== bNum) return aNum - bNum;
+  
   return String(a.unit_number).localeCompare(String(b.unit_number), undefined, {
     numeric: true,
     sensitivity: "base",
@@ -236,8 +243,8 @@ export async function GET(req: NextRequest) {
         const maxLength = Math.max(nums.length, regs.length);
 
         for (let i = 0; i < maxLength; i++) {
-          const num = nums[i] || regs[i] || "";
-          const reg = regs[i] || nums[i] || "";
+          const num = nums[i] || "";
+          const reg = regs[i] || "";
           const key = buildVehicleKey(num, reg);
           
           const existing = vehiclesByKey.get(key);
@@ -267,46 +274,47 @@ export async function GET(req: NextRequest) {
 
   // 6. Final Merge
   const rawMergePool = [...bustimesVehicles, ...customVehicles, ...tripVehicles];
-  const byUnit = new Map<string, any[]>();
+  const byGroup = new Map<string, any[]>();
 
-  // A. Group by Unit Number (Fleet Number)
   for (const v of rawMergePool) {
     const u = normalizeKey(v.unit_number);
-    if (!u) continue;
-    const group = byUnit.get(u) ?? [];
+    const r = normalizeKey(v.reg);
+    
+    // Grouping key remains u || r to ensure metadata matches trip logs
+    const groupKey = u || r; 
+    if (!groupKey) continue;
+
+    const group = byGroup.get(groupKey) ?? [];
     group.push(v);
-    byUnit.set(u, group);
+    byGroup.set(groupKey, group);
   }
 
-  const mergedVehicles = Array.from(byUnit.entries()).map(([unitNumber, variants]) => {
-    // 1. Determine if this unit is currently active in the official fleet
-    // It's active if any official record (Bustimes or Custom) is NOT withdrawn
+  const mergedVehicles = Array.from(byGroup.entries()).map(([key, variants]) => {
+    // 1. Determine if active
     const isActuallyActive = variants.some(v => {
       const isBustimesOfficial = bustimesVehicles.some(bv => bv["bt-id"] === v["bt-id"] && !bv.withdrawn);
-      const isCustomOfficial = units.some(u => u._id === v["bt-id"]); // Custom units are assumed active unless logic changes
+      const isCustomOfficial = units.some(u => u._id === v["bt-id"]);
       return isBustimesOfficial || isCustomOfficial;
     });
 
-    // 2. Pick the 'Master' record (Prefer active official records for better metadata)
-    const master = variants.find(v => !v.withdrawn) || variants[0];
+    // 2. Master metadata record
+    const master = variants.find(v => v.bustimes_id && !v.withdrawn) || 
+                   variants.find(v => v.bustimes_id) || 
+                   variants[0];
 
-    // 3. Consolidate Stats
+    // 3. Aggregate stats
     const totalRidden = variants.some(v => v.ridden);
     const totalTimes = variants.reduce((acc, v) => acc + (v.times_ridden || 0), 0);
 
-    // 4. Handle Registration Changes & Previous Reg logic
-    // Find a record that explicitly defines a previous_reg
-    const officialPrevReg = variants.find(v => v.previous_reg && v.previous_reg !== "")?.previous_reg;
-    
-    // Also check if we have a variant with a different registration (the old reg)
-    const alternateReg = variants.find(v => 
-      normalizeKey(v.reg) !== normalizeKey(master.reg)
-    )?.reg;
+    // 4. Extract non-empty values from ANY variant in the group
+    const fleetNumber = variants.find(v => normalizeKey(v.unit_number) !== "")?.unit_number;
+    const registration = variants.find(v => normalizeKey(v.reg) !== "")?.reg;
 
     return {
       ...master,
-      // If we found an official previous_reg or an alternate reg in the pool, use it
-      previous_reg: officialPrevReg || alternateReg || master.previous_reg || "",
+      // Fallback to null if no non-empty value exists in the merge group
+      unit_number: fleetNumber || null, 
+      reg: registration || null,
       withdrawn: !isActuallyActive,
       ridden: totalRidden,
       times_ridden: totalTimes,

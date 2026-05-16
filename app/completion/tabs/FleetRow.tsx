@@ -49,7 +49,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
       {/* ── SECTION 2: Fleet & Reg ── */}
       <div className="flex flex-col justify-center gap-1 shrink-0 min-w-[50px] sm:min-w-[100px]">
         <span className="font-mono font-black text-[18px] sm:text-[22px] text-white tabular-nums leading-none">
-          {vehicle.unit_number || "—"}
+          {vehicle.unit_number || ""}
         </span>
         <div className="flex flex-col gap-1">
           <span className="shrink-0 inline-block bg-[#f5c518] text-black font-black text-[9px] sm:text-[10px] px-1.5 py-[2px] rounded-[4px] tracking-wider uppercase font-mono leading-none w-fit">

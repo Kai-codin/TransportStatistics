@@ -156,23 +156,53 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // 6. Process Historical Routes
+  // 6. Process Historical and "Trip-Only" Routes (The "Ghost" Services)
+  for (const trip of relevantTrips) {
+    const tripServiceNumber = normalizeServiceNumber(trip.service_number ?? "");
+    
+    // We only care if this specific service number isn't in our map yet
+    if (!tripServiceNumber || routeMap.has(tripServiceNumber)) continue;
+
+    // A. Check if this trip belongs to a BusTimes service we already have under a different name
+    // (e.g., trip is '402' but routeMap has '401' for ID 41224)
+    const activeServiceMatch = Array.from(routeMap.values()).find(
+      (r) => r.bustimes_id && String(r.bustimes_id) === String(trip.bustimes_service_id)
+    );
+
+    // B. Try to find metadata in the historical groups
+    const historicalMatch = (historicalRouteGroups as any[]).find(h => 
+      (h.bustimes_service_id && String(h.bustimes_service_id) === String(trip.bustimes_service_id)) ||
+      (h.bustimes_service_slug && normalizeServiceNumber(h.bustimes_service_slug) === normalizeServiceNumber(trip.bustimes_service_slug)) ||
+      (normalizeServiceNumber(h.service_number) === tripServiceNumber)
+    );
+
+    // C. Calculate trip count for this SPECIFIC number
+    const matchingTripCount = countMatchingTrips([
+      tripIdsByServiceNumber.get(tripServiceNumber),
+    ]);
+
+    // D. Add to map as a separate withdrawn entry
+    routeMap.set(tripServiceNumber, {
+      "bt-id": historicalMatch?._id ?? `trip-${tripServiceNumber}`,
+      bustimes_id: trip.bustimes_service_id,
+      bustimes_slug: trip.bustimes_service_slug,
+      service_number: trip.service_number || tripServiceNumber,
+      // If we have an active match for the ID, borrow its description but keep the '402' number
+      route_name: historicalMatch 
+        ? formatHistoricalRouteName(historicalMatch) 
+        : (activeServiceMatch?.route_name || trip.route_name || "Unknown route"),
+      inbound_destination: historicalMatch?.inbound_destination ?? (activeServiceMatch?.inbound_destination || "Unknown"),
+      outbound_destination: historicalMatch?.outbound_destination ?? "",
+      withdrawn: true, // It's a "ghost" of a merged or old service
+      ridden: true,
+      times_ridden: matchingTripCount,
+    });
+  }
+
+  // 7. Final Pass: Historical Routes that haven't been ridden
   for (const historicalRoute of historicalRouteGroups as any[]) {
     const serviceNumber = normalizeServiceNumber(historicalRoute.service_number ?? "");
-    if (!serviceNumber) continue;
-    
-    // Use serviceNumber as key to avoid duplicates with active routes
-    if (routeMap.has(serviceNumber)) continue;
-
-    const matchingTripCount = countMatchingTrips([
-      historicalRoute.bustimes_service_id
-        ? tripIdsByServiceId.get(String(historicalRoute.bustimes_service_id))
-        : undefined,
-      historicalRoute.bustimes_service_slug
-        ? tripIdsByServiceSlug.get(normalizeServiceNumber(historicalRoute.bustimes_service_slug))
-        : undefined,
-      tripIdsByServiceNumber.get(serviceNumber),
-    ]);
+    if (!serviceNumber || routeMap.has(serviceNumber)) continue;
 
     routeMap.set(serviceNumber, {
       "bt-id": historicalRoute._id,
@@ -183,8 +213,8 @@ export async function GET(req: NextRequest) {
       inbound_destination: historicalRoute.inbound_destination,
       outbound_destination: historicalRoute.outbound_destination,
       withdrawn: true,
-      ridden: matchingTripCount > 0,
-      times_ridden: matchingTripCount,
+      ridden: false,
+      times_ridden: 0,
     });
   }
 

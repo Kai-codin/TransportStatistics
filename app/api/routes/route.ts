@@ -172,8 +172,8 @@ export async function GET(req: NextRequest) {
     // B. Try to find metadata in the historical groups
     const historicalMatch = (historicalRouteGroups as any[]).find(h => 
       (h.bustimes_service_id && String(h.bustimes_service_id) === String(trip.bustimes_service_id)) ||
-      (h.bustimes_service_slug && normalizeServiceNumber(h.bustimes_service_slug) === normalizeServiceNumber(trip.bustimes_service_slug)) ||
-      (normalizeServiceNumber(h.service_number) === tripServiceNumber)
+      (h.bustimes_service_slug && normalizeServiceNumber(h.bustimes_service_slug ?? '') === normalizeServiceNumber(trip.bustimes_service_slug ?? '')) ||
+      (normalizeServiceNumber(h.service_number ?? '') === tripServiceNumber)
     );
 
     // C. Calculate trip count for this SPECIFIC number
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
       // If we have an active match for the ID, borrow its description but keep the '402' number
       route_name: historicalMatch 
         ? formatHistoricalRouteName(historicalMatch) 
-        : (activeServiceMatch?.route_name || trip.route_name || "Unknown route"),
+        : (activeServiceMatch?.route_name || "Unknown route"),
       inbound_destination: historicalMatch?.inbound_destination ?? (activeServiceMatch?.inbound_destination || "Unknown"),
       outbound_destination: historicalMatch?.outbound_destination ?? "",
       withdrawn: true, // It's a "ghost" of a merged or old service

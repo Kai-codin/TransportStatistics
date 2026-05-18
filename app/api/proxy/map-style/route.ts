@@ -1,7 +1,7 @@
 // app/api/proxy/map-style/route.ts
 import { NextResponse } from 'next/server';
 
-const PRIMARY_STYLE_URL = "https://tiles.fluffynet.dev/styles/dark/style.json";
+const PRIMARY_STYLE_URL = "https://disable.tiles.fluffynet.dev/styles/dark/style.json";
 const FALLBACK_STYLE_URL = process.env.MAPTILER_KEY 
   ? `https://api.maptiler.com/maps/openstreetmap/style.json?key=${process.env.MAPTILER_KEY}` 
   : null;

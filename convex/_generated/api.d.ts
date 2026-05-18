@@ -16,6 +16,7 @@ import type * as functions_liveries from "../functions/liveries.js";
 import type * as functions_migrations from "../functions/migrations.js";
 import type * as functions_operators from "../functions/operators.js";
 import type * as functions_seed from "../functions/seed.js";
+import type * as functions_users from "../functions/users.js";
 import type * as functions_stats from "../functions/stats.js";
 import type * as functions_stops from "../functions/stops.js";
 import type * as functions_trains from "../functions/trains.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   "functions/migrations": typeof functions_migrations;
   "functions/operators": typeof functions_operators;
   "functions/seed": typeof functions_seed;
+  "functions/users": typeof functions_users;
   "functions/stats": typeof functions_stats;
   "functions/stops": typeof functions_stops;
   "functions/trains": typeof functions_trains;

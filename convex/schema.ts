@@ -80,12 +80,6 @@ export default defineSchema({
   })
   .index("by_type_name", ["type_name"]),
 
-  users: defineTable({
-    clerkId: v.string(),
-    username: v.union(v.string(), v.null()),
-  })
-  .index("by_clerkId", ["clerkId"]),
-
   operators: defineTable({
     display_name: v.string(),
     operator_names: v.array(v.string()),

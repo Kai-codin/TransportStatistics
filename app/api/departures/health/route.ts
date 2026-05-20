@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
+import { GET as getDepartures } from '../route';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   const code = searchParams.get('code') || 'SOT';
   const type = searchParams.get('type') || 'train';
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
 
   const start = Date.now();
 
   try {
-    const res = await fetch(
-        `${baseUrl}/api/departures?code=${code}&type=${type}`,
-        { cache: 'no-store' }
+    const internalRequest = new Request(
+      `${new URL(request.url).origin}/api/departures?code=${code}&type=${type}`,
+      { headers: request.headers }
     );
+
+    const res = await getDepartures(internalRequest);
 
     const duration = Date.now() - start;
 
@@ -40,12 +41,13 @@ export async function GET(request: Request) {
       departureCount: data.departures?.length ?? 0,
       timestamp: new Date().toISOString(),
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       {
         status: 'error',
         ok: false,
-        message: err.message,
+        message,
       },
       { status: 500 }
     );

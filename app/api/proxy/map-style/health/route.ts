@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
+import { GET as getMapStyle } from '../route';
 
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
-
+export async function GET() {
   const start = Date.now();
 
   try {
-    const res = await fetch(
-      `${baseUrl}/api/proxy/map-style`,
-      { cache: 'no-store' }
-    );
+    const res = await getMapStyle();
 
     const duration = Date.now() - start;
 
@@ -44,11 +39,12 @@ export async function GET(request: Request) {
       status: isValidStyle ? 200 : 500
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({
       status: 'error',
       ok: false,
-      message: err.message,
+      message,
     }, { status: 500 });
   }
 }

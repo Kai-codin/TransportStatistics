@@ -1,24 +1,36 @@
 import { NextResponse } from 'next/server';
 import { Redis } from 'ioredis';
-import { RateLimiterRedis } from 'rate-limiter-flexible';
+import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 const consoleDebug = false; // Set to true to enable debug logging
-// 1. Initialize Redis with better error handling
-const redisClient = new Redis(process.env.REDIS_URL!, {
-  enableAutoPipelining: true,
-  maxRetriesPerRequest: 3,
-  // Add a generic error handler so it doesn't crash the server
-  lazyConnect: true,
-});
+// Allow disabling Redis via env
+const REDIS_DISABLED =
+  process.env.DISABLE_REDIS === 'true' || process.env.REDIS_DISABLED === 'true';
 
-redisClient.on('error', (err) => console.error('Redis Client Error', err));
+let redisClient: Redis | any;
+let limiter: any;
 
-// 2. Setup the rate limiter
-const limiter = new RateLimiterRedis({
-  storeClient: redisClient,
-  keyPrefix: 'api_limit',
-  points: 2, // 2 requests
-  duration: 1, // per 1 second
-});
+if (!REDIS_DISABLED) {
+  // 1. Initialize Redis with better error handling
+  redisClient = new Redis(process.env.REDIS_URL!, {
+    enableAutoPipelining: true,
+    maxRetriesPerRequest: 3,
+    // Add a generic error handler so it doesn't crash the server
+    lazyConnect: true,
+  });
+
+  redisClient.on('error', (err: unknown) => console.error('Redis Client Error', err));
+
+  // 2. Setup the rate limiter
+  limiter = new RateLimiterRedis({
+    storeClient: redisClient,
+    keyPrefix: 'api_limit',
+    points: 2, // 2 requests
+    duration: 1, // per 1 second
+  });
+} else {
+  redisClient = { get: async (_: string) => null, set: async (_: string, __: string) => null, on: () => null } as unknown as Redis;
+  limiter = new RateLimiterMemory({ points: 2, duration: 1 });
+}
 
 function log(message: string) {
   if (consoleDebug && consoleDebug === true) {

@@ -2,20 +2,40 @@ import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { Redis } from "ioredis";
-import { RateLimiterRedis } from "rate-limiter-flexible";
+import { RateLimiterRedis, RateLimiterMemory } from "rate-limiter-flexible";
 
-const redisClient = new Redis(process.env.REDIS_URL!, {
-  enableAutoPipelining: true,
-  maxRetriesPerRequest: 3,
-});
-redisClient.on("error", (err) => console.error("Redis Client Error", err));
+const REDIS_DISABLED =
+  process.env.DISABLE_REDIS === "true" || process.env.REDIS_DISABLED === "true";
 
-const limiter = new RateLimiterRedis({
-  storeClient: redisClient,
-  keyPrefix: "api_limit",
-  points: 5,
-  duration: 1,
-});
+let redisClient: Redis | any;
+let limiter: any;
+
+if (!REDIS_DISABLED) {
+  redisClient = new Redis(process.env.REDIS_URL!, {
+    enableAutoPipelining: true,
+    maxRetriesPerRequest: 3,
+  });
+  redisClient.on("error", (err: unknown) => console.error("Redis Client Error", err));
+
+  limiter = new RateLimiterRedis({
+    storeClient: redisClient,
+    keyPrefix: "api_limit",
+    points: 5,
+    duration: 1,
+  });
+} else {
+  // No-op cache and in-memory rate limiter when Redis is disabled
+  redisClient = {
+    get: async (_: string) => null,
+    set: async (_: string, __: string) => null,
+    on: () => null,
+  } as unknown as Redis;
+
+  limiter = new RateLimiterMemory({
+    points: 5,
+    duration: 1,
+  });
+}
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!, {
   fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),

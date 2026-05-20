@@ -1,23 +1,34 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { Redis } from 'ioredis';
-import { RateLimiterRedis } from 'rate-limiter-flexible';
+import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 
 const consoleDebug = false;
 
-const redisClient = new Redis(process.env.REDIS_URL!, { 
-  lazyConnect: true,
-  maxRetriesPerRequest: 3 
-});
+const REDIS_DISABLED =
+  process.env.DISABLE_REDIS === 'true' || process.env.REDIS_DISABLED === 'true';
 
-const limiter = new RateLimiterRedis({
-  storeClient: redisClient,
-  keyPrefix: 'detail_limit',
-  points: 5, 
-  duration: 1,
-});
+let redisClient: Redis | any;
+let limiter: any;
+
+if (!REDIS_DISABLED) {
+  redisClient = new Redis(process.env.REDIS_URL!, { 
+    lazyConnect: true,
+    maxRetriesPerRequest: 3 
+  });
+
+  limiter = new RateLimiterRedis({
+    storeClient: redisClient,
+    keyPrefix: 'detail_limit',
+    points: 5, 
+    duration: 1,
+  });
+} else {
+  redisClient = { get: async (_: string) => null, set: async (_: string, __: string) => null, on: () => null } as unknown as Redis;
+  limiter = new RateLimiterMemory({ points: 5, duration: 1 });
+}
 
 function hashStringToNumber(str: string): number {
   let hash = 0;

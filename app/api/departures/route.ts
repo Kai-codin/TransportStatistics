@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Redis } from 'ioredis';
+import { auth } from '@clerk/nextjs/server';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 const consoleDebug = false; // Set to true to enable debug logging
 // Allow disabling Redis via env
@@ -130,6 +131,14 @@ export async function GET(request: Request) {
       { error: "Too many requests. Please slow down." },
       { status: 429 }
     );
+  }
+
+  const { isAuthenticated, userId, tokenType } = await auth({
+    acceptsToken: 'api_key',
+  });
+
+  if (!isAuthenticated) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
   const { searchParams } = new URL(request.url);

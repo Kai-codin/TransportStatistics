@@ -6,7 +6,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const start = Date.now();
 
   try {
-    const res = await getMapStyle();
+    const res = await getMapStyle(request);
 
     const duration = Date.now() - start;
 

@@ -7,7 +7,7 @@ import { withApiKeyAuth } from "@/lib/api-key-auth";
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(request.url);
   const allMode = searchParams.get("all") === "1";
 
   // ── ALL MODE ────────────────────────────────────────────────────────────

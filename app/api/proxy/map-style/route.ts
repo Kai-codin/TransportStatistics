@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiKeyAuth } from '@/lib/api-key-auth';
 
-const PRIMARY_STYLE_URL = "https://tiles.fluffynet.dev/styles/dark/style.json";
+const DARK_STYLE_URL = "https://tiles.fluffynet.dev/styles/dark/style.json";
+const LIGHT_STYLE_URL = "https://tiles.fluffynet.dev/styles/light/style.json";
 const FALLBACK_STYLE_URL = process.env.MAPTILER_KEY 
   ? `https://api.maptiler.com/maps/openstreetmap/style.json?key=${process.env.MAPTILER_KEY}` 
   : null;
@@ -45,11 +46,13 @@ const sanitizeStyle = (styleData: unknown, isFallback: boolean = false) => {
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const requestOrigin = new URL(request.url).origin;
+  const theme = new URL(request.url).searchParams.get('theme');
+  const primaryStyleUrl = theme === 'dark' ? DARK_STYLE_URL : LIGHT_STYLE_URL;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
 
   try {
-    const response = await fetch(PRIMARY_STYLE_URL, {
+    const response = await fetch(primaryStyleUrl, {
       signal: controller.signal,
       cache: 'no-store',
       headers: {

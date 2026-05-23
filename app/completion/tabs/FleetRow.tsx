@@ -23,7 +23,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
             className="shrink-0 w-12 aspect-[24/16] shadow-sm border border-ts-border"
             style={{ background: currentLivery?.css ?? "#2a2a2a" }}
           />
-          <span className="text-[11px] hidden sm:block font-bold text-white/90 truncate tracking-tight uppercase">
+          <span className="text-[11px] hidden sm:block font-bold text-ts-text-1/90 truncate tracking-tight uppercase">
             {currentLivery?.name ?? "Unknown"}
           </span>
         </div>
@@ -35,10 +35,10 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
               style={{ background: previousLivery.css ?? "#2a2a2a" }} 
             />
             <div className="hidden sm:flex flex-col leading-none">
-              <span className="text-[7px] font-black uppercase tracking-widest text-white/30">
+              <span className="text-[7px] font-black uppercase tracking-widest text-ts-text-1/30">
                 Prev:
               </span>
-              <span className="text-[9px] font-bold uppercase text-white/50 truncate max-w-[140px]">
+              <span className="text-[9px] font-bold uppercase text-ts-text-1/50 truncate max-w-[140px]">
                 {previousLivery.name}
               </span>
             </div>
@@ -48,7 +48,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
 
       {/* ── SECTION 2: Fleet & Reg ── */}
       <div className="flex flex-col justify-center gap-1 shrink-0 min-w-[50px] sm:min-w-[100px]">
-        <span className="font-mono font-black text-[18px] sm:text-[22px] text-white tabular-nums leading-none">
+        <span className="font-mono font-black text-[18px] sm:text-[22px] text-ts-text-1 tabular-nums leading-none">
           {vehicle.unit_number || ""}
         </span>
         <div className="flex flex-col gap-1">
@@ -58,8 +58,8 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
           {/* Previous Reg addition */}
           {vehicle.previous_reg && vehicle.previous_reg !== vehicle.reg && (
             <div className="flex items-center gap-1">
-              <span className="text-[7px] font-black uppercase text-white/20">was</span>
-              <span className="text-[9px] font-bold font-mono text-white/30 uppercase">
+              <span className="text-[7px] font-black uppercase text-ts-text-1/20">was</span>
+              <span className="text-[9px] font-bold font-mono text-ts-text-1/30 uppercase">
                 {vehicle.previous_reg}
               </span>
             </div>
@@ -77,7 +77,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
       {/* ── SECTION 4: Status Cluster ── */}
       <div className="ml-auto shrink-0 flex items-center gap-3">
         {vehicle.times_ridden > 0 && (
-          <span className="text-[11px] font-black text-white/20 tabular-nums font-mono mr-1">
+          <span className="text-[11px] font-black text-ts-text-1/20 tabular-nums font-mono mr-1">
             ×{vehicle.times_ridden}
           </span>
         )}
@@ -86,7 +86,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
           className={`flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-xl border transition-all ${
             vehicle.ridden
               ? "bg-[#1e3a1e]/30 text-[#4ade80] border-[#2d5a2d]/50"
-              : "bg-white/[0.03] text-white/20 border-white/[0.05]"
+              : "bg-white/[0.03] text-ts-text-1/20 border-white/[0.05]"
           }`}
         >
           {vehicle.ridden

@@ -28,7 +28,7 @@ export function RouteRow({ route }: { route: RouteInfo }) {
       {/* Right cluster — icon-only badge on mobile, labelled on sm+ */}
       <div className="shrink-0 flex items-center gap-2 sm:gap-3">
         {route.times_ridden > 0 && (
-          <span className="text-[11px] font-black text-white/35 tabular-nums font-mono">
+          <span className="text-[11px] font-black text-ts-text-1/35 tabular-nums font-mono">
             ×{route.times_ridden}
           </span>
         )}
@@ -37,7 +37,7 @@ export function RouteRow({ route }: { route: RouteInfo }) {
           className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest border ${
             route.ridden
               ? "bg-[#1e3a1e] text-[#4ade80] border-[#2d5a2d]/60"
-              : "bg-white/[0.04] text-white/30 border-white/[0.07]"
+              : "bg-white/[0.04] text-ts-text-1/30 border-white/[0.07]"
           }`}
         >
           {route.ridden

@@ -4,6 +4,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Stops } from './Stops';
 import { LiveVehicles } from './LiveVehicles';
+import { getMapStyleUrl } from './mapStyleUrl';
 
 const MapContext = createContext<maplibregl.Map | null>(null);
 export const useMap = () => useContext(MapContext);
@@ -51,7 +52,7 @@ export const Map = forwardRef<MapHandle, {}>((_props, ref) => {
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: '/api/proxy/map-style',
+      style: getMapStyleUrl(),
       center: center,
       zoom: zoom,
     });

@@ -10,7 +10,7 @@ export default function ComingSoon() {
         <Clock className="w-8 h-8 text-ts-accent absolute -top-2 -right-2" />
       </div>
       
-      <h2 className="text-4xl font-bold text-white mb-2">Coming Soon</h2>
+      <h2 className="text-4xl font-bold text-ts-text-1 mb-2">Coming Soon</h2>
       <p className="text-gray-400 max-w-md mb-8">
         This feature is currently under development. 
         <br />

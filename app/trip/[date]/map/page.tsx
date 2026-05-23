@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { getMapStyleUrl } from '@/components/mapStyleUrl';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OLD DJANGO COLOUR HELPERS
@@ -61,7 +62,7 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
     // Use the Fluffynet style or your local proxy
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: '/api/proxy/map-style',
+      style: getMapStyleUrl(),
       center: [-1.5, 52.5],
       zoom: 6,
     });
@@ -160,8 +161,8 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
     return () => map.remove();
   }, [trips]);
 
-  if (!user) return <div className="p-8 text-white bg-[#0d1410] h-screen">Please sign in...</div>;
-  if (trips === undefined) return <div className="p-8 text-white bg-[#0d1410] h-screen">Loading...</div>;
+  if (!user) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Please sign in...</div>;
+  if (trips === undefined) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Loading...</div>;
 
   return (
     <div className="ts-app" style={{ display: 'flex', height: '100vh', background: '#0d1410' }}>

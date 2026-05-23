@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { getMapStyleUrl } from './mapStyleUrl';
 
 type Geometry = {
   type: 'LineString';
@@ -65,7 +66,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: '/api/proxy/map-style',
+      style: getMapStyleUrl(),
       center: [-1.47, 53.38],
       zoom: 12,
       attributionControl: false,

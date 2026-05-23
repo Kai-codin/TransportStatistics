@@ -5,6 +5,7 @@ import { useMutation } from 'convex/react';
 import { useConvexAuth } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { LogMap } from '@/components/LogMap';
+import { useTheme } from '@/components/ThemeProvider';
 import { SignInButton, useUser } from '@clerk/nextjs';
 import {
   AlertCircle,
@@ -26,6 +27,7 @@ type TabKey = 'Route' | 'Vehicle' | 'Service' | 'Notes';
 type RouteMode = 'Map' | 'List';
 type VehicleMode = 'Bus' | 'Train' | 'Tram' | 'Other';
 type StoredTransportType = 'Rail' | 'Bus' | 'Tram' | 'Other';
+type ThemeKey = 'bright' | 'light' | 'dark';
 
 type RouteGeometry = {
   type: 'LineString';
@@ -1013,7 +1015,7 @@ export default function LogPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex min-h-svh flex-col bg-ts-bg">
+    <div className="flex min-h-svh flex-col bg-ts-bg transition-colors duration-300">
       {/* Sticky header + tabs */}
       <div className="sticky top-0 z-1 border-b border-ts-border bg-ts-bg/96 backdrop-blur-xl">
         <div className="mx-auto max-w-2xl px-4 lg:max-w-5xl">

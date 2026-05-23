@@ -165,17 +165,17 @@ body {
 
 /* Custom Popup Container Overrides */
 .vehicle-popup .maplibregl-popup-content {
-  background-color: #1a1a1a !important;
-  border: 1px solid #333 !important;
+  background-color: var(--ts-bg) !important;
+  border: 1px solid var(--ts-border) !important;
   border-radius: 10px !important;
   padding: 12px !important;
-  color: #fff !important;
+  color: var(--ts-text-inv) !important;
   min-width: 200px;
 }
 
 /* Remove default pointer/tip color if desired */
 .vehicle-popup .maplibregl-popup-tip {
-  border-top-color: #1a1a1a !important;
+  border-top-color: var(--ts-bg) !important;
 }
 
 /* Internal Styling */
@@ -189,7 +189,7 @@ body {
 }
 
 .v-popup-subtitle {
-  color: #fff;
+  color: var(--ts-text-1);
   margin-bottom: 12px;
   font-size: 0.9rem;
 }
@@ -249,10 +249,12 @@ body {
   min-width: 200px; 
 }
 
-.custom-popup .maplibregl-popup-close-button {
-  color: white;
+.custom-popup .maplibregl-popup-close-button, .maplibregl-popup-close-button {
+  color: red !important;
   right: 8px;
   top: 8px;
+  padding: 4px 8px;
+  font-size: 16px;
 }
 
 .custom-popup .maplibregl-popup-tip {

@@ -260,10 +260,10 @@ function buildDeparturesContent(data: any, state: { offset: number; timeMode?: s
           badges.push(`<span class="dep-status-badge" style="background:${s.bg};color:${s.color};border:1px solid ${s.border};">${s.label}</span>`);
         }
 
-        if (d.vehicle_info.type && d.vehicle_info.carrages) {
+        if (d.vehicle_info?.type && d.vehicle_info?.carrages) {
           badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.type}</span>`);
           badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.carrages} carriages</span>`);
-        } else if (d.vehicle_info.carrages) {
+        } else if (d.vehicle_info?.carrages) {
           badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.carrages} carriages</span>`);
         }
 

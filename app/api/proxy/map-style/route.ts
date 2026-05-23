@@ -46,7 +46,7 @@ const sanitizeStyle = (styleData: unknown, isFallback: boolean = false) => {
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const requestOrigin = new URL(request.url).origin;
-  const theme = new URL(request.url).searchParams.get('theme');
+  const theme = new URL(request.url).searchParams.get('theme')?.toLowerCase() ?? 'dark';
   const primaryStyleUrl = theme === 'dark' ? DARK_STYLE_URL : LIGHT_STYLE_URL;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);

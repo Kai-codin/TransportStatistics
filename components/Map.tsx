@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Stops } from './Stops';
 import { LiveVehicles } from './LiveVehicles';
 import { getMapStyleUrl } from './mapStyleUrl';
+import { useTheme } from '@/components/ThemeProvider';
 
 const MapContext = createContext<maplibregl.Map | null>(null);
 export const useMap = () => useContext(MapContext);
@@ -27,6 +28,7 @@ export const Map = forwardRef<MapHandle, {}>((_props, ref) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [bounds, setBounds] = useState({ minLat: 0, maxLat: 0, minLon: 0, maxLon: 0 });
   const [tooZoomedOut, setTooZoomedOut] = useState(false);
+  const { theme } = useTheme();
 
   const [showBuses, setShowBuses] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('showBuses') !== 'false' : true);
   const [showTrains, setShowTrains] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('showTrains') !== 'false' : true);
@@ -52,7 +54,7 @@ export const Map = forwardRef<MapHandle, {}>((_props, ref) => {
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: getMapStyleUrl(),
+      style: getMapStyleUrl(theme),
       center: center,
       zoom: zoom,
     });
@@ -105,7 +107,7 @@ export const Map = forwardRef<MapHandle, {}>((_props, ref) => {
     });
 
     return () => map.remove();
-  }, []);
+  }, [theme]);
 
   useImperativeHandle(ref, () => ({
     getMap: () => mapInstance.current,

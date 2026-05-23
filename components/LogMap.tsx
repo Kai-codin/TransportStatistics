@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getMapStyleUrl } from './mapStyleUrl';
+import { useTheme } from '@/components/ThemeProvider';
 
 type Geometry = {
   type: 'LineString';
@@ -56,6 +57,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const onStopClickRef = useRef(onStopClick);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const { theme } = useTheme();
 
   useEffect(() => {
     onStopClickRef.current = onStopClick;
@@ -66,7 +68,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: getMapStyleUrl(),
+      style: getMapStyleUrl(theme),
       center: [-1.47, 53.38],
       zoom: 12,
       attributionControl: false,
@@ -163,7 +165,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
       map.remove();
       mapInstance.current = null;
     };
-  }, []);
+  }, [theme]);
 
   // Effect 1: update data only (no fitBounds)
   useEffect(() => {

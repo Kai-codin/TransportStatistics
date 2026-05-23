@@ -7,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getMapStyleUrl } from '@/components/mapStyleUrl';
+import { useTheme } from '@/components/ThemeProvider';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OLD DJANGO COLOUR HELPERS
@@ -47,6 +48,7 @@ function getRouteColor(trip: any, idx: number) {
 export default function TripDateMapPage({ params }: { params: Promise<{ date: string }> }) {
   const { date } = use(params);
   const { user } = useUser();
+  const { theme } = useTheme();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -62,7 +64,7 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
     // Use the Fluffynet style or your local proxy
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: getMapStyleUrl(),
+      style: getMapStyleUrl(theme),
       center: [-1.5, 52.5],
       zoom: 6,
     });
@@ -159,7 +161,7 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
     });
 
     return () => map.remove();
-  }, [trips]);
+  }, [theme, trips]);
 
   if (!user) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Please sign in...</div>;
   if (trips === undefined) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Loading...</div>;

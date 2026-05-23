@@ -134,7 +134,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   }
   
   const { searchParams } = new URL(request.url);
-  const debug = searchParams.get("debug") === "true";
+  const debug = searchParams.get("debug") === "false";
   const type = searchParams.get('type');
   const code = searchParams.get('code');
   const date = searchParams.get('date');

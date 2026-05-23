@@ -48,6 +48,62 @@ const PANEL_CSS = `
   .dep-pass .dep-service a, .dep-pass .dep-dest, .dep-pass .dep-time, .dep-pass .dep-plat { opacity: 0.45; }
   .dep-rar .dep-service a, .dep-rar .dep-dest, .dep-rar .dep-time, .dep-rar .dep-plat { opacity: 0.45; }
 
+  .dep-time-controls {
+    margin-bottom: 14px;
+  }
+    .dep-datetime-input-native {
+    background: ${C.surface};
+    color: ${C.text1};
+    border: 1px solid ${C.border};
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+  }
+  .dep-datetime-input-native:focus {
+    border-color: ${C.accent};
+    box-shadow: 0 0 0 2px ${C.accentB};
+  }
+  .dep-time-control-label { font-size: 9px; color: ${C.text3}; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.04em; }
+  .dep-datetime-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.62fr) auto; gap: 6px; align-items: center; }
+  .dep-datetime-input {
+    min-width: 0;
+    background: ${C.surface};
+    color: ${C.text1};
+    border: 1px solid ${C.border};
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.15;
+    font-family: inherit;
+    outline: none;
+    letter-spacing: 0.02em;
+  }
+  .dep-datetime-input:focus {
+    border-color: ${C.accent};
+    box-shadow: 0 0 0 2px ${C.accentB};
+  }
+  .dep-datetime-input::placeholder { color: ${C.text3}; opacity: 1; }
+  .dep-datetime-button {
+    min-width: 78px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid ${C.border};
+    background: ${C.surface};
+    color: ${C.text2};
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .dep-datetime-button.active {
+    background: ${C.accent};
+    color: ${C.bg};
+    border-color: ${C.accent};
+  }
+
   /* Flip Animation */
   .row-anim { animation: flipIn 0.5s ease-out forwards; }
   @keyframes flipIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
@@ -63,6 +119,39 @@ function fmt(iso: string | null | undefined): string {
 }
 function offsetISO(base: Date, minutes: number): string {
   return new Date(base.getTime() + minutes * 60_000).toISOString();
+}
+
+function formatLocalDateTimeInput(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function formatLocalDateInput(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function formatLocalTimeInput(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function parseDisplayDate(dateValue: string): string | null {
+  const match = dateValue.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  return `${year}-${month}-${day}`;
+}
+
+function buildCustomDateTimeISO(dateValue: string, timeValue: string): string {
+  const parsedDate = parseDisplayDate(dateValue) || dateValue.trim();
+  const parsed = new Date(`${parsedDate}T${timeValue}:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
 // ─── HTML builders ────────────────────────────────────────────────────────────
@@ -96,10 +185,15 @@ function buildHeaderExtra(metadata: any): string {
   return linePills || cancellationAlert ? `<div style="margin-bottom: 10px;">${linePills}${cancellationAlert}</div>` : "";
 }
 
-function buildDeparturesContent(data: any, offsetMin: number, popupId: string, stopId: string): string {
+function buildDeparturesContent(data: any, state: { offset: number; timeMode?: string; customDateTime?: string; customDate?: string; customTime?: string }, popupId: string, stopId: string): string {
   const { departures, metadata } = data;
   const showExpected = !!metadata?.contains_expected_times;
   const showPlatform = !!metadata?.contains_platform_numbers;
+  const offsetMin = state.offset;
+  const customDateTimeBase = state.customDateTime ? new Date(state.customDateTime) : new Date();
+  const customDate = state.customDate || formatLocalDateInput(customDateTimeBase);
+  const customTime = state.customTime || formatLocalTimeInput(customDateTimeBase);
+  const isCustomTimeMode = state.timeMode === "datetime";
 
   const ncols = (showExpected ? 2 : 1) + (showPlatform ? 1 : 0);
 
@@ -140,12 +234,12 @@ function buildDeparturesContent(data: any, offsetMin: number, popupId: string, s
 
         const isRar = d.rar === true && !d.scheduled_departure && !d.expected_departure;
 
-        const mainRow = `<div onclick="window.location.href='${d.log_link}'" class="dep-row${isPass || isRar ? " dep-pass" : ""}" style="--ncols:${ncols};">
+        const mainRow = `<div class="dep-row${isPass || isRar ? " dep-pass" : ""}" style="--ncols:${ncols};">
           <div class="dep-service"><a href="${d.service_link}" target="_blank" rel="noopener noreferrer">${d.service || "?"}</a></div>
-          <div class="dep-dest" title="${d.destination || ""}">${d.destination || "Unknown"}</div>
-          <div class="dep-time" style="${schedStyle}">${sched}</div>
-          ${showExpected ? `<div class="dep-time" style="${expStyle}">${isCancelled ? "–" : d.expected_departure ? exp : sched}</div>` : ""}
-          ${showPlatform ? `<div class="dep-plat"><span>${d.platform || "–"}</span></div>` : ""}
+          <div onclick="window.location.href='${d.log_link}'" class="dep-dest" title="${d.destination || ""}">${d.destination || "Unknown"}</div>
+          <div onclick="window.location.href='${d.log_link}'" class="dep-time" style="${schedStyle}">${sched}</div>
+          ${showExpected ? `<div onclick="window.location.href='${d.log_link}'" class="dep-time" style="${expStyle}">${isCancelled ? "–" : d.expected_departure ? exp : sched}</div>` : ""}
+          ${showPlatform ? `<div onclick="window.location.href='${d.log_link}'"   class="dep-plat"><span>${d.platform || "–"}</span></div>` : ""}
         </div>`;
 
         const badges: string[] = [];
@@ -165,6 +259,14 @@ function buildDeparturesContent(data: any, offsetMin: number, popupId: string, s
           const s = fmtStatus(d.status);
           badges.push(`<span class="dep-status-badge" style="background:${s.bg};color:${s.color};border:1px solid ${s.border};">${s.label}</span>`);
         }
+
+        if (d.vehicle_info.type && d.vehicle_info.carrages) {
+          badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.type}</span>`);
+          badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.carrages} carriages</span>`);
+        } else if (d.vehicle_info.carrages) {
+          badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.carrages} carriages</span>`);
+        }
+
         const statusRow = badges.length
           ? `<div class="dep-status-row" style="display:flex;gap:4px;flex-wrap:wrap;">${badges.join("")}</div>`
           : "";
@@ -173,16 +275,28 @@ function buildDeparturesContent(data: any, offsetMin: number, popupId: string, s
       }).join("");
 
   const offsetBtns = [-60, -30, -15, 0, 15, 30, 60].map((o) => {
-    const active = o === offsetMin;
+    const active = !isCustomTimeMode && o === offsetMin;
     return `<button data-offset="${o}" data-popup="${popupId}" style="flex:1;padding:5px 0;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid ${active ? C.accent : C.border};background:${active ? C.accent : C.surface2};color:${active ? C.bg : C.text2};">${o === 0 ? "LIVE" : o > 0 ? `+${o}m` : `${o}m`}</button>`;
   }).join("");
+
+  const dateInputStyle = `min-width:0;flex:1;background:${C.surface2};color:${C.text1};border:1px solid ${C.border};border-radius:6px;padding:5px 8px;font-size:11px;line-height:1.4;font-family:inherit;outline:none;text-align:center;letter-spacing:0.02em;`;
+  const timeInputStyle = `min-width:0;flex:0.55;background:${C.surface2};color:${C.text1};border:1px solid ${C.border};border-radius:6px;padding:5px 8px;font-size:11px;line-height:1.4;font-family:inherit;outline:none;text-align:center;letter-spacing:0.02em;`;
+  const applyButtonStyle = `min-width:72px;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid ${isCustomTimeMode ? C.accent : C.border};background:${isCustomTimeMode ? C.accent : C.surface2};color:${isCustomTimeMode ? C.bg : C.text2};transition:background 0.15s ease,border-color 0.15s ease;`;
 
   const showPass = !!data.metadata?._showPass;
 
   return `
-    <div style="margin-bottom:14px;">
+    <div class="dep-time-controls">
       <div style="font-size:9px;color:${C.text3};text-transform:uppercase;margin-bottom:6px;">Time offset</div>
       <div style="display:flex;gap:4px;">${offsetBtns}</div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="margin-bottom:14px;">
+        <div style="font-size:9px;color:${C.text3};text-transform:uppercase;margin-bottom:6px;letter-spacing:0.04em;">Custom date & time</div>
+        <div style="display:grid;grid-template-columns: 1fr auto;gap:6px;align-items:center;">
+          <input type="datetime-local" id="ts-dt-picker" value="${state.customDateTime}" class="dep-datetime-input-native" />
+          <button id="ts-dt-apply" class="dep-datetime-button">Apply</button>
+        </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px;gap:6px;">
       <span style="font-size:10px;color:${C.text3};">Show passing</span>
@@ -228,7 +342,7 @@ export function useDeparturePanel() {
   async function fetchAndRender(state: any, offsetMin: number, isSilentRefresh: boolean = false) {
     const { stop, typeName, codes, mode, id } = state;
     // Set error to false on start of new fetch
-    activeState.current = { ...state, offset: offsetMin, error: false }; 
+    activeState.current = { ...state, offset: offsetMin, timeMode: state.timeMode ?? "offset", error: false }; 
 
     if (!isSilentRefresh) {
       setPanelHTML(buildLoadingPopup(stop.commonName, stop._id, typeName, codes));
@@ -236,11 +350,14 @@ export function useDeparturePanel() {
     }
 
     try {
-      const targetISO = offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
+      const targetISO = state.timeMode === "datetime"
+        ? (() => {
+            const customDate = state.customDate || formatLocalDateInput(new Date());
+            const customTime = state.customTime || formatLocalTimeInput(new Date());
+            return buildCustomDateTimeISO(customDate, customTime);
+          })()
+        : offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
       const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.atcoCode;
-
-      console.log(`Fetching departures for ${stop.commonName} with code ${code} and mode ${mode} at offset ${offsetMin} minutes (ISO: ${targetISO})`);
-      console.log(`All codes for stop:`, { atcoCode: stop.atcoCode, crsCode: stop.crsCode, tiplocCode: stop.tiplocCode, naptanCode: stop.naptanCode });
 
       const showPass = activeState.current?.showPass ?? false;
       const params = new URLSearchParams({ code, type: mode });
@@ -277,33 +394,78 @@ export function useDeparturePanel() {
       lastUpdatedRef.current = Date.now();
 
       if (data.metadata) data.metadata._showPass = activeState.current?.showPass ?? false;
-      const contentHTML = buildDeparturesContent(data, offsetMin, id, stop._id);
-      const headerExtraHTML = buildHeaderExtra(data.metadata);
+        const contentHTML = buildDeparturesContent(data, activeState.current as any, id, stop._id);
+        const headerExtraHTML = buildHeaderExtra(data.metadata);
 
-      const contentDiv = document.getElementById("ts-stop-panel-content");
-      const extraDiv = document.getElementById("ts-stop-panel-header-extra");
+        const contentDiv = document.getElementById("ts-stop-panel-content");
+        const extraDiv = document.getElementById("ts-stop-panel-header-extra");
 
-      if (isSilentRefresh && contentDiv && extraDiv) {
-        contentDiv.innerHTML = contentHTML;
-        extraDiv.innerHTML = headerExtraHTML;
+        if (isSilentRefresh && contentDiv && extraDiv) {
+          contentDiv.innerHTML = contentHTML;
+          extraDiv.innerHTML = headerExtraHTML;
 
-        const rows = document.querySelectorAll('#ts-dep-list .dep-row');
-        rows.forEach((row, index) => {
-            (row as HTMLElement).classList.add('row-anim');
-            (row as HTMLElement).style.animationDelay = `${index * 0.05}s`;
-        });
-      } else {
-        const displayName = data.metadata?.long_name || data.metadata?.name || stop.commonName;
-        setPanelHTML(buildShell(displayName, stop._id, typeName, codes, contentHTML, headerExtraHTML));
-      }
+          const rows = document.querySelectorAll('#ts-dep-list .dep-row');
+          rows.forEach((row, index) => {
+              (row as HTMLElement).classList.add('row-anim');
+              (row as HTMLElement).style.animationDelay = `${index * 0.05}s`;
+          });
+        } else {
+          const displayName = data.metadata?.long_name || data.metadata?.name || stop.commonName;
+          setPanelHTML(buildShell(displayName, stop._id, typeName, codes, contentHTML, headerExtraHTML));
+        }
 
-      document.querySelectorAll("button[data-offset]").forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (!activeState.current) return;
-          fetchAndRender(activeState.current, parseInt(btn.getAttribute("data-offset") || "0"), false);
-        });
-      });
+        const attachOffsetListeners = () => {
+          document.querySelectorAll("button[data-offset]").forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              if (!activeState.current) return;
+              const nextOffset = parseInt(btn.getAttribute("data-offset") || "0");
+              activeState.current = {
+                ...activeState.current,
+                offset: nextOffset,
+                timeMode: "offset",
+              };
+              fetchAndRender(activeState.current, nextOffset, false);
+            });
+          });
+        };
+
+        const attachDateTimeListeners = () => {
+          const applyBtn = document.getElementById("ts-dt-apply");
+
+          if (applyBtn) {
+            applyBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              
+              // Get the input element by ID
+              const dtPicker = document.getElementById("ts-dt-picker") as HTMLInputElement | null;
+              
+              if (dtPicker && activeState.current) {
+                const val = dtPicker.value; // Format is YYYY-MM-DDThh:mm
+                
+                // Split the native datetime-local value back into date/time for your parser
+                const [datePart, timePart] = val.split("T");
+                
+                // Convert YYYY-MM-DD to DD/MM/YYYY for your parseDisplayDate helper
+                const [yyyy, mm, dd] = datePart.split("-");
+                const formattedDate = `${dd}/${mm}/${yyyy}`;
+
+                activeState.current = {
+                  ...activeState.current,
+                  customDate: formattedDate,
+                  customTime: timePart,
+                  customDateTime: val,
+                  timeMode: "datetime",
+                };
+                
+                fetchAndRender(activeState.current, activeState.current.offset ?? 0, false);
+              }
+            });
+          }
+        };
+
+      attachOffsetListeners();
+      attachDateTimeListeners();
 
       document.querySelector("button[data-pass-toggle]")?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -371,6 +533,11 @@ export function useDeparturePanel() {
       codes,
       mode,
       id,
+      offset: 0,
+      timeMode: "offset",
+      customDate: formatLocalDateInput(new Date()),
+      customTime: formatLocalTimeInput(new Date()),
+      customDateTime: formatLocalDateTimeInput(new Date()),
       error: false
     };
     fetchAndRender(activeState.current, 0, false);

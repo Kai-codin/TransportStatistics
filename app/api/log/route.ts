@@ -117,7 +117,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const uid = searchParams.get('uid') ?? serviceUid ?? serviceId ?? tripId;
   const date = searchParams.get('date') ?? searchParams.get('service_date'); 
   const type = searchParams.get('type') || (serviceRid ? 'train' : (serviceId || tripId ? 'bus' : 'train'));
-  const debug = searchParams.get('debug') === 'true';
+  const debug = searchParams.get('debug') === 'false';
   const showPass = searchParams.get('show_pass') === 'true';
 
   if (serviceRid) {

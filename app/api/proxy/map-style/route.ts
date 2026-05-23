@@ -1,5 +1,5 @@
-// app/api/proxy/map-style/route.ts
 import { NextResponse } from 'next/server';
+import { withApiKeyAuth } from '@/lib/api-key-auth';
 
 const PRIMARY_STYLE_URL = "https://tiles.fluffynet.dev/styles/dark/style.json";
 const FALLBACK_STYLE_URL = process.env.MAPTILER_KEY 
@@ -28,7 +28,7 @@ const LOCAL_FALLBACK_STYLE = {
 };
 
 // Helper function to sanitize attribution (Deep clones to prevent object mutation)
-const sanitizeStyle = (styleData: any, isFallback: boolean = false) => {
+const sanitizeStyle = (styleData: unknown, isFallback: boolean = false) => {
   const clonedStyle = JSON.parse(JSON.stringify(styleData));
 
   if (clonedStyle.sources) {
@@ -43,7 +43,8 @@ const sanitizeStyle = (styleData: any, isFallback: boolean = false) => {
   return clonedStyle;
 };
 
-export async function GET() {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
+  const requestOrigin = new URL(request.url).origin;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
 
@@ -52,8 +53,8 @@ export async function GET() {
       signal: controller.signal,
       cache: 'no-store',
       headers: {
-        'Origin': 'https://dev.transportstatistics.com',
-        'Referer': 'https://dev.transportstatistics.com/',
+        'Origin': requestOrigin,
+        'Referer': `${requestOrigin}/`,
         'User-Agent': 'Mozilla/5.0',
         'Accept': 'application/json, text/plain, */*'
       }
@@ -93,4 +94,4 @@ export async function GET() {
   } finally {
     clearTimeout(timeoutId);
   }
-}
+});

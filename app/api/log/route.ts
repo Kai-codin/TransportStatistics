@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
+import { withApiKeyAuth } from '@/lib/api-key-auth';
 
 const consoleDebug = false;
 
@@ -26,7 +27,7 @@ if (!REDIS_DISABLED) {
     duration: 1,
   });
 } else {
-  redisClient = { get: async (_: string) => null, set: async (_: string, __: string) => null, on: () => null } as unknown as Redis;
+  redisClient = { get: async () => null, set: async () => null, on: () => null } as unknown as Redis;
   limiter = new RateLimiterMemory({ points: 5, duration: 1 });
 }
 
@@ -99,7 +100,7 @@ async function getRTTToken(): Promise<string> {
   return cachedToken!;
 }
 
-export async function GET(request: Request) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   
   try { 
@@ -154,9 +155,9 @@ export async function GET(request: Request) {
       message: err.message 
     }, { status: 500 });
   }
-}
+});
 
-function resolveServiceRidPayload(payload: any) {
+const resolveServiceRidPayload = (payload: any) => {
   const uid =
     payload?.uid ??
     payload?.service?.uid ??
@@ -177,7 +178,7 @@ function resolveServiceRidPayload(payload: any) {
       : null;
 
   return { uid, date };
-}
+};
 
 async function handleServiceRidRequest(serviceRid: string, debug: boolean, showPass: boolean) {
   const response = await fetch(`https://map-api.production.signalbox.io/api/train-information/${serviceRid}`);

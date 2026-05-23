@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import { fetchQuery } from "convex/nextjs";
+import { withApiKeyAuth } from "@/lib/api-key-auth";
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
@@ -65,11 +66,11 @@ function sortVehicles(
 
 // ─── Main Handler ────────────────────────────────────────────────────────────
 
-export async function GET(req: NextRequest) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { userId } = await auth();
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(request.url);
   const operatorCode = searchParams.get("code"); // This is the slug from URL
 
   if (!operatorCode) {
@@ -323,4 +324,4 @@ export async function GET(req: NextRequest) {
 
   mergedVehicles.sort(sortVehicles);
   return NextResponse.json(mergedVehicles);
-}
+});

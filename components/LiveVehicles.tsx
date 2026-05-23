@@ -106,36 +106,55 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
   };
 
   const createMarker = (item: any, type: 'train' | 'bus') => {
-    const el = document.createElement('div');
-    el.className = 'maplibregl-marker maplibregl-marker-anchor-center';
-    const rotation = item.rotation || 0;
-    const isFacingRight = rotation >= 0 && rotation <= 180;
-    const liveryClass = `livery-${item.liveryID || 0} ${isFacingRight ? 'right' : ''}`;
-    const color = item.colour || (type === 'train' ? '#1669b6' : '#ff0000');
-    const background = (type === 'bus' && item.colour && !item.liveryID) || type === 'train' ? color : '';
+  const el = document.createElement('div');
+  el.className = 'maplibregl-marker maplibregl-marker-anchor-center';
+  const rotation = item.rotation || 0;
+  const isFacingRight = rotation >= 0 && rotation <= 180;
+  const liveryClass = `livery-${item.liveryID || 0} ${isFacingRight ? 'right' : ''}`;
+  const color = item.colour || (type === 'train' ? '#1669b6' : '#ff0000');
+  const background = (type === 'bus' && item.colour && !item.liveryID) || type === 'train' ? color : '';
 
-    el.innerHTML = `
+  let markerHTML: string;
+
+  if (type === 'train') {
+    // Single continuous SVG shape: long rectangle with arrow nose at the top (front)
+    // Arrow points upward (toward top of SVG) — rotation handles real direction
+    // Shape: arrow tip at top, rectangle body below. Total height ~44px, width 20px.
+    // Text runs along the long side (horizontal in the SVG, which after 90deg rotation faces the long side)
+    const trainColor = color;
+    const border = isFacingRight ? "border-right: 0;" : "border-left: 0;";
+    markerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;transform:rotate(${rotation}deg);transform-origin:center;">
+        <div class="trainArrow" style="border-bottom: 10px solid ${trainColor}; data-vehicle-id="${item.id}"></div>
+        <svg width="40" height="20" data-vehicle-id="${item.id}" style="background:${background}; ${border}" class="vehicle-marker ${liveryClass}">
+          <text x="${isFacingRight ? '22' : '18'}" y="13">${item.service || 'N/A'}</text>
+        </svg>
+      </div>`;
+  } else {
+    // Bus: keep existing logic exactly as-is
+    markerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;transform:rotate(${rotation}deg);transform-origin:center;">
         <div class="arrow" data-vehicle-id="${item.id}"></div>
         <svg width="30" height="20" data-vehicle-id="${item.id}" style="background:${background}" class="vehicle-marker ${liveryClass}">
           <text x="14" y="13">${item.service || 'N/A'}</text>
         </svg>
       </div>`;
+  }
 
-    el.addEventListener('click', () => handleVehicleClick(item, type));
+  el.innerHTML = markerHTML;
+  el.addEventListener('click', () => handleVehicleClick(item, type));
 
-    const content = `
-      <a href="${item.popup_data.link1}" target="_blank" class="v-popup-link">${item.popup_data.label1}</a>
-      <div class="v-popup-subtitle">${item.popup_data.label2}${item.popup_data.link2
-        ? `<br/><a href="${item.popup_data.link2}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>`
-        : ''}</div>
-      <a href="${item.popup_data.log_link}" class="v-popup-btn">Log this ${type}</a>`;
-
-    const popup = new maplibregl.Popup({ offset: 25, className: 'vehicle-popup' }).setHTML(content);
-    return new maplibregl.Marker({ element: el })
-      .setLngLat([item.location.lon, item.location.lat])
-      .setPopup(popup);
-  };
+  const content = `
+    <a href="${item.popup_data.link1}" target="_blank" class="v-popup-link">${item.popup_data.label1}</a>
+    <div class="v-popup-subtitle">${item.popup_data.label2}${item.popup_data.link2
+      ? `<br/><a href="${item.popup_data.link2}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>`
+      : ''}</div>
+    <a href="${item.popup_data.log_link}" class="v-popup-btn">Log this ${type}</a>`;
+  const popup = new maplibregl.Popup({ offset: 25, className: 'vehicle-popup' }).setHTML(content);
+  return new maplibregl.Marker({ element: el })
+    .setLngLat([item.location.lon, item.location.lat])
+    .setPopup(popup);
+};
 
   // ── Polling Logic ──────────────────────────────────────────────────────────
   useEffect(() => {

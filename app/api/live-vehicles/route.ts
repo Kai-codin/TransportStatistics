@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { withApiKeyAuth } from "@/lib/api-key-auth";
 import { Redis } from "ioredis";
 import { RateLimiterRedis, RateLimiterMemory } from "rate-limiter-flexible";
 
@@ -84,7 +85,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
-export async function GET(request: Request) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
   try {
@@ -229,4 +230,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
+});

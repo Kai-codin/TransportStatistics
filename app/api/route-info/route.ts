@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Redis } from 'ioredis';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
+import { withApiKeyAuth } from "@/lib/api-key-auth";
 
 const REDIS_DISABLED =
   process.env.DISABLE_REDIS === 'true' || process.env.REDIS_DISABLED === 'true';
@@ -31,7 +32,7 @@ if (!REDIS_DISABLED) {
   limiter = new RateLimiterMemory({ points: 5, duration: 1 });
 }
 
-export async function GET(request: Request) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   // Identify user by IP
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
@@ -109,4 +110,4 @@ export async function GET(request: Request) {
     console.error("Proxy Error:", error);
     return NextResponse.json({ error: "Failed to fetch route info" }, { status: 500 });
   }
-}
+});

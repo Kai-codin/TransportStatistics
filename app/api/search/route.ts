@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { withApiKeyAuth } from "@/lib/api-key-auth";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -109,7 +110,7 @@ async function searchBuses(q: string): Promise<SearchResult[]> {
 }
 
 // --- Route handler ---
-export async function GET(request: Request) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q");
   const type = searchParams.get("type"); // "train" | "bus" | null
@@ -140,4 +141,4 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json(sortedResults);
-}
+});

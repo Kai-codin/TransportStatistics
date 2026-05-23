@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Redis } from 'ioredis';
-import { auth } from '@clerk/nextjs/server';
+import { withApiKeyAuth } from '@/lib/api-key-auth';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 const consoleDebug = false; // Set to true to enable debug logging
 // Allow disabling Redis via env
@@ -118,7 +118,7 @@ async function getValidAccessToken(): Promise<string> {
 }
 
 // --- API Handler ---
-export async function GET(request: Request) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   // Identify user by IP
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
@@ -131,14 +131,6 @@ export async function GET(request: Request) {
       { error: "Too many requests. Please slow down." },
       { status: 429 }
     );
-  }
-
-  const { isAuthenticated, userId, tokenType } = await auth({
-    acceptsToken: 'api_key',
-  });
-
-  if (!isAuthenticated) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
   const { searchParams } = new URL(request.url);
@@ -221,7 +213,10 @@ export async function GET(request: Request) {
             delay: item.temporalData?.departure?.realtimeInternalLateness ?? null,
             mode: 'train',
             rar: item.scheduleMetadata?.runsAsRequired ?? null,
-            vehicle_info: { type: item.locationMetadata?.stockBranding || null },
+            vehicle_info: { 
+              type: item.locationMetadata?.stockBranding || null,
+              carrages: item.locationMetadata?.numberOfVehicles || null,
+            },
             log_link: `/log?service_uid=${item.scheduleMetadata?.uniqueIdentity}`,
             debug: debug ? item : undefined,
           };
@@ -239,7 +234,9 @@ export async function GET(request: Request) {
       const attributions = ['Train departure data is sourced from <a style="color: var(--color-ts-accent);" href="https://www.realtimetrains.co.uk" target="_blank" rel="noopener noreferrer">realtimetrains.co.uk</a>'];
 
       const metadata = analyzeDepartures(departures);
-      return NextResponse.json({ metadata, attributions, departures });
+      const debugRes = data;
+
+      return NextResponse.json({ metadata, attributions, departures, debugRes });
     } 
 
     // --- Bus Logic ---
@@ -312,9 +309,10 @@ export async function GET(request: Request) {
 
       const metadata = { ...baseMetadata, ...analyzeDepartures(departures) };
       const attributions = ['Bus departure data is sourced from <a style="color: var(--color-ts-accent);" href="https://bustimes.org" target="_blank" rel="noopener noreferrer">bustimes.org</a>'];
+      const debugRes = timesData;
 
       // Return object with metadata at the top
-      return NextResponse.json({ metadata, attributions, departures });
+      return NextResponse.json({ metadata, attributions, departures, debugRes });
     }
 
     log(`Invalid type requested: ${type}`);
@@ -324,4 +322,4 @@ export async function GET(request: Request) {
     log(`Caught error: ${error.message}`);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

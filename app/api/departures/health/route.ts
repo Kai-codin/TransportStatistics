@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { withApiKeyAuth } from '@/lib/api-key-auth';
 import { GET as getDepartures } from '../route';
 
-export async function GET(request: Request) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { searchParams } = new URL(request.url);
 
   const code = searchParams.get('code') || 'SOT';
@@ -52,4 +53,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
+});

@@ -164,10 +164,18 @@ body {
 .arrow {
   width: 0;
   height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 8px solid rgb(0, 0, 0);
+  border-left: 5px solid black;
+  border-right: 5px solid black;
+  border-bottom: 8px solid rgb(222, 222, 222);
   margin-bottom: -2px; /* Pulls the arrow slightly closer to the SVG */
+}
+
+.trainArrow {
+  width: 0;
+  height: 0;
+  border-left: 10px solid black;
+  border-right: 10px solid black;
+  margin-bottom: 2px; /* Pulls the arrow slightly closer to the SVG */
 }
 
 .custom-popup .maplibregl-popup-content {

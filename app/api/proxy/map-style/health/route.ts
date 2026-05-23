@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { GET as getMapStyle } from '../route';
+import { withApiKeyAuth } from '@/lib/api-key-auth';
 
-export async function GET() {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const start = Date.now();
 
   try {
@@ -47,4 +48,4 @@ export async function GET() {
       message,
     }, { status: 500 });
   }
-}
+});

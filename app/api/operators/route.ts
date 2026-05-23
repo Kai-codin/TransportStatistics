@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { auth } from "@clerk/nextjs/server";
+import { withApiKeyAuth } from "@/lib/api-key-auth";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-export async function GET(req: NextRequest) {
+export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { searchParams } = new URL(req.url);
   const allMode = searchParams.get("all") === "1";
 
@@ -58,4 +59,4 @@ export async function GET(req: NextRequest) {
     console.error("[operators/user] error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

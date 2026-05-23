@@ -1081,7 +1081,11 @@ export default function LogPage() {
           ) : loadError ? (
             <Card className="flex items-start gap-3 text-sm text-red-300">
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
-              <span>{loadError}</span>
+              <span>
+                {loadError === 'Missing service object'
+                  ? 'Service not found. This can happen if the service was very recently created or not registered correctly by the operator.'
+                  : loadError}
+              </span>
             </Card>
           ) : (
             <>

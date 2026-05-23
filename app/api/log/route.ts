@@ -186,7 +186,7 @@ async function handleServiceRidRequest(serviceRid: string, debug: boolean, showP
   if (!response.ok) {
     return NextResponse.json(
       { error: "Signalbox train lookup failed." },
-      { status: response.status },
+      { status: 500 },
     );
   }
 
@@ -199,7 +199,7 @@ async function handleServiceRidRequest(serviceRid: string, debug: boolean, showP
         error: "Signalbox lookup did not return a usable UID and date.",
         debug: debug ? payload : undefined,
       },
-      { status: 502 },
+      { status: 500 },
     );
   }
 
@@ -333,7 +333,7 @@ async function handleTrainRequest(uid: string, date: string, debug: boolean, sho
     const fullRouteGeometry = toLineStringGeometry(routeData);
 
     const service = rttData.service;
-    if (!service) return NextResponse.json({ error: 'Missing service object' }, { status: 502 });
+    if (!service) return NextResponse.json({ error: 'Missing service object' }, { status: 500 });
 
     // --- FIX: Define the missing variables ---
     const meta = service.scheduleMetadata;

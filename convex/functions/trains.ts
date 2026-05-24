@@ -104,6 +104,66 @@ export const getRidWithUID = query({
   }
 });
 
+export const getAllocationByUidDate = query({
+  args: { uid: v.string(), date: v.string() },
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("trainAllocations")
+      .withIndex("by_uid_date", (q) => q.eq("uid", args.uid).eq("date", args.date))
+      .first();
+    return record ?? null;
+  },
+});
+
+export const saveAllocationByUidDate = mutation({
+  args: {
+    uid: v.string(),
+    date: v.string(),
+    unit_numbers: v.array(v.string()),
+    unit_allocation: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("trainAllocations")
+      .withIndex("by_uid_date", (q) => q.eq("uid", args.uid).eq("date", args.date))
+      .first();
+
+    const payload = {
+      uid: args.uid,
+      date: args.date,
+      unit_numbers: args.unit_numbers,
+      unit_allocation: args.unit_allocation,
+      updated_at: Date.now(),
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+    } else {
+      await ctx.db.insert("trainAllocations", payload);
+    }
+
+    const records = await ctx.db
+      .query("trainDetails")
+      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+      .collect();
+
+    const match = records.find((record) => {
+      const departureDate =
+        typeof record.origin_departure === "string" && record.origin_departure.includes("T")
+          ? record.origin_departure.split("T")[0]
+          : null;
+      return departureDate === args.date;
+    });
+
+    if (match) {
+      await ctx.db.patch(match._id, {
+        unit_numbers: args.unit_numbers,
+        unit_allocation: args.unit_allocation,
+      });
+    }
+  },
+});
+
 // 1. READ: Fast, cheap local cache check
 export const getDetailsForRids = query({
   args: { rids: v.array(v.string()) },

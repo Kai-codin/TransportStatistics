@@ -49,10 +49,22 @@ export default defineSchema({
     stops: v.array(v.any()), 
     delay: v.number(),
     headcode: v.string(),
+    unit_id: v.optional(v.string()),
+    unit_numbers: v.optional(v.array(v.string())),
+    unit_allocation: v.optional(v.any()),
   })
   .index("by_delay", ["delay"])
   .index("by_rid", ["rid"])
   .index("by_uid", ["uid"]),
+
+  trainAllocations: defineTable({
+    uid: v.string(),
+    date: v.string(),
+    unit_numbers: v.array(v.string()),
+    unit_allocation: v.any(),
+    updated_at: v.number(),
+  })
+    .index("by_uid_date", ["uid", "date"]),
 
   units: defineTable({
     unit_number: v.optional(v.string()),

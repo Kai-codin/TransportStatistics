@@ -87,23 +87,60 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
   }, [map]);
 
   // ── Vehicle helpers ────────────────────────────────────────────────────────
-  const handleVehicleClick = async (item: any, type: 'train' | 'bus') => {
-    if (!item.id || !map) return;
-    try {
-      const queryParam = type === 'train' ? `rid=${item.id}` : `trip_id=${item.id}`;
-      const res = await fetch(`/api/route-info?${queryParam}`);
-      if (!res.ok) throw new Error('Failed to fetch route info');
-      const data = await res.json();
-      const isSnapped = data.snapped !== false;
-      map.setLayoutProperty('route-line-solid', 'visibility', isSnapped ? 'visible' : 'none');
-      map.setLayoutProperty('route-line-dashed', 'visibility', isSnapped ? 'none' : 'visible');
-      (map.getSource('route-source') as any).setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: data.path || [] },
-        properties: {},
-      });
-    } catch (e) { console.error('Failed to load route data:', e); }
-  };
+  function buildUnitColumnHtml(unitList: Array<string | number>, item: any) {
+    const displayUnit = unitList.join(' + ');
+    const searchUnit = unitList[0];
+    return `
+      <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:#9ab89a;">Units</div>
+      <div>
+        <span class="text-nowrap">${displayUnit}</span>
+        ${item.popup_data.link2 ? `<br/><a href="${item.popup_data.link2}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>` : ''}
+        ${item.popup_data.link1 ? `<br/><a href="${item.popup_data.link1}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>` : ''}
+      </div>
+    `;
+  }
+
+  const handleVehicleClick = async (item: any, type: 'train' | 'bus', popup: maplibregl.Popup) => {
+  if (!item.id || !map) return;
+  try {
+    const queryParam = type === 'train' ? `rid=${item.id}` : `trip_id=${item.id}`;
+    const res = await fetch(`/api/route-info?${queryParam}`);
+    if (!res.ok) throw new Error('Failed to fetch route info');
+    const data = await res.json();
+    
+    // 1. Update Map Path
+    const isSnapped = data.snapped !== false;
+    map.setLayoutProperty('route-line-solid', 'visibility', isSnapped ? 'visible' : 'none');
+    map.setLayoutProperty('route-line-dashed', 'visibility', isSnapped ? 'none' : 'visible');
+    (map.getSource('route-source') as any).setData({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: data.path || [] },
+      properties: {},
+    });
+
+    // 2. Safely Update Popup
+    if (type === 'train' && data.vehicles) {
+
+      // display all inits with a + separator, e.g. "Unit 1234 + 5678"
+
+      const unitNumber = data.vehicles;
+      const unitList = Array.isArray(unitNumber)
+        ? unitNumber
+        : typeof unitNumber === 'object'
+        ? Object.values(unitNumber).map((item: any) => item?.unit_number || item?.unit_reg).filter(Boolean)
+        : [unitNumber];
+      if (unitList.length === 0) return;
+
+      const popupEl = popup.getElement();
+      if (popupEl) {
+        const unitColumn = popupEl.querySelector('[data-unit-column]');
+        if (unitColumn) {
+          unitColumn.innerHTML = buildUnitColumnHtml(unitList, item);
+        }
+      }
+    }
+  } catch (e) { console.error('Failed to load route data:', e); }
+};
 
   const createMarker = (item: any, type: 'train' | 'bus') => {
   const el = document.createElement('div');
@@ -142,15 +179,37 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
   }
 
   el.innerHTML = markerHTML;
-  el.addEventListener('click', () => handleVehicleClick(item, type));
 
-  const content = `
-    <a href="${item.popup_data.link1}" target="_blank" class="v-popup-link">${item.popup_data.label1}</a>
-    <div class="v-popup-subtitle">${item.popup_data.label2}${item.popup_data.link2
-      ? `<br/><a href="${item.popup_data.link2}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>`
-      : ''}</div>
-    <a href="${item.popup_data.log_link}" class="v-popup-btn">Log this ${type}</a>`;
+  const unitList = Array.isArray(item.unit_numbers) ? item.unit_numbers : [];
+  const unitColumnHtml = unitList.length > 0
+    ? buildUnitColumnHtml(unitList, item)
+    : '<div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:#9ab89a;">Units</div><div>Loading...</div>';
+
+  const content = type === 'train'
+    ? `
+      <a href="${item.popup_data.link1}" target="_blank" class="v-popup-link">${item.popup_data.label1}</a>
+      <div class="v-popup-subtitle" style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <div>
+          <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:#9ab89a;">Delay</div>
+          <div>${item.popup_data.label2}</div>
+        </div>
+        <div data-unit-column>
+          ${unitColumnHtml}
+        </div>
+      </div>
+      <a href="${item.popup_data.log_link}" class="v-popup-btn">Log this ${type}</a>
+    `
+    : `
+      <a href="${item.popup_data.link1}" target="_blank" class="v-popup-link">${item.popup_data.label1}</a>
+      <div class="v-popup-subtitle">${item.popup_data.label2}${item.popup_data.link2
+        ? `<br/><a href="${item.popup_data.link2}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>`
+        : ''}</div>
+      <a href="${item.popup_data.log_link}" class="v-popup-btn">Log this ${type}</a>`;
+  
   const popup = new maplibregl.Popup({ offset: 25, className: 'vehicle-popup' }).setHTML(content);
+
+  el.addEventListener('click', () => handleVehicleClick(item, type, popup));
+
   return new maplibregl.Marker({ element: el })
     .setLngLat([item.location.lon, item.location.lat])
     .setPopup(popup);

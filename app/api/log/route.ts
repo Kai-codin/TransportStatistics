@@ -5,6 +5,7 @@ import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { withApiKeyAuth } from '@/lib/api-key-auth';
+import { getTrainAllocation } from "@/lib/realtime-trains";
 
 const consoleDebug = false;
 
@@ -357,6 +358,7 @@ async function handleTrainRequest(uid: string, date: string, debug: boolean, sho
 
     // 2. Merge Stop and Track
     const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData, uid, date);
+    const allocationData = await getTrainAllocation(uid, date);
 
     const responsePayload = {
       service_number: meta?.trainReportingIdentity ?? "Unknown",
@@ -374,17 +376,7 @@ async function handleTrainRequest(uid: string, date: string, debug: boolean, sho
       full_route_geometry: fullRouteGeometry,
       full_locations: full_route,
       full_route: full_route, 
-      unit: service.allocationData?.[0] ? {
-          unit_number: service.allocationData[0].allocationItems?.[0]?.identity || null,
-          unit_type: service.allocationData[0].leadingClass || null,
-          unit_reg: null,
-          livery: null,
-          livery_left: null,
-      } : null,
-      debug: debug ? {
-        rid,
-        route_found: Boolean(fullRouteGeometry),
-      } : undefined,
+      unit: allocationData,
     };
 
     return NextResponse.json(responsePayload);
@@ -476,11 +468,13 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
       full_locations: full_route,
       full_route: full_route,
       unit: vehicleDetails ? {
-        unit_number: vehicleDetails.fleet_code || vehicleDetails.fleet_number || null,
-        unit_reg: vehicleDetails.reg || null,
-        unit_type: vehicleDetails.vehicle_type?.name || "Bus",
-        livery: vehicleDetails.livery?.name || null,
-        livery_left: vehicleDetails.livery?.left || null,
+        "0": {
+          unit_number: vehicleDetails.fleet_code || vehicleDetails.fleet_number || null,
+          unit_reg: vehicleDetails.reg || null,
+          unit_type: vehicleDetails.vehicle_type?.name || "Bus",
+          livery: vehicleDetails.livery?.name || null,
+          livery_left: vehicleDetails.livery?.left || null,
+        }
       } : null,
       debug: debug ? {
         trip_raw: tripData,

@@ -12,6 +12,7 @@
     "@clerk/nextjs": "^7.2.8",
     "@clerk/ui": "^1.6.8",
     "@upstash/redis": "^1.38.0",
+    "cheerio": "^1.2.0",
     "convex": "^1.36.1",
     "ioredis": "^5.10.1",
     "lucide-react": "^1.14.0",

@@ -89,3 +89,60 @@ export const getUserTripsByOperators = query({
     return tripGroups.flat();
   },
 });
+
+export const getDetailsByUnits = query({
+  args: { 
+    unitNumbers: v.array(v.string()) 
+  },
+  handler: async (ctx, args) => {
+    const vehicles: Record<string, any> = {};
+
+    for (let i = 0; i < args.unitNumbers.length; i++) {
+      const unitNumber = args.unitNumbers[i];
+
+      // 1. Skip if it's the "unknown" fallback from your scraper
+      if (unitNumber === "unknown") {
+        vehicles[i.toString()] = {
+          unit_number: "unknown",
+          unit_type: "Unknown",
+          livery: "Unknown",
+          livery_left: ""
+        };
+        continue;
+      }
+
+      // 2. Find the unit in the database
+      const unit = await ctx.db
+        .query("units")
+        .withIndex("unit_number", (q) => q.eq("unit_number", unitNumber))
+        .first();
+
+      if (unit) {
+        // 3. Resolve the Type and Livery using the IDs
+        const typeId = ctx.db.normalizeId("types", unit.type_id);
+        const type = typeId ? await ctx.db.get(typeId) : null;
+        
+        const liveryId = ctx.db.normalizeId("liveries", unit.livery_id);
+        const livery = liveryId ? await ctx.db.get(liveryId) : null;
+
+        // 4. Build the output object
+        vehicles[i.toString()] = {
+          unit_number: unit.unit_number || unitNumber,
+          unit_type: type ? type.type_name : "Unknown",
+          livery: livery ? livery.livery_name : "Unknown",
+          livery_left: livery ? livery.css_class : ""
+        };
+      } else {
+        // Fallback if the unit exists in RTT but isn't saved in your DB yet
+        vehicles[i.toString()] = {
+          unit_number: unitNumber,
+          unit_type: "Unknown",
+          livery: "Unknown",
+          livery_left: ""
+        };
+      }
+    }
+
+    return vehicles;
+  },
+});

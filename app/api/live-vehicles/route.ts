@@ -185,6 +185,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
           delay: t.delay,
           location: t.location,
           rotation,
+          unit_numbers: Array.isArray(details.unit_numbers) ? details.unit_numbers : [],
           operator: isSimpleMode ? "" : (details.train_operator ?? "Loading..."),
           service: isSimpleMode ? (t.headcode ?? "Loading...") : headcode,
           destination: isSimpleMode ? "N/A" : (details.destination_name ?? "Loading..."),

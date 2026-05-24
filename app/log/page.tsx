@@ -89,7 +89,7 @@ type ApiLogResponse = {
   actual_arrival?: string | null;
   full_route?: RouteStop[];
   full_route_geometry?: RouteGeometry | null;
-  unit?: Partial<TripUnit> | null;
+  unit?: Partial<TripUnit> | Record<string, Partial<TripUnit>> | null;
   error?: string;
   details?: string;
   message?: string;
@@ -194,6 +194,26 @@ function normalizeUnit(unit?: Partial<TripUnit> | null): TripUnit {
     livery: safeString(unit?.livery),
     livery_left: safeString(unit?.livery_left),
   };
+}
+
+function normalizeUnits(raw?: ApiLogResponse['unit']): TripUnit[] {
+  if (!raw) return [];
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const maybeUnit = raw as Partial<TripUnit>;
+    if (
+      typeof maybeUnit.unit_number === 'string' ||
+      typeof maybeUnit.unit_reg === 'string' ||
+      typeof maybeUnit.unit_type === 'string' ||
+      typeof maybeUnit.livery === 'string' ||
+      typeof maybeUnit.livery_left === 'string'
+    ) {
+      return [normalizeUnit(maybeUnit)];
+    }
+    return Object.entries(raw as Record<string, Partial<TripUnit>>)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, value]) => normalizeUnit(value));
+  }
+  return [];
 }
 
 function dedupeCoordinates(coordinates: [number, number][]) {
@@ -405,7 +425,7 @@ export default function LogPage() {
         if (!response.ok) throw new Error(payload.details || payload.message || payload.error || 'Failed to load.');
         const route = Array.isArray(payload.full_route) ? payload.full_route : [];
         const resolvedGeometry = buildFullGeometry(route, payload.full_route_geometry);
-        const initialUnits = payload.unit ? [normalizeUnit(payload.unit)] : [];
+        const initialUnits = normalizeUnits(payload.unit);
         const firstStop = route[0]; const lastStop = route[route.length - 1];
         if (cancelled) return;
         setFullRoute(route); setFullGeometry(resolvedGeometry);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Redis } from 'ioredis';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { withApiKeyAuth } from "@/lib/api-key-auth";
+import { getTrainAllocation } from "@/lib/realtime-trains";
 
 const REDIS_DISABLED =
   process.env.DISABLE_REDIS === 'true' || process.env.REDIS_DISABLED === 'true';
@@ -30,6 +31,20 @@ if (!REDIS_DISABLED) {
 } else {
   redisClient = { get: async (_: string) => null, set: async (_: string, __: string) => null, on: () => null } as unknown as Redis;
   limiter = new RateLimiterMemory({ points: 5, duration: 1 });
+}
+
+function normalizeAllocationUnits(allocationData: any): string[] {
+  if (!allocationData) return [];
+  if (Array.isArray(allocationData)) {
+    return allocationData.map((item) => String(item)).filter(Boolean);
+  }
+  if (typeof allocationData === 'object') {
+    return Object.values(allocationData)
+      .map((item: any) => item?.unit_number || item?.unit_reg)
+      .filter(Boolean)
+      .map((item) => String(item));
+  }
+  return [String(allocationData)];
 }
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
@@ -63,6 +78,11 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       const routeData = await routeRes.json();
       const infoData = await infoRes.json();
 
+      const date = infoData.origin_departure.split('T')[0];
+
+      const allocationData = await getTrainAllocation(infoData.uid, date);
+      const vehicles = normalizeAllocationUnits(allocationData);
+
       return NextResponse.json({
         type: "train",
         id: rid,
@@ -70,6 +90,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         operator: infoData.train_operator,
         destination: infoData.destination_name,
         path: routeData.coordinates || [],
+        vehicles,
         snapped: true 
       });
 

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import Sidebar from '@/components/Sidebar'
+import LayoutShell from '@/components/LayoutShell'
 import './globals.css'
 import AppProviders from './providers'
 
@@ -21,17 +21,7 @@ export default function RootLayout({
     <html lang="en" data-ts-theme="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AppProviders>
-          <div className="flex h-screen overflow-hidden">
-            {/* Sidebar fixed on the left */}
-            <aside>
-              <Sidebar />
-            </aside>
-
-            {/* Main Content area fills the rest */}
-            <main className="flex-1 overflow-y-auto bg-ts-bg">
-              {children}
-            </main>
-          </div>
+          <LayoutShell>{children}</LayoutShell>
         </AppProviders>
       </body>
     </html>

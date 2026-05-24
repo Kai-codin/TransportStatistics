@@ -6,7 +6,7 @@ const crons = cronJobs();
 
 crons.interval(
   "sync train details",
-  { seconds: 10 },
+  { seconds: 30 },
   api.functions.trains.syncAllTrains,
 );
 

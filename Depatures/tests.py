@@ -1,12 +1,14 @@
 import datetime
 from unittest.mock import Mock, patch
 
+import requests
+
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
 
 from Depatures.filters import DeparturesFilter
 from Depatures.models import Timetable, ScheduleLocation
-from Depatures.api import BusDeparturesView, TrainDeparturesView
+from Depatures.api import BusDeparturesView, BusServiceView, TrainDeparturesView
 from Stops.models import Stop
 from main.models import Operator
 
@@ -157,3 +159,80 @@ class BusDeparturesViewTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.data["results"][0]["trip_id"], "581688959")
                 self.assertEqual(response.data["results"][0]["rtt_link"], "https://bustimes.org/journeys/581688959")
+
+
+        class BusServiceViewTests(TestCase):
+            def setUp(self):
+                self.factory = APIRequestFactory()
+                self.view = BusServiceView.as_view()
+
+            @patch("Depatures.api.requests.get")
+            def test_resolves_journey_id_to_trip_id(self, mock_get):
+                journey_not_found = Mock()
+                journey_error = requests.HTTPError("Not found")
+                journey_error.response = Mock(status_code=404)
+                journey_not_found.raise_for_status.side_effect = journey_error
+
+                journey_lookup = Mock()
+                journey_lookup.raise_for_status.return_value = None
+                journey_lookup.json.return_value = {"id": 887045497, "trip_id": 616264382}
+
+                trip_response = Mock()
+                trip_response.raise_for_status.return_value = None
+                trip_response.json.return_value = {
+                    "id": 616264382,
+                    "times": [
+                        {
+                            "aimed_departure_time": "15:47",
+                            "stop": {
+                                "name": "Stop A",
+                                "atco_code": "123",
+                                "location": [1.0, 2.0],
+                            },
+                        }
+                    ],
+                    "operator": {"name": "Operator", "noc": "OP", "slug": "operator"},
+                    "service": {"slug": "service", "id": 1, "line_name": "12E", "mode": "bus"},
+                    "headsign": "Destination",
+                }
+
+                vehiclejourney_response = Mock()
+                vehiclejourney_response.raise_for_status.return_value = None
+                vehiclejourney_response.json.return_value = {
+                    "results": [{"vehicle": {"id": 99, "fleet_code": "12", "reg": "ABC123"}}]
+                }
+
+                vehicles_response = Mock()
+                vehicles_response.raise_for_status.return_value = None
+                vehicles_response.json.return_value = {
+                    "results": [
+                        {
+                            "id": 99,
+                            "fleet_code": "12",
+                            "reg": "ABC123",
+                            "vehicle_type": {"name": "Bus", "style": "Single", "double_decker": False, "electric": False},
+                            "livery": {"name": "Blue", "left": "left", "right": "right"},
+                            "special_features": ["wifi"],
+                        }
+                    ]
+                }
+
+                mock_get.side_effect = [
+                    journey_not_found,
+                    journey_lookup,
+                    trip_response,
+                    vehiclejourney_response,
+                    vehicles_response,
+                ]
+
+                request = self.factory.get("/api/bus-service/", {"trip": "887045497"})
+                response = self.view(request)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data["trip_id"], 616264382)
+                self.assertEqual(response.data["vehicle"]["id"], 99)
+                self.assertEqual(response.data["locations"][0]["time"]["departure"], "15:47")
+                self.assertEqual(
+                    mock_get.call_args_list[3].kwargs["params"],
+                    {"trip": 616264382, "datetime": "2026-05-25T15:47:00Z"},
+                )

@@ -830,11 +830,27 @@ class BusServiceView(APIView):
         resp.raise_for_status()
         return resp.json()
 
+    def _resolve_trip_id(self, trip_id: str) -> str:
+        """Resolve journey IDs to trip IDs when bustimes returns /journeys/{id}."""
+        try:
+            self._get(f"https://bustimes.org/api/trips/{trip_id}/")
+            return trip_id
+        except requests.HTTPError as exc:
+            if getattr(exc.response, "status_code", None) not in (400, 404):
+                raise
+
+        journey_data = self._get(f"https://bustimes.org/api/vehiclejourneys/{trip_id}/")
+        resolved_trip_id = journey_data.get("trip_id")
+        if not resolved_trip_id:
+            raise requests.RequestException("Failed to resolve trip_id from bustimes journey response")
+        return str(resolved_trip_id)
+
     def get(self, request):
         trip_id = request.query_params.get("trip", "").strip()
         if not trip_id:
             return Response({"detail": "Provide trip"}, status=status.HTTP_400_BAD_REQUEST)
         try:
+            trip_id = self._resolve_trip_id(trip_id)
             trip = self._get(f"https://bustimes.org/api/trips/{trip_id}/")
         except requests.RequestException as e:
             return Response({"detail": f"Failed to fetch trip: {e}"}, status=status.HTTP_502_BAD_GATEWAY)

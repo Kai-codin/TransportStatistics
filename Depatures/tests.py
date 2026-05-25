@@ -1,12 +1,12 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
 
 from Depatures.filters import DeparturesFilter
 from Depatures.models import Timetable, ScheduleLocation
-from Depatures.api import TrainDeparturesView
+from Depatures.api import BusDeparturesView, TrainDeparturesView
 from Stops.models import Stop
 from main.models import Operator
 
@@ -121,3 +121,39 @@ class TrainDeparturesTimezoneTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["date"], "2026-12-01")
         self.assertEqual(response.data["time_after"], 30 * 60)
+
+
+class BusDeparturesViewTests(TestCase):
+        def setUp(self):
+                self.factory = APIRequestFactory()
+                self.view = BusDeparturesView.as_view()
+
+        @patch("Depatures.api.requests.get")
+        def test_extracts_trip_id_from_scheduled_link(self, mock_get):
+                html = """
+                <html>
+                    <body>
+                        <tbody>
+                            <tr>
+                                <td class="nowrap"><a href="/services/12e-burton-barton-fradley-lichfield">12E</a></td>
+                                <td>Burton upon Trent</td>
+                                <td><a href="/journeys/581688959">15:47</a></td>
+                            </tr>
+                        </tbody>
+                    </body>
+                </html>
+                """
+                response_mock = Mock()
+                response_mock.text = html
+                response_mock.raise_for_status.return_value = None
+                mock_get.return_value = response_mock
+
+                request = self.factory.get(
+                        "/api/bus-departures/",
+                        {"atco_code": "3890D001501", "date": "2026-05-25", "time": "15:00"},
+                )
+                response = self.view(request)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data["results"][0]["trip_id"], "581688959")
+                self.assertEqual(response.data["results"][0]["rtt_link"], "https://bustimes.org/journeys/581688959")

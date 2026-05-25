@@ -1,6 +1,7 @@
 from itertools import groupby
 from functools import reduce
 import operator as py_operator
+import re
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -233,6 +234,13 @@ def _day_mask_q(weekday: int) -> Q:
     # Allow any characters before position, just check the bit itself
     prefix = "." * weekday
     return Q(timetable__schedule_days_runs__regex=rf"^{prefix}1")
+
+
+def _extract_bustimes_id(href: str) -> Optional[str]:
+    if not href:
+        return None
+    match = re.search(r"/(?:trips|journeys|vehicles/tfl)/([^/?#]+)", href)
+    return match.group(1) if match else None
 # Views
 
 BUSTIMES_URL = "https://bustimes.org/stops/{atco_code}/departures"
@@ -416,18 +424,19 @@ class BusDeparturesView(APIView):
                 expected  = exp_text or None
                 trip_href = exp_href
                 trip_url  = f"https://bustimes.org{trip_href}" if trip_href else None
-                trip_id   = trip_href.split("/vehicles/tfl/")[-1] if "/vehicles/tfl/" in trip_href else None
+                trip_id   = _extract_bustimes_id(trip_href)
 
             else:
                 sched_cell = cells[2]
                 sched_link = sched_cell.find("a")
                 scheduled  = (sched_link.get_text(strip=True) if sched_link else sched_cell.get_text(strip=True)).strip()
                 trip_href  = sched_link.get("href", "") if sched_link else ""
+                if not trip_href:
+                    trip_link = row.find("a", href=re.compile(r"/(trips|vehicles/tfl)/"))
+                    trip_href = trip_link.get("href", "") if trip_link else ""
                 trip_url   = f"https://bustimes.org{trip_href}" if trip_href else None
 
-                trip_id = trip_href.split("/trips/")[-1] if "/trips/" in trip_href else None
-                if trip_id is None and "/vehicles/tfl/" in trip_href:
-                    trip_id = trip_href.split("/vehicles/tfl/")[-1]
+                trip_id = _extract_bustimes_id(trip_href)
 
                 expected = None
                 if len(cells) >= 4:

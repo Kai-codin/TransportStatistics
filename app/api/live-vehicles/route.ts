@@ -180,6 +180,11 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         else if (headcode) label1 = headcode;
         else if (details.destination_name) label1 = `Service to ${details.destination_name}`;
 
+        const departureDate =
+          typeof details.origin_departure === "string" && details.origin_departure.includes("T")
+            ? details.origin_departure.split("T")[0]
+            : today;
+
         return {
           id: t.rid,
           delay: t.delay,
@@ -193,7 +198,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
           popup_data: {
             label1,
             link1: details.uid
-              ? `https://www.realtimetrains.co.uk/service/gb-nr:${details.uid}/${today}/detailed`
+              ? `https://www.realtimetrains.co.uk/service/gb-nr:${details.uid}/${departureDate}/detailed`
               : "#",
             label2: getDelayText(t.delay),
             log_link: `/log?service_rid=${t.rid}`,

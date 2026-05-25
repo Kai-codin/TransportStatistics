@@ -5,7 +5,7 @@ import { QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 
-type TrainDetailsDoc = Doc<"trainDetails">;
+type trainDetailsDoc = Doc<"trainDetails">;
 
 type SignalboxTrainRecord = {
   rid?: string | null;
@@ -74,7 +74,7 @@ export const searchForUnits = query({
   },
 });
 
-async function getLatestTrainDetailsByIndex(
+async function getLatesttrainDetailsByIndex(
   ctx: QueryCtx,
   indexName: "by_uid" | "by_rid",
   field: "uid" | "rid",
@@ -99,7 +99,7 @@ async function getLatestTrainDetailsByIndex(
 export const getRidWithUID = query({
   args: { uid: v.string() },
   handler: async (ctx, args) => {
-    const { latest } = await getLatestTrainDetailsByIndex(ctx, "by_uid", "uid", args.uid);
+    const { latest } = await getLatesttrainDetailsByIndex(ctx, "by_uid", "uid", args.uid);
     return latest;
   }
 });
@@ -158,7 +158,6 @@ export const saveAllocationByUidDate = mutation({
     if (match) {
       await ctx.db.patch(match._id, {
         unit_numbers: args.unit_numbers,
-        unit_allocation: args.unit_allocation,
       });
     }
   },
@@ -170,19 +169,19 @@ export const getDetailsForRids = query({
   handler: async (ctx, args) => {
     const details = await Promise.all(
       args.rids.map((rid) =>
-        getLatestTrainDetailsByIndex(ctx, "by_rid", "rid", rid)
+        getLatesttrainDetailsByIndex(ctx, "by_rid", "rid", rid)
       )
     );
 
     return details.reduce((acc, curr) => {
       if (curr.latest) acc[curr.latest.rid] = curr.latest;
       return acc;
-    }, {} as Record<string, TrainDetailsDoc>);
+    }, {} as Record<string, trainDetailsDoc>);
   },
 });
 
 // 2. WRITE: Batch insertion with "upsert-style" logic
-export const saveTrainDetailsBatch = mutation({
+export const savetrainDetailsBatch = mutation({
   args: { 
     trains: v.array(v.any()) 
   },
@@ -246,7 +245,7 @@ export const syncBatch = action({
     }
 
     if (validData.length > 0) {
-      await ctx.runMutation(api.functions.trains.saveTrainDetailsBatch, { trains: validData });
+      await ctx.runMutation(api.functions.trains.savetrainDetailsBatch, { trains: validData });
     }
   },
 });
@@ -269,7 +268,7 @@ export const syncAllTrains = action({
     if (!rids.length) return;
 
     // Check which RIDs we already have — parallel chunks
-    const CHUNK_SIZE = 50;
+    const CHUNK_SIZE = 1000;
     const chunks: string[][] = [];
     for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
       chunks.push(rids.slice(i, i + CHUNK_SIZE));
@@ -317,10 +316,33 @@ export const syncAllTrains = action({
     if (validData.length > 0) {
       const SAVE_CHUNK = 100;
       for (let i = 0; i < validData.length; i += SAVE_CHUNK) {
-        await ctx.runMutation(api.functions.trains.saveTrainDetailsBatch, {
+        await ctx.runMutation(api.functions.trains.savetrainDetailsBatch, {
           trains: validData.slice(i, i + SAVE_CHUNK),
         });
       }
     }
+  },
+});
+
+export const cleanupOldtrainDetails = mutation({
+  args: { maxDeletes: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const MAX_DELETES = args.maxDeletes ?? 1000;
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    const { page } = await ctx.db
+      .query("trainDetails")
+      .paginate({ cursor: null, numItems: 100 });
+
+    let deleted = 0;
+    for (const record of page) {
+      if (record._creationTime < cutoff) {
+        await ctx.db.delete(record._id);
+        deleted += 1;
+        if (deleted >= MAX_DELETES) break;
+      }
+    }
+
+    return { deleted, scanned: page.length };
   },
 });

@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser, useClerk, SignOutButton, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { useMutation, useQuery } from "convex/react";
+import { createRoot, type Root } from "react-dom/client";
+import { api } from "@/convex/_generated/api";
 import { useTheme } from "@/components/ThemeProvider";
 import { 
-  Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
-  Shield, Settings, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea
+  FileText, Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
+  Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea
 } from "lucide-react";
 
 const navLinks = [
@@ -30,7 +33,15 @@ export default function Sidebar() {
 
   // State
   const [isCollapsed, setIsCollapsed] = useState(false); // For Desktop
-  const [isMobileOpen, setIsMobileOpen] = useState(false); // For Mobile
+  const [mobileOpenPath, setMobileOpenPath] = useState<string | null>(null); // For Mobile
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFormat, setImportFormat] = useState<"csv" | "json">("csv");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const tripLogs = useQuery(api.functions.trips.getMyTrips) ?? [];
+  const logTrip = useMutation(api.functions.trips.logTrip);
+  const isMobileOpen = mobileOpenPath === pathname;
+  const tripLogsPageRootRef = useRef<Root | null>(null);
 
   const themeOptions = [
     { key: "bright" as const, label: "Bright", icon: Sun },
@@ -38,10 +49,350 @@ export default function Sidebar() {
     { key: "dark" as const, label: "Dark", icon: Sun },
   ];
 
-  // Close mobile sidebar on route change
-  useEffect(() => {
-    setIsMobileOpen(false);
-  }, [pathname]);
+  function escapeCsv(value: unknown) {
+    if (value == null) return "";
+    const raw = typeof value === "string" ? value : JSON.stringify(value);
+    const needsQuotes = /[",\n]/.test(raw);
+    const escaped = raw.replace(/"/g, '""');
+    return needsQuotes ? `"${escaped}"` : escaped;
+  }
+
+  async function handleExport(format: "csv" | "json") {
+    try {
+      setIsExporting(true);
+      const dateTag = new Date().toISOString().split("T")[0];
+
+      if (format === "json") {
+        const payload = JSON.stringify(tripLogs, null, 2);
+        const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `trip-logs-${dateTag}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return;
+      }
+
+      const columns = [
+        "service_number",
+        "operator",
+        "operator_slug",
+        "service_date",
+        "transport_type",
+        "bustimes_service_id",
+        "bustimes_service_slug",
+        "origin_name",
+        "origin_stop_code",
+        "destination_name",
+        "destination_stop_code",
+        "scheduled_departure",
+        "actual_departure",
+        "scheduled_arrival",
+        "actual_arrival",
+        "full_route",
+        "ridden_route",
+        "units",
+        "notes",
+      ];
+      const header = columns.join(",");
+      const rows = tripLogs.map((trip) =>
+        columns.map((column) => escapeCsv(trip?.[column])).join(",")
+      );
+      const csv = [header, ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `trip-logs-${dateTag}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Export failed.";
+      alert(message || "Export failed. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  function handleImportClick(format: "csv" | "json") {
+    setImportFormat(format);
+    fileInputRef.current?.click();
+  }
+
+  function mountTripLogsPage(container: HTMLDivElement) {
+    if (!tripLogsPageRootRef.current) {
+      tripLogsPageRootRef.current = createRoot(container);
+    }
+
+    tripLogsPageRootRef.current.render(
+      <div className="px-4 py-2">
+        <p className="text-sm font-semibold text-ts-text-1">Trip logs</p>
+        <p className="mt-1 text-xs text-ts-text-3">Export or import your trips as CSV or JSON.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!isExporting) void handleExport("csv");
+            }}
+            className="rounded-2xl border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2"
+          >
+            {isExporting ? "Exporting..." : "Export CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isImporting) handleImportClick("csv");
+            }}
+            className="rounded-2xl border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2"
+          >
+            {isImporting ? "Importing..." : "Import CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isExporting) void handleExport("json");
+            }}
+            className="rounded-2xl border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2"
+          >
+            {isExporting ? "Exporting..." : "Export JSON"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isImporting) handleImportClick("json");
+            }}
+            className="rounded-2xl border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2"
+          >
+            {isImporting ? "Importing..." : "Import JSON"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function unmountTripLogsPage() {
+    tripLogsPageRootRef.current?.unmount();
+    tripLogsPageRootRef.current = null;
+  }
+
+  function mountTripLogsIcon(container: HTMLDivElement) {
+    const root = createRoot(container);
+    root.render(<FileText size={16} />);
+  }
+
+  function unmountTripLogsIcon(container?: HTMLDivElement) {
+    if (container) {
+      createRoot(container).unmount();
+    }
+  }
+
+  const tripLogsCustomPage = {
+    label: "Trip logs",
+    url: "trip-logs",
+    mount: mountTripLogsPage,
+    unmount: unmountTripLogsPage,
+    mountIcon: mountTripLogsIcon,
+    unmountIcon: unmountTripLogsIcon,
+  };
+
+  const userProfileProps = {
+    customPages: [tripLogsCustomPage],
+  };
+
+  function parseCsv(text: string) {
+    const rows: string[][] = [];
+    let current = "";
+    let row: string[] = [];
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i += 1) {
+      const char = text[i];
+      const next = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && next === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+
+      if (char === "," && !inQuotes) {
+        row.push(current);
+        current = "";
+        continue;
+      }
+
+      if ((char === "\n" || char === "\r") && !inQuotes) {
+        if (char === "\r" && next === "\n") i += 1;
+        row.push(current);
+        if (row.some((value) => value.trim() !== "")) rows.push(row);
+        row = [];
+        current = "";
+        continue;
+      }
+
+      current += char;
+    }
+
+    row.push(current);
+    if (row.some((value) => value.trim() !== "")) rows.push(row);
+    return rows;
+  }
+
+  function parseNumber(value: string | undefined) {
+    if (!value) return undefined;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+
+  function parseJson(value: string | undefined) {
+    if (!value) return undefined;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  function parseTransportType(value: string | undefined) {
+    switch (value) {
+      case "Rail":
+      case "Bus":
+      case "Tram":
+      case "Ferry":
+      case "Taxi":
+      case "Other":
+        return value;
+      default:
+        return "Other";
+    }
+  }
+
+  function normalizeServiceDate(value: string | undefined) {
+    if (!value) return undefined;
+    const asNumber = parseNumber(value);
+    if (asNumber) return asNumber;
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+
+  async function handleImportChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsImporting(true);
+      const text = await file.text();
+      const fileName = file.name.toLowerCase();
+      const format = fileName.endsWith(".json") ? "json" : importFormat;
+
+      let imported = 0;
+      if (format === "json") {
+        const records = JSON.parse(text);
+        if (!Array.isArray(records)) throw new Error("JSON must be an array of trips.");
+        for (const record of records) {
+          const serviceDate = normalizeServiceDate(String(record?.service_date ?? ""));
+          if (!serviceDate) continue;
+          await logTrip({
+            service_number: record.service_number || "Unknown",
+            operator: record.operator || "Unknown",
+            operator_slug: record.operator_slug || "unknown",
+            service_date: serviceDate,
+            transport_type: record.transport_type || "Other",
+            bustimes_service_id: parseNumber(String(record.bustimes_service_id ?? "")),
+            bustimes_service_slug: record.bustimes_service_slug || undefined,
+            origin_name: record.origin_name || "Unknown",
+            origin_stop_code: record.origin_stop_code || "",
+            destination_name: record.destination_name || "Unknown",
+            destination_stop_code: record.destination_stop_code || "",
+            scheduled_departure: record.scheduled_departure || "",
+            actual_departure: record.actual_departure || undefined,
+            scheduled_arrival: record.scheduled_arrival || "",
+            actual_arrival: record.actual_arrival || undefined,
+            full_route: record.full_route ?? null,
+            ridden_route: record.ridden_route ?? null,
+            units: record.units ?? [],
+            notes: record.notes || undefined,
+          });
+          imported += 1;
+        }
+        alert(`Import complete. Added ${imported} trips.`);
+        return;
+      }
+
+      const rows = parseCsv(text);
+      if (rows.length < 2) throw new Error("CSV is empty.");
+
+      const headers = rows[0].map((value) => value.trim());
+      const required = [
+        "service_number",
+        "operator",
+        "operator_slug",
+        "service_date",
+        "transport_type",
+        "origin_name",
+        "origin_stop_code",
+        "destination_name",
+        "destination_stop_code",
+        "scheduled_departure",
+        "scheduled_arrival",
+      ];
+      const missing = required.filter((column) => !headers.includes(column));
+      if (missing.length > 0) {
+        throw new Error(`Missing required columns: ${missing.join(", ")}`);
+      }
+
+      for (let i = 1; i < rows.length; i += 1) {
+        const row = rows[i];
+        const record: Record<string, string> = {};
+        headers.forEach((header, index) => {
+          record[header] = row[index] ?? "";
+        });
+
+        const serviceDate = normalizeServiceDate(record.service_date);
+        if (!serviceDate) continue;
+
+        await logTrip({
+          service_number: record.service_number || "Unknown",
+          operator: record.operator || "Unknown",
+          operator_slug: record.operator_slug || "unknown",
+          service_date: serviceDate,
+          transport_type: parseTransportType(record.transport_type),
+          bustimes_service_id: parseNumber(record.bustimes_service_id),
+          bustimes_service_slug: record.bustimes_service_slug || undefined,
+          origin_name: record.origin_name || "Unknown",
+          origin_stop_code: record.origin_stop_code || "",
+          destination_name: record.destination_name || "Unknown",
+          destination_stop_code: record.destination_stop_code || "",
+          scheduled_departure: record.scheduled_departure || "",
+          actual_departure: record.actual_departure || undefined,
+          scheduled_arrival: record.scheduled_arrival || "",
+          actual_arrival: record.actual_arrival || undefined,
+          full_route: parseJson(record.full_route) ?? null,
+          ridden_route: parseJson(record.ridden_route) ?? null,
+          units: parseJson(record.units) ?? [],
+          notes: record.notes || undefined,
+        });
+        imported += 1;
+      }
+      alert(`Import complete. Added ${imported} trips.`);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Import failed.";
+      alert(message || "Import failed. Please check the CSV format.");
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   return (
     <>
@@ -49,7 +400,7 @@ export default function Sidebar() {
       {isMobileOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 md:hidden" 
-          onClick={() => setIsMobileOpen(false)}
+          onClick={() => setMobileOpenPath(null)}
         />
       )}
 
@@ -74,7 +425,7 @@ export default function Sidebar() {
           <button onClick={() => setIsCollapsed(!isCollapsed)} className="hidden md:block p-1 text-ts-text-2 text-ts-text-2">
             {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
-          <button onClick={() => setIsMobileOpen(false)} className="md:hidden p-1 text-ts-text-2">
+          <button onClick={() => setMobileOpenPath(null)} className="md:hidden p-1 text-ts-text-2">
             <X size={20} />
           </button>
         </div>
@@ -143,12 +494,12 @@ export default function Sidebar() {
           </div>
 
           <Show when="signed-in">
-             <div 
-              onClick={() => openUserProfile()}
+            <div
+              onClick={() => openUserProfile(userProfileProps)}
               className={`flex items-center gap-2.5 p-2 rounded-[6px] bg-ts-surface-2 border border-ts-border-soft cursor-pointer hover:border-ts-accent-border transition-all ${isCollapsed ? "justify-center" : ""}`}
             >
               <div className="pointer-events-none h-7 w-7 flex-shrink-0">
-                <UserButton />
+                <UserButton userProfileProps={userProfileProps} />
               </div>
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">
@@ -156,6 +507,13 @@ export default function Sidebar() {
                 </div>
               )}
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="text/csv,application/json,.csv,.json"
+              className="hidden"
+              onChange={handleImportChange}
+            />
             <SignOutButton>
               <button className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-red-400 hover:bg-red-950/20 hover:text-red-300 w-full transition-all whitespace-nowrap ${isCollapsed ? "justify-center" : ""}`}>
                 <LogOut size={18} />
@@ -186,7 +544,7 @@ export default function Sidebar() {
 
       {/* Mobile Hamburger Menu (Only visible when sidebar is closed on mobile) */}
       <button 
-        onClick={() => setIsMobileOpen(true)}
+        onClick={() => setMobileOpenPath(pathname)}
         className="md:hidden fixed top-4 left-4 z-30 p-2 bg-ts-surface text-ts-text-1 rounded-md border border-ts-border-soft"
       >
         <Menu size={20} />

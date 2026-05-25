@@ -46,12 +46,10 @@ export default defineSchema({
     origin_departure: v.union(v.string(), v.null()),
     origin_name: v.string(),
     origin_crs: v.string(),
-    stops: v.array(v.any()), 
     delay: v.number(),
     headcode: v.string(),
-    unit_id: v.optional(v.string()),
     unit_numbers: v.optional(v.array(v.string())),
-    unit_allocation: v.optional(v.any()),
+    stops: v.optional(v.any()),
   })
   .index("by_delay", ["delay"])
   .index("by_rid", ["rid"])

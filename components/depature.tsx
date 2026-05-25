@@ -163,7 +163,7 @@ function buildShell(stopName: string, stopId: string, typeName: string, codes: s
     <div id="ts-stop-panel-header-extra">${headerExtraHTML}</div>
     ${codeBadges}
     <div id="ts-stop-panel-content">${bodyHTML}</div>
-    <div style="font-size:9px;color:${C.text3};">Stop ID: ${stopId} <a style="color:${C.accent};" href="/request/edit/stop/${stopId}">Request Edit</a></div>
+    <div style="font-size:9px;color:${C.text3};">Stop ID: ${stopId} <a style="color:${C.accent};" href="/request/edit/stops/${stopId}">Request Edit</a></div>
   </div>`;
 }
 

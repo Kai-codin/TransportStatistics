@@ -7,49 +7,42 @@ import { adminConfig } from '@/lib/adminConfig';
 
 const DEFAULT_PAGE_SIZE = 25;
 
+type RelationMode = 'admin' | 'public';
+
 type RelationSelectProps = {
   table: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  mode?: RelationMode;
 };
 
-function getLabel(record: any) {
-  return (
-    record?.display_name ||
-    record?.name ||
-    record?.type_name ||
-    record?.livery_name ||
-    record?.operator_name ||
-    record?.code ||
-    record?._id ||
-    'Unknown'
-  );
-}
-
-export function RelationSelect({ table, value, onChange, placeholder, disabled }: RelationSelectProps) {
+export function RelationSelect({ table, value, onChange, placeholder, disabled, mode = 'admin' }: RelationSelectProps) {
   const [search, setSearch] = useState('');
   const tableConfig = adminConfig[table];
   const searchConfig = tableConfig?.search;
 
   const queryArgs = useMemo(
-    () => ({
-      table,
-      search: searchConfig && search.trim().length > 0 ? search.trim() : undefined,
-      searchIndex: searchConfig?.index,
-      searchField: searchConfig?.field,
-      filters: [],
-      sort: undefined,
-    }),
-    [table, search, searchConfig]
+    () =>
+      mode === 'public'
+        ? {
+            table,
+            search: search.trim().length > 0 ? search.trim() : undefined,
+          }
+        : {
+            table,
+            search: searchConfig && search.trim().length > 0 ? search.trim() : undefined,
+            searchIndex: searchConfig?.index,
+            searchField: searchConfig?.field,
+            filters: [],
+            sort: undefined,
+          },
+    [mode, table, search, searchConfig]
   );
 
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.functions.admin.list,
-    queryArgs,
-    { initialNumItems: DEFAULT_PAGE_SIZE }
-  );
+  const queryFunction = mode === 'public' ? api.functions.publicRelations.list : api.functions.admin.list;
+  const { results, status, loadMore } = usePaginatedQuery(queryFunction, queryArgs, { initialNumItems: DEFAULT_PAGE_SIZE });
 
   useEffect(() => {
     if (status === 'CanLoadMore') {
@@ -61,7 +54,7 @@ export function RelationSelect({ table, value, onChange, placeholder, disabled }
   const filteredOptions = searchConfig || search.trim().length === 0
     ? options
     : options.filter((option: any) =>
-        getLabel(option).toLowerCase().includes(search.trim().toLowerCase())
+        String(option.label ?? '').toLowerCase().includes(search.trim().toLowerCase())
       );
 
   return (
@@ -81,7 +74,7 @@ export function RelationSelect({ table, value, onChange, placeholder, disabled }
         <option value="">Select...</option>
         {filteredOptions.map((option: any) => (
           <option key={option._id} value={option._id}>
-            {getLabel(option)}
+            {option.label ?? option._id}
           </option>
         ))}
       </select>

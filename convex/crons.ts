@@ -1,4 +1,3 @@
-// convex/crons.ts
 import { cronJobs } from "convex/server";
 import { api } from "./_generated/api";
 
@@ -8,6 +7,14 @@ crons.interval(
   "sync train details",
   { seconds: 30 },
   api.functions.trains.syncAllTrains,
+  {},
+);
+
+crons.interval(
+  "cleanup old train details",
+  { hours: 2 },
+  api.functions.trains.cleanupOldtrainDetails,
+  {},
 );
 
 export default crons;

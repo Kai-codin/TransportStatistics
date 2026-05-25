@@ -389,15 +389,30 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
   log(`Processing bus trip: ${uid} for ${date}`);
 
   try {
-    const tripRes = await fetch(`https://bustimes.org/api/trips/${uid}/`);
+    const journeyLookupRes = await fetch(
+      `https://bustimes.org/api/vehiclejourneys/?vehicle=&service=&trip=${uid}&source=&datetime=&date=${date}`
+    );
+
+    if (!journeyLookupRes.ok) {
+      return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
+    }
+
+    const journeyLookupData = await journeyLookupRes.json();
+    const journeyId = journeyLookupData?.results?.[0]?.id;
+
+    if (!journeyId) {
+      return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
+    }
+
+    const tripRes = await fetch(`https://bustimes.org/api/vehiclejourneys/${journeyId}/details/`);
     if (!tripRes.ok) {
       return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
     }
-    const tripData = await tripRes.json();
 
-    const assignmentRes = await fetch(`https://bustimes.org/api/vehiclejourneys/?trip=${uid}`);
-    const assignmentData = assignmentRes.ok ? await assignmentRes.json() : null;
-    const vehicleStub = assignmentData?.results?.[0]?.vehicle;
+    const tripData = await tripRes.json();
+    const trip = tripData.trip ?? tripData;
+
+    const vehicleStub = tripData?.vehicle ?? trip?.vehicle ?? null;
 
     let vehicleDetails = null;
     if (vehicleStub?.id) {
@@ -407,9 +422,22 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
       }
     }
 
-    const stops = tripData.times || [];
+    const stops = trip.times || [];
     const firstStop = stops[0];
     const lastStop = stops[stops.length - 1];
+
+    const getAimedArrival = (time: any) => time?.aimed_arrival_time ?? null;
+    const getAimedDeparture = (time: any) => time?.aimed_departure_time ?? null;
+    const getActualArrival = (time: any) =>
+      time?.actual_arrival_time ??
+      time?.expected_arrival_time ??
+      time?.aimed_arrival_time ??
+      null;
+    const getActualDeparture = (time: any) =>
+      time?.actual_departure_time ??
+      time?.expected_departure_time ??
+      time?.aimed_departure_time ??
+      null;
 
     // 1. Generate the unified full_route (Matches train format)
     const full_route = stops.map((time: any, index: number) => {
@@ -430,12 +458,12 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
           bearing: null,
           icon: null
         },
-        scheduled_arrival: time.aimed_arrival_time || null,
-        scheduled_departure: time.aimed_departure_time || null,
-        actual_arrival: time.expected_arrival_time || time.aimed_arrival_time || null,
-        actual_departure: time.expected_departure_time || time.aimed_departure_time || null,
+        scheduled_arrival: getAimedArrival(time),
+        scheduled_departure: getAimedDeparture(time),
+        actual_arrival: getActualArrival(time),
+        actual_departure: getActualDeparture(time),
         track: nextTrack,
-        timing_status: time.status || "scheduled",
+        timing_status: time.timing_status || time.status || "scheduled",
         pick_up: true,
         set_down: true
       };
@@ -450,20 +478,20 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
     };
 
     const responsePayload = {
-      service_number: tripData.service?.line_name ?? "Unknown",
-      operator: tripData.operator?.name ?? "Unknown Operator",
-      operator_slug: tripData.operator?.slug ?? "unknown",
+      service_number: trip?.service?.line_name ?? tripData.route_name ?? "Unknown",
+      operator: trip?.operator?.name ?? "Unknown Operator",
+      operator_slug: trip?.operator?.slug ?? trip?.operator?.noc?.toLowerCase?.() ?? "unknown",
       service_date: dateToTimestamp(date),
-      bustimes_service_id: typeof tripData.service?.id === "number" ? tripData.service.id : undefined,
-      bustimes_service_slug: tripData.service?.slug ?? undefined,
+      bustimes_service_id: typeof trip?.service?.id === "number" ? trip.service.id : undefined,
+      bustimes_service_slug: trip?.service?.slug ?? undefined,
       origin_name: firstStop?.stop?.name ?? "Unknown Origin",
       origin_stop_code: firstStop?.stop?.atco_code ?? null,
-      destination_name: tripData.headsign ?? lastStop?.stop?.name ?? "Unknown",
+      destination_name: trip?.headsign ?? tripData.destination ?? lastStop?.stop?.name ?? "Unknown",
       destination_stop_code: lastStop?.stop?.atco_code ?? null,
-      scheduled_departure: firstStop?.aimed_departure_time,
-      actual_departure: firstStop?.expected_departure_time || firstStop?.aimed_departure_time,
-      scheduled_arrival: lastStop?.aimed_arrival_time,
-      actual_arrival: lastStop?.expected_arrival_time || lastStop?.aimed_arrival_time,
+      scheduled_departure: getAimedDeparture(firstStop),
+      actual_departure: getActualDeparture(firstStop),
+      scheduled_arrival: getAimedArrival(lastStop),
+      actual_arrival: getActualArrival(lastStop),
       full_route_geometry: stitchedGeometry.coordinates.length > 0 ? stitchedGeometry : null,
       full_locations: full_route,
       full_route: full_route,
@@ -477,8 +505,8 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
         }
       } : null,
       debug: debug ? {
+        journey_lookup_raw: journeyLookupData,
         trip_raw: tripData,
-        assignment_raw: assignmentData,
         vehicle_raw: vehicleDetails,
       } : undefined,
     };

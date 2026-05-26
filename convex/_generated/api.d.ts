@@ -12,6 +12,7 @@ import type * as crons from "../crons.js";
 import type * as functions_admin from "../functions/admin.js";
 import type * as functions_completion from "../functions/completion.js";
 import type * as functions_delete_stop_of_type from "../functions/delete_stop_of_type.js";
+import type * as functions_editRequests from "../functions/editRequests.js";
 import type * as functions_import from "../functions/import.js";
 import type * as functions_liveries from "../functions/liveries.js";
 import type * as functions_migrations from "../functions/migrations.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   "functions/admin": typeof functions_admin;
   "functions/completion": typeof functions_completion;
   "functions/delete_stop_of_type": typeof functions_delete_stop_of_type;
+  "functions/editRequests": typeof functions_editRequests;
   "functions/import": typeof functions_import;
   "functions/liveries": typeof functions_liveries;
   "functions/migrations": typeof functions_migrations;

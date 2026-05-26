@@ -13,6 +13,7 @@ export type EnrichedVehicle = {
 export type VehicleAllocation = Record<string, EnrichedVehicle>;
 
 export async function getTrainAllocation(uid: string, date: string): Promise<VehicleAllocation> {
+  console.log(`Fetching allocation for train UID: ${uid} on date: ${date}`);
   // Setup our default fallback for 404s or empty data
   const unknownFallback: VehicleAllocation = {
     "0": {

@@ -183,3 +183,33 @@ export const remove = mutation({
     await ctx.db.delete(args.id as Id<any>);
   },
 });
+
+
+export const getAllTypes = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("types").collect();
+  },
+});
+
+// 2. Ensure your other dropdown tables are exposed exactly the same way:
+export const getAllStopTypes = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("stopTypes").collect();
+  },
+});
+
+export const getAllOperators = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("operators").collect();
+  },
+});
+
+export const getAllLiveries = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("liveries").collect();
+  },
+});

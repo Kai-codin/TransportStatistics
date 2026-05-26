@@ -156,4 +156,26 @@ export default defineSchema({
     .index("by_user", ["user"])
     .index("by_user_and_operator", ["user", "operator"])
     .index("by_service_date", ["user", "service_date"]),
+
+  editRequests: defineTable({
+    userId: v.string(),    
+    userEmail: v.string(), 
+    table: v.string(),     
+    recordId: v.string(),  
+    from: v.any(),         
+    to: v.any(),           
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("declined")
+    ),
+    userReason: v.string(),
+    adminReason: v.optional(v.string()),
+    reviewedBy: v.optional(v.string()), // Admin Clerk ID
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_table_recordId", ["table", "recordId"])
+    .index("by_userId", ["userId"]),
 });

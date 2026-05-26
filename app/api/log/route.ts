@@ -158,7 +158,8 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   }
 });
 
-const resolveServiceRidPayload = (payload: any) => {
+const resolveServiceRidPayload = (payload: any, serviceRid?: string) => {
+  // 1. Resolve UID
   const uid =
     payload?.uid ??
     payload?.service?.uid ??
@@ -166,17 +167,41 @@ const resolveServiceRidPayload = (payload: any) => {
     payload?.data?.uid ??
     null;
 
-  const destinationArrival =
-    payload?.destination_arrival ??
-    payload?.service?.destination_arrival ??
-    payload?.train?.destination_arrival ??
-    payload?.data?.destination_arrival ??
+  // 2. Target origin_departure FIRST (The definitive schedule operational date)
+  const originDeparture = 
+    payload?.origin_departure ?? 
+    payload?.service?.origin_departure ??
+    payload?.train?.origin_departure ??
     null;
 
-  const date =
-    typeof destinationArrival === "string" && destinationArrival.includes("T")
-      ? destinationArrival.split("T")[0]
-      : null;
+  let date = typeof originDeparture === "string" && originDeparture.includes("T")
+    ? originDeparture.split("T")[0]
+    : null;
+
+  // 3. Fallback to destination_arrival ONLY if origin_departure is entirely absent
+  if (!date) {
+    const destinationArrival =
+      payload?.destination_arrival ??
+      payload?.service?.destination_arrival ??
+      payload?.train?.destination_arrival ??
+      payload?.data?.destination_arrival ??
+      null;
+
+    date = typeof destinationArrival === "string" && destinationArrival.includes("T")
+        ? destinationArrival.split("T")[0]
+        : null;
+  }
+
+  // 4. Absolute Fallback: Extract the date directly from the Service RID string digits
+  if (!date && serviceRid && serviceRid.length >= 8) {
+    const year = serviceRid.substring(0, 4);
+    const month = serviceRid.substring(4, 6);
+    const day = serviceRid.substring(6, 8);
+    
+    if (!isNaN(Number(year)) && !isNaN(Number(month)) && !isNaN(Number(day))) {
+      date = `${year}-${month}-${day}`;
+    }
+  }
 
   return { uid, date };
 };
@@ -359,6 +384,9 @@ async function handleTrainRequest(uid: string, date: string, debug: boolean, sho
     // 2. Merge Stop and Track
     const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData, uid, date);
     const allocationData = await getTrainAllocation(uid, date);
+
+    console.log(`Train ${uid} on ${date} has ${full_route.length} stops after merging.`);
+    console.log(`Allocation data: ${JSON.stringify(allocationData)}`);
 
     const responsePayload = {
       service_number: meta?.trainReportingIdentity ?? "Unknown",

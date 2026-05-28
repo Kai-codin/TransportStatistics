@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useRef, type FormEvent, type ReactNode } from 'react';
-import { useMutation } from 'convex/react';
+import type { Id } from '@/convex/_generated/dataModel';
+import { useMutation, useQuery } from 'convex/react';
+import { useEffect, useState, useRef, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
 import { useConvexAuth } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { LogMap } from '@/components/LogMap';
-import { useTheme } from '@/components/ThemeProvider';
 import { SignInButton, useUser } from '@clerk/nextjs';
 import {
   AlertCircle,
@@ -27,7 +27,6 @@ type TabKey = 'Route' | 'Vehicle' | 'Service' | 'Notes';
 type RouteMode = 'Map' | 'List';
 type VehicleMode = 'Bus' | 'Train' | 'Tram' | 'Other';
 type StoredTransportType = 'Rail' | 'Bus' | 'Tram' | 'Other';
-type ThemeKey = 'bright' | 'light' | 'dark';
 
 type RouteGeometry = {
   type: 'LineString';
@@ -121,6 +120,42 @@ type RiddenRoute = {
   geometry: RouteGeometry | null;
 };
 
+type StoredRoutePayload = {
+  geometry?: RouteGeometry | null;
+  coordinates?: [number, number][];
+  stops?: RouteStop[];
+  full_locations?: RouteStop[];
+};
+
+type EditableTripRecord = {
+  _id: string;
+  service_number: string;
+  operator: string;
+  operator_slug: string;
+  service_date: number;
+  transport_type: StoredTransportType;
+  bustimes_service_id?: number;
+  bustimes_service_slug?: string;
+  origin_name: string;
+  origin_stop_code: string;
+  destination_name: string;
+  destination_stop_code: string;
+  scheduled_departure: string;
+  actual_departure?: string | null;
+  scheduled_arrival: string;
+  actual_arrival?: string | null;
+  full_route?: StoredRoutePayload | RouteStop[] | null;
+  ridden_route?: StoredRoutePayload | RouteStop[] | null;
+  full_locations?: RouteStop[] | null;
+  units?: TripUnit[] | null;
+  unit_number?: string;
+  unit_reg?: string;
+  unit_type?: string;
+  livery_name?: string;
+  livery_css?: string;
+  notes?: string;
+};
+
 type RequestResolution = {
   url: string;
   vehicleMode: VehicleMode;
@@ -197,6 +232,12 @@ function normalizeUnit(unit?: Partial<TripUnit> | null): TripUnit {
 }
 
 function normalizeUnits(raw?: ApiLogResponse['unit']): TripUnit[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => (entry && typeof entry === 'object' ? normalizeUnit(entry as Partial<TripUnit>) : null))
+      .filter((entry): entry is TripUnit => Boolean(entry && (entry.unit_number || entry.unit_reg || entry.unit_type || entry.livery || entry.livery_left)));
+  }
+
   if (!raw) return [];
   if (typeof raw === 'object' && !Array.isArray(raw)) {
     const maybeUnit = raw as Partial<TripUnit>;
@@ -214,6 +255,37 @@ function normalizeUnits(raw?: ApiLogResponse['unit']): TripUnit[] {
       .map(([, value]) => normalizeUnit(value));
   }
   return [];
+}
+
+function normalizeRouteStops(raw: unknown): RouteStop[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((stop): stop is RouteStop => Boolean(stop && typeof stop === 'object' && 'id' in stop));
+  }
+
+  if (!raw || typeof raw !== 'object') return [];
+
+  const payload = raw as StoredRoutePayload;
+  if (Array.isArray(payload.stops)) return payload.stops;
+  if (Array.isArray(payload.full_locations)) return payload.full_locations;
+
+  return [];
+}
+
+function normalizeRouteGeometry(raw: unknown): RouteGeometry | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const payload = raw as StoredRoutePayload;
+  const coordinates = payload.geometry?.coordinates ?? payload.coordinates ?? null;
+  if (!Array.isArray(coordinates) || coordinates.length === 0) return null;
+
+  return { type: 'LineString', coordinates };
+}
+
+function transportTypeToVehicleMode(type: StoredTransportType): VehicleMode {
+  if (type === 'Rail') return 'Train';
+  if (type === 'Tram') return 'Tram';
+  if (type === 'Bus') return 'Bus';
+  return 'Other';
 }
 
 function dedupeCoordinates(coordinates: [number, number][]) {
@@ -340,12 +412,15 @@ function SegmentedControl({ options, value, onChange }: { options: string[]; val
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function LogPage() {
-  const [mounted, setMounted] = useState(false);
-  const [searchKey, setSearchKey] = useState('');
-  const [queryReady, setQueryReady] = useState(false);
   const { isSignedIn } = useUser();
   const { isAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
   const logTrip = useMutation(api.functions.trips.logTrip);
+  const updateTrip = useMutation(api.functions.trips.updateTrip);
+  const searchKey = useSyncExternalStore(
+    () => () => {},
+    () => (typeof window === 'undefined' ? '' : window.location.search.replace(/^\?/, '')),
+    () => '',
+  );
 
   const [activeTab, setActiveTab] = useState<TabKey>('Route');
   const [routeMode, setRouteMode] = useState<RouteMode>('Map');
@@ -374,23 +449,26 @@ export default function LogPage() {
   const [draggedUnitIndex, setDraggedUnitIndex] = useState<number | null>(null);
   const [dragOverUnitIndex, setDragOverUnitIndex] = useState<number | null>(null);
 
+  const editTripId = searchKey ? new URLSearchParams(searchKey).get('trip_id') : null;
+  const editTrip = useQuery(
+    api.functions.trips.getMyTripById,
+    editTripId ? { tripId: editTripId as Id<'tripLogs'> } : 'skip',
+  ) as EditableTripRecord | null | undefined;
+  const isEditingTrip = Boolean(editTripId);
+
   const selectedStop = fullRoute.find((s) => s.id === selectedStopId) ?? null;
   const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId);
   const selectedUnit = units[selectedUnitIndex] ?? null;
 
   useEffect(() => {
-    setMounted(true);
-    setSearchKey(window.location.search.startsWith('?') ? window.location.search.slice(1) : '');
-    setQueryReady(true);
-  }, []);
+    const trimmedSearch = unitSearch.trim();
+    if (trimmedSearch.length < 2) return;
 
-  useEffect(() => {
-    if (unitSearch.trim().length < 2) { setUnitSearchResults([]); setUnitSearchOpen(false); return; }
     const t = setTimeout(async () => {
       setUnitSearchLoading(true);
       try {
         const type = vehicleMode === 'Train' ? 'train' : vehicleMode === 'Bus' ? 'bus' : '';
-        const params = new URLSearchParams({ q: unitSearch });
+        const params = new URLSearchParams({ q: trimmedSearch });
         if (type) params.set('type', type);
         const res = await fetch(`/api/search?${params}`);
         const data: SearchResult[] = await res.json();
@@ -411,9 +489,72 @@ export default function LogPage() {
   }, []);
 
   useEffect(() => {
-    if (!queryReady) return;
     let cancelled = false;
     async function load() {
+      if (editTripId) {
+        if (editTrip === undefined) {
+          if (!cancelled) setLoading(true);
+          return;
+        }
+
+        if (!editTrip) {
+          if (!cancelled) {
+            setLoadError('Trip not found or you do not have access.');
+            setLoading(false);
+          }
+          return;
+        }
+
+        const storedRoute = normalizeRouteStops(editTrip.full_route);
+        const fallbackRoute = normalizeRouteStops(editTrip.full_locations);
+        const riddenRouteStops = normalizeRouteStops(editTrip.ridden_route);
+        const route = storedRoute.length > 0 ? storedRoute : fallbackRoute;
+        const activeRoute = riddenRouteStops.length > 0 ? riddenRouteStops : route;
+        const resolvedGeometry = normalizeRouteGeometry(editTrip.full_route) ?? normalizeRouteGeometry(editTrip.ridden_route);
+        const initialUnits = normalizeUnits(editTrip.units as ApiLogResponse['unit']);
+        const firstStop = route[0] ?? activeRoute[0];
+        const editDateLabel = new Date(editTrip.service_date).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+
+        if (cancelled) return;
+
+        setVehicleMode(transportTypeToVehicleMode(editTrip.transport_type));
+        setSourceLabel(`Editing saved trip from ${editDateLabel}`);
+        setFullRoute(route);
+        setFullGeometry(resolvedGeometry);
+        setUnits(initialUnits);
+        setSelectedUnitIndex(0);
+        setSelectedStopId(firstStop?.id ?? null);
+        setFromStopId(activeRoute.length > 1 ? activeRoute[0]?.id ?? null : null);
+        setToStopId(activeRoute.length > 1 ? activeRoute[activeRoute.length - 1]?.id ?? null : null);
+        setNotes(safeString(editTrip.notes));
+        setServiceForm({
+          service_number: safeString(editTrip.service_number),
+          operator: safeString(editTrip.operator),
+          operator_slug: safeString(editTrip.operator_slug),
+          service_date: toDateInputValue(editTrip.service_date),
+          origin_name: safeString(editTrip.origin_name),
+          origin_stop_code: safeString(editTrip.origin_stop_code),
+          destination_name: safeString(editTrip.destination_name),
+          destination_stop_code: safeString(editTrip.destination_stop_code),
+          scheduled_departure: toTimeInputValue(editTrip.scheduled_departure),
+          actual_departure: toTimeInputValue(editTrip.actual_departure),
+          scheduled_arrival: toTimeInputValue(editTrip.scheduled_arrival),
+          actual_arrival: toTimeInputValue(editTrip.actual_arrival),
+          bustimes_service_id: editTrip.bustimes_service_id ? String(editTrip.bustimes_service_id) : '',
+          bustimes_service_slug: safeString(editTrip.bustimes_service_slug),
+        });
+
+        setLoadError('');
+        setSaveError('');
+        setSaveSuccess('');
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true); setLoadError(''); setSaveError(''); setSaveSuccess('');
         const res = resolveRequest(new URLSearchParams(searchKey));
@@ -459,7 +600,7 @@ export default function LogPage() {
     }
     void load();
     return () => { cancelled = true; };
-  }, [queryReady, searchKey]);
+  }, [editTrip, editTripId, searchKey]);
 
   function updateServiceField<K extends keyof ServiceFormState>(field: K, value: ServiceFormState[K]) {
     setServiceForm((c) => ({ ...c, [field]: value }));
@@ -569,7 +710,7 @@ export default function LogPage() {
         livery_left: u.livery_left.trim() || undefined,
       })).filter((u) => Boolean(u.unit_number || u.unit_reg || u.unit_type || u.livery || u.livery_left));
       const parsedBustimesServiceId = serviceForm.bustimes_service_id.trim() ? Number(serviceForm.bustimes_service_id) : undefined;
-      await logTrip({
+      const payload = {
         service_number: serviceForm.service_number.trim() || 'Unknown',
         operator: serviceForm.operator.trim() || 'Unknown',
         operator_slug: serviceForm.operator_slug.trim() || 'unknown',
@@ -589,8 +730,15 @@ export default function LogPage() {
         ridden_route: riddenRoute,
         units: cleanedUnits,
         notes: notes.trim() || undefined,
-      });
-      setSaveSuccess('Trip saved!');
+      };
+
+      if (isEditingTrip && editTripId) {
+        await updateTrip({ tripId: editTripId as Id<'tripLogs'>, ...payload });
+      } else {
+        await logTrip(payload);
+      }
+
+      setSaveSuccess(isEditingTrip ? 'Trip updated!' : 'Trip saved!');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save.');
     } finally { setSaving(false); }
@@ -839,7 +987,15 @@ export default function LogPage() {
             <div className="relative">
               <input
                 value={unitSearch}
-                onChange={(e) => setUnitSearch(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setUnitSearch(nextValue);
+                  if (nextValue.trim().length < 2) {
+                    setUnitSearchResults([]);
+                    setUnitSearchOpen(false);
+                    setUnitSearchLoading(false);
+                  }
+                }}
                 onFocus={() => unitSearchResults.length > 0 && setUnitSearchOpen(true)}
                 placeholder={vehicleMode === 'Bus' ? 'Reg or fleet number…' : 'Unit or reg…'}
                 className={`${inputCls()} pr-10`}
@@ -1055,11 +1211,11 @@ export default function LogPage() {
                 type="submit"
                 form="log-trip-form"
                 suppressHydrationWarning
-                disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
+                disabled={loading || saving || isConvexAuthLoading || !isAuthenticated}
                 className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Save
+                {isEditingTrip ? 'Update' : 'Save'}
               </button>
             </div>
           </div>
@@ -1144,11 +1300,11 @@ export default function LogPage() {
                 <button
                   type="submit"
                   suppressHydrationWarning
-                  disabled={!mounted || loading || saving || isConvexAuthLoading || !isAuthenticated}
+                  disabled={loading || saving || isConvexAuthLoading || !isAuthenticated}
                   className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Save log
+                  {isEditingTrip ? 'Update trip' : 'Save log'}
                 </button>
               </div>
             </div>

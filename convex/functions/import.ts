@@ -91,6 +91,9 @@ export const importTrips = mutation({
         return trimmed.length > 0 ? trimmed : undefined;
       };
 
+      const normaliseReg = (val?: string) =>
+        val?.replace(/\s+/g, "").toUpperCase();
+
       const mappedTransportType = (() => {
         const value = String(trip.transport_type || 'Other').toLowerCase();
         if (value === 'rail' || value === 'train') return 'Rail';
@@ -123,10 +126,40 @@ export const importTrips = mutation({
           livery: cleanString(trip.bus_livery_name || trip.livery_name),
           livery_left: cleanString(trip.bus_livery || trip.livery_css),
         };
+
         return unit.unit_number || unit.unit_reg || unit.unit_type || unit.livery || unit.livery_left
           ? [unit]
           : [];
       })();
+
+      // 👉 pick a primary unit for first_time logic
+      const primaryUnit = units[0];
+
+      const unit_number = primaryUnit?.unit_number;
+      const unit_reg = normaliseReg(primaryUnit?.unit_reg);
+
+      const vehicle_key =
+        unit_number ??
+        unit_reg ??
+        undefined;
+
+      const operator = trip.operator ?? 'Unknown';
+
+      // 👉 check if seen before
+      let first_time = false;
+
+      if (vehicle_key) {
+        const existing = await ctx.db
+          .query("tripLogs")
+          .withIndex("by_user_operator_vehicle", (q) =>
+            q.eq("user", args.userId)
+             .eq("operator", operator)
+             .eq("vehicle_key", vehicle_key)
+          )
+          .first();
+
+        first_time = !existing;
+      }
 
       await ctx.db.insert('tripLogs', {
         user: args.userId,
@@ -137,8 +170,8 @@ export const importTrips = mutation({
           : [],
         logged_at: Date.now(),
         service_number: cleanString(trip.service_number) || cleanString(trip.headcode) || 'N/A',
-        operator: trip.operator ?? 'Unknown',
-        operator_slug: (trip.operator ?? 'unknown').toLowerCase().replace(/\s+/g, '-'),
+        operator,
+        operator_slug: operator.toLowerCase().replace(/\s+/g, '-'),
         service_date: timestamp,
         transport_type: mappedTransportType as 'Rail' | 'Bus' | 'Tram' | 'Ferry' | 'Taxi' | 'Other',
         bustimes_service_id: trip.bustimes_service_id != null && trip.bustimes_service_id !== ''
@@ -160,6 +193,13 @@ export const importTrips = mutation({
           ? { geometry: { type: 'LineString', coordinates: trip.route_geometry } }
           : undefined),
         units,
+
+        // 👉 new fields
+        unit_number,
+        unit_reg,
+        vehicle_key,
+        first_time,
+
         notes: cleanString(trip.notes),
       });
     }

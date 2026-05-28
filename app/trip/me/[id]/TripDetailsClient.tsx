@@ -1,11 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMutation } from 'convex/react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getMapStyleUrl } from '@/components/mapStyleUrl';
 import { useTheme } from '@/components/ThemeProvider';
+import type { Id } from '@/convex/_generated/dataModel';
+import { api } from '@/convex/_generated/api';
 import {
   ArrowLeft,
   BadgeInfo,
@@ -82,7 +86,7 @@ type UnitInfo = {
 
 type TripDetailsData = {
   trip: {
-    _id: string;
+    _id: Id<'tripLogs'>;
     transport_type: string;
     service_number: string;
     operator: string;
@@ -304,9 +308,12 @@ function SectionCard({
 
 export function TripDetailsClient({ data }: Props) {
   const { theme } = useTheme();
+  const router = useRouter();
+  const deleteTrip = useMutation(api.functions.trips.deleteTrip);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const trip = data.trip;
   const accentClasses = getAccentClasses(trip.transport_type);
@@ -519,6 +526,22 @@ export function TripDetailsClient({ data }: Props) {
     await navigator.clipboard.writeText(window.location.href);
     setShareState('copied');
     window.setTimeout(() => setShareState('idle'), 1800);
+  };
+
+  const handleDelete = async () => {
+    if (isDeleting) return;
+
+    const confirmed = window.confirm('Delete this trip? This cannot be undone.');
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+
+    try {
+      await deleteTrip({ tripId: trip._id });
+      router.replace('/profile');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -744,12 +767,13 @@ export function TripDetailsClient({ data }: Props) {
               </Link>
               <button
                 type="button"
-                disabled
-                className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface-2 px-4 py-2 text-sm text-ts-text-3 opacity-70"
-                title="Delete flow is not wired yet"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Delete your own trip"
               >
                 <Trash2 className="h-4 w-4" />
-                Delete trip
+                {isDeleting ? 'Deleting...' : 'Delete trip'}
               </button>
               <button
                 type="button"

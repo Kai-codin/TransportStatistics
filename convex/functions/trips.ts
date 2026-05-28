@@ -521,3 +521,26 @@ export const updateTrip = mutation({
     return args.tripId;
   },
 });
+
+export const deleteTrip = mutation({
+  args: {
+    tripId: v.id("tripLogs"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("You must be signed in to delete a trip.");
+    }
+
+    const existingTrip = await ctx.db.get(args.tripId);
+
+    if (!existingTrip || existingTrip.user !== identity.subject) {
+      throw new Error("Trip not found.");
+    }
+
+    await ctx.db.delete(args.tripId);
+
+    return args.tripId;
+  },
+});

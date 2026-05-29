@@ -315,11 +315,11 @@ export const importBulkUnits = mutation({
   args: {
     fleet: v.array(
       v.object({
-        operator_id: v.number(),
+        operator_id: v.string(), // Can be an explicit ID, an operator code, or an operator name
         type: v.string(),
         livery_name: v.string(),
         livery_css: v.string(),
-        fleet_numbers: v.array(v.number()),
+        fleet_numbers: v.array(v.string()), // Updated to string to match your S8/S7 outputs (e.g., "25002(D)")
       })
     ),
   },
@@ -335,9 +335,17 @@ export const importBulkUnits = mutation({
     const liveryCache = new Map(allLiveries.map(l => [`${l.livery_name}||${l.css_class}`, l._id]));
     const typeCache = new Map(allTypes.map(t => [t.type_name, t._id]));
     
-    const operatorCache = new Map<string, Id<"operators">>();
+    // Create a multi-tiered lookup cache for operators
+    const operatorCache = new Map<string, string>();
     for (const o of allOperators) {
-      (o.operator_codes ?? []).forEach(c => operatorCache.set(c, o._id));
+      // 1. Map by the raw document ID string
+      operatorCache.set(o._id, o._id);
+      
+      // 2. Map by codes (e.g., "LU", "TfL")
+      (o.operator_codes ?? []).forEach(c => operatorCache.set(c.toLowerCase(), o._id));
+      
+      // 3. Map by names (e.g., "London Underground (TfL)")
+      (o.operator_names ?? []).forEach(n => operatorCache.set(n.toLowerCase(), o._id));
     }
 
     let newLiveries = 0;
@@ -366,16 +374,19 @@ export const importBulkUnits = mutation({
         newTypes++;
       }
 
-      const operatorCode = String(entry.operator_id);
-      let operatorId = operatorCache.get(operatorCode);
+      // Look up operator case-insensitively using the combined cache
+      const lookupTerm = entry.operator_id.trim();
+      let operatorId = operatorCache.get(lookupTerm) || operatorCache.get(lookupTerm.toLowerCase());
+      
       if (!operatorId) {
+        // Fallback: If not found, insert it as a new operator record
         operatorId = await ctx.db.insert("operators", {
-          display_name: operatorCode,
-          operator_names: [operatorCode],
-          operator_slugs: [operatorCode],
-          operator_codes: [operatorCode],
+          display_name: lookupTerm,
+          operator_names: [lookupTerm],
+          operator_slugs: [lookupTerm.toLowerCase().replace(/[^a-z0-9]+/g, "-")],
+          operator_codes: [lookupTerm],
         });
-        operatorCache.set(operatorCode, operatorId);
+        operatorCache.set(lookupTerm.toLowerCase(), operatorId);
         newOperators++;
       }
 
@@ -391,7 +402,7 @@ export const importBulkUnits = mutation({
           unit_number,
           unit_reg: "",
           type_id: typeId,
-          operator_id: operatorId,
+          operator_id: operatorId, // Saved cleanly as a string reference ID
           livery_id: liveryId,
           search_text: unit_number,
         });

@@ -1207,16 +1207,36 @@ export default function LogPage() {
                   <CheckCircle2 className="h-3.5 w-3.5" />{saveSuccess}
                 </span>
               )}
-              <button
-                type="submit"
-                form="log-trip-form"
-                suppressHydrationWarning
-                disabled={loading || saving || isConvexAuthLoading || !isAuthenticated}
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {isEditingTrip ? 'Update' : 'Save'}
-              </button>
+              <div className="flex items-center justify-between gap-3">
+                <p className="min-w-0 flex-1 truncate text-xs text-ts-text-3">
+                  {riddenRoute
+                    ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}`
+                    : 'Choose start and end stops'}
+                </p>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {saveSuccess && <span className="text-xs font-semibold text-ts-accent sm:hidden">{saveSuccess}</span>}
+                  {saveError && <span className="max-w-[200px] truncate text-xs text-red-300">{saveError}</span>}
+                  {!isSignedIn && (
+                    <SignInButton mode="modal">
+                      <button type="button" className="rounded-full border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95">
+                        Sign in
+                      </button>
+                    </SignInButton>
+                  )}
+                  {isSignedIn && !isConvexAuthLoading && !isAuthenticated && (
+                    <span className="text-xs text-amber-400">Auth not connected</span>
+                  )}
+                  <button
+                    type="submit"
+                    suppressHydrationWarning
+                    disabled={loading || saving || isConvexAuthLoading || !isAuthenticated}
+                    className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {isEditingTrip ? 'Update trip' : 'Save log'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1273,42 +1293,6 @@ export default function LogPage() {
               {activeTab === 'Notes' && renderNotesTab()}
             </>
           )}
-        </div>
-
-        {/* Sticky footer */}
-        <div className="sticky bottom-0 z-30 border-t border-ts-border bg-ts-bg/96 backdrop-blur-xl">
-          <div className="mx-auto max-w-2xl px-4 py-3 lg:max-w-5xl">
-            <div className="flex items-center justify-between gap-3">
-              <p className="min-w-0 flex-1 truncate text-xs text-ts-text-3">
-                {riddenRoute
-                  ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}`
-                  : 'Choose start and end stops'}
-              </p>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {saveSuccess && <span className="text-xs font-semibold text-ts-accent sm:hidden">{saveSuccess}</span>}
-                {saveError && <span className="max-w-[200px] truncate text-xs text-red-300">{saveError}</span>}
-                {!isSignedIn && (
-                  <SignInButton mode="modal">
-                    <button type="button" className="rounded-full border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95">
-                      Sign in
-                    </button>
-                  </SignInButton>
-                )}
-                {isSignedIn && !isConvexAuthLoading && !isAuthenticated && (
-                  <span className="text-xs text-amber-400">Auth not connected</span>
-                )}
-                <button
-                  type="submit"
-                  suppressHydrationWarning
-                  disabled={loading || saving || isConvexAuthLoading || !isAuthenticated}
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {isEditingTrip ? 'Update trip' : 'Save log'}
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </form>
     </div>

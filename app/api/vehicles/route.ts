@@ -1,18 +1,83 @@
 import { auth } from "@clerk/nextjs/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { fetchQuery } from "convex/nextjs";
 import { withApiKeyAuth } from "@/lib/api-key-auth";
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
+type BustimesVehicle = {
+  id?: string | number;
+  slug?: string;
+  fleet_code?: string | number | null;
+  fleet_number?: string | number | null;
+  reg?: string | null;
+  previous_reg?: string | null;
+  vehicle_type?: { name?: string | null } | null;
+  livery?: { name?: string | null; left?: string | null } | null;
+  branding?: string | null;
+  withdrawn?: boolean | null;
+};
+
+type TripUnit = {
+  unit_number?: string | null;
+  unit_reg?: string | null;
+  unit_type?: string | null;
+  livery?: string | null;
+  livery_left?: string | null;
+};
+
+type TripLog = {
+  _id: string | number;
+  units?: TripUnit[] | null;
+};
+
+type DbUnit = {
+  _id: Id<"units">;
+  unit_number?: string | null;
+  unit_reg?: string | null;
+  type_id: string;
+  livery_id: string;
+};
+
+type TypeRecord = {
+  _id: string;
+  type_name?: string | null;
+};
+
+type LiveryRecord = {
+  _id: string;
+  livery_name?: string | null;
+  css_class?: string | null;
+};
+
+type FleetVehicle = {
+  "bt-id"?: string | number;
+  bustimes_id?: string | number;
+  bustimes_slug?: string;
+  unit_number: string | null;
+  reg: string | null;
+  previous_reg: string;
+  vehicle_type: string;
+  livery: {
+    current_bustimes_livery: { name: string; css: string };
+    previous_bustimes_livery: { name: string; css: string } | null;
+  };
+  branding: string;
+  withdrawn: boolean;
+  ridden: boolean;
+  times_ridden: number;
+  _matchingTripIds?: Set<string>;
+};
+
 async function fetchAllBustimesVehicles(url: string) {
-  const allResults: any[] = [];
+  const allResults: BustimesVehicle[] = [];
   let nextUrl: string | null = url;
   while (nextUrl) {
     const res = await fetch(nextUrl);
     if (!res.ok) break;
-    const data: { results: any[]; next: string | null } = await res.json();
+    const data: { results?: BustimesVehicle[]; next: string | null } = await res.json();
     allResults.push(...(data.results ?? []));
     nextUrl = data.next;
     console.log(`Fetched ${allResults.length} vehicles so far...`);
@@ -26,6 +91,14 @@ function buildVehicleKey(unitNumber: string, reg: string) {
 
 function normalizeKey(value: unknown) {
   return String(value ?? "").trim().toUpperCase();
+}
+
+function normalizeCss(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
+function normalizeLiveryName(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
 function addTripIdToIndex(index: Map<string, Set<string>>, key: string, tripId: string) {
@@ -103,23 +176,25 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
     fetchQuery(api.functions.vehicles.getOperatorUnits, { operatorId }),
   ]);
 
-  const units = Array.isArray(unitGroups) ? unitGroups : [];
+  const relevantTripLogs = Array.isArray(relevantTrips) ? (relevantTrips as TripLog[]) : [];
+  const units = Array.isArray(unitGroups) ? (unitGroups as DbUnit[]) : [];
   const unitIds = units.map((unit) => unit._id);
-  const unitDetails =
+  const unitDetails = (
     unitIds.length > 0
       ? await fetchQuery(api.functions.trains.getUnitDetails, { unitIds })
-      : { types: [], operators: [], liveries: [] };
+      : { types: [], operators: [], liveries: [] }
+  ) as { types: TypeRecord[]; liveries: LiveryRecord[] };
 
-  const typeMap = new Map(unitDetails.types.map((t: any) => [t._id, t]));
-  const liveryMap = new Map(unitDetails.liveries.map((l: any) => [l._id, l]));
+  const typeMap = new Map(unitDetails.types.map((t) => [t._id, t]));
+  const liveryMap = new Map(unitDetails.liveries.map((l) => [l._id, l]));
 
   // 4. Build Trip Indices
-  const tripById = new Map<string, any>();
+  const tripById = new Map<string, TripLog>();
   const tripIdsByUnitNumber = new Map<string, Set<string>>();
   const tripIdsByReg = new Map<string, Set<string>>();
   const tripIdsByCombinedKey = new Map<string, Set<string>>();
 
-  for (const trip of relevantTrips) {
+  for (const trip of relevantTripLogs) {
     const tripId = String(trip._id);
     tripById.set(tripId, trip);
     const tripUnits = Array.isArray(trip.units) ? trip.units : [];
@@ -157,28 +232,48 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       r ? tripIdsByReg.get(r) : undefined,
       u && r ? tripIdsByCombinedKey.get(buildVehicleKey(u, r)) : undefined,
     ]);
-    return Array.from(ids).map((id) => tripById.get(id)).filter(Boolean);
+    const trips: TripLog[] = [];
+    for (const id of ids) {
+      const trip = tripById.get(id);
+      if (trip) trips.push(trip);
+    }
+    return trips;
   }
 
-  function getPrevLiveryUnit(trips: any[], matchNumber: string, matchReg: string, currentName: string, currentCss: string) {
+  function getPrevLiveryUnit(trips: TripLog[], matchNumber: string, matchReg: string, currentName: string, currentCss: string) {
     const mN = matchNumber.toUpperCase();
     const mR = matchReg.toUpperCase();
+    const normalizedCurrentName = normalizeLiveryName(currentName);
+    const normalizedCurrentCss = normalizeCss(currentCss);
     const trip = trips.find((t) => {
-      const unit = (Array.isArray(t.units) ? t.units : []).find((u: any) => 
+      const unit = (Array.isArray(t.units) ? t.units : []).find((u) =>
         String(u.unit_number ?? "").toUpperCase() === mN || String(u.unit_reg ?? "").toUpperCase() === mR
       );
-      return unit && (unit.livery !== currentName || unit.livery_left !== currentCss);
+      if (!unit) return false;
+
+      const normalizedUnitName = normalizeLiveryName(unit.livery);
+      if (normalizedUnitName && normalizedUnitName === normalizedCurrentName) {
+        return false;
+      }
+
+      const normalizedUnitCss = normalizeCss(unit.livery_left);
+      if (normalizedCurrentCss || normalizedUnitCss) {
+        return normalizedUnitCss !== normalizedCurrentCss;
+      }
+
+      return String(unit.livery ?? "") !== currentName;
     });
-    return trip?.units?.find((u: any) => 
+    return trip?.units?.find((u) =>
       String(u.unit_number ?? "").toUpperCase() === mN || String(u.unit_reg ?? "").toUpperCase() === mR
     ) ?? null;
   }
 
   // 5. Mapping
-  const bustimesVehicles = rawBustimesVehicles.map((bv: any) => {
+  const bustimesVehicles = rawBustimesVehicles.map((bv): FleetVehicle => {
     const num = String(bv.fleet_code ?? bv.fleet_number ?? "");
     const reg = String(bv.reg ?? "");
     const trips = getMatchingTrips(num, reg);
+    const matchingTripIds = new Set(trips.map((trip) => String(trip._id)));
     const currentName = bv.livery?.name || bv.branding || "Unknown";
     const currentCss = bv.livery?.left || "";
     const prevUnit = getPrevLiveryUnit(trips, num, reg, currentName, currentCss);
@@ -199,13 +294,15 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       withdrawn: bv.withdrawn ?? false,
       ridden: trips.length > 0,
       times_ridden: trips.length,
+      _matchingTripIds: matchingTripIds,
     };
   });
 
-  const customVehicles = units.map((unit: any) => {
+  const customVehicles = units.map((unit): FleetVehicle => {
     const num = String(unit.unit_number ?? "");
     const reg = String(unit.unit_reg ?? "");
     const trips = getMatchingTrips(num, reg);
+    const matchingTripIds = new Set(trips.map((trip) => String(trip._id)));
     const currentType = typeMap.get(unit.type_id);
     const currentLivery = liveryMap.get(unit.livery_id);
     const currentName = currentLivery?.livery_name || "Unknown";
@@ -226,12 +323,13 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       withdrawn: false,
       ridden: trips.length > 0,
       times_ridden: trips.length,
+      _matchingTripIds: matchingTripIds,
     };
   });
 
   const tripVehicles = (() => {
-    const vehiclesByKey = new Map<string, any>();
-    for (const trip of relevantTrips) {
+    const vehiclesByKey = new Map<string, FleetVehicle>();
+    for (const trip of relevantTripLogs) {
       const tripUnits = Array.isArray(trip.units) && trip.units.length > 0 ? trip.units : [];
       for (const unit of tripUnits) {
         const rawNum = String(unit.unit_number ?? "");
@@ -249,6 +347,8 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
           const key = buildVehicleKey(num, reg);
           
           const existing = vehiclesByKey.get(key);
+          const matchingTripIds = new Set<string>(existing?._matchingTripIds ?? []);
+          matchingTripIds.add(String(trip._id));
           const currentName = String(unit.livery ?? "Unknown");
           const currentCss = String(unit.livery_left ?? "");
 
@@ -261,7 +361,8 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
             branding: existing?.branding ?? currentName,
             withdrawn: existing?.withdrawn ?? false,
             ridden: true,
-            times_ridden: (existing?.times_ridden ?? 0) + 1,
+            times_ridden: matchingTripIds.size,
+            _matchingTripIds: matchingTripIds,
             livery: {
               current_bustimes_livery: { name: currentName, css: currentCss },
               previous_bustimes_livery: existing?.livery?.previous_bustimes_livery ?? null,
@@ -275,7 +376,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
 
   // 6. Final Merge
   const rawMergePool = [...bustimesVehicles, ...customVehicles, ...tripVehicles];
-  const byGroup = new Map<string, any[]>();
+  const byGroup = new Map<string, FleetVehicle[]>();
 
   for (const v of rawMergePool) {
     const u = normalizeKey(v.unit_number);
@@ -290,7 +391,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
     byGroup.set(groupKey, group);
   }
 
-  const mergedVehicles = Array.from(byGroup.entries()).map(([key, variants]) => {
+  const mergedVehicles = Array.from(byGroup.entries()).map(([, variants]) => {
     // 1. Determine if active
     const isActuallyActive = variants.some(v => {
       const isBustimesOfficial = bustimesVehicles.some(bv => bv["bt-id"] === v["bt-id"] && !bv.withdrawn);
@@ -303,16 +404,25 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
                    variants.find(v => v.bustimes_id) || 
                    variants[0];
 
-    // 3. Aggregate stats
-    const totalRidden = variants.some(v => v.ridden);
-    const totalTimes = variants.reduce((acc, v) => acc + (v.times_ridden || 0), 0);
+    // 3. Aggregate stats without counting the same trip once per data source.
+    const matchingTripIds = new Set<string>();
+    for (const variant of variants) {
+      if (variant._matchingTripIds instanceof Set) {
+        for (const tripId of variant._matchingTripIds) matchingTripIds.add(tripId);
+      }
+    }
+    const totalRidden = matchingTripIds.size > 0 || variants.some(v => v.ridden);
+    const totalTimes = matchingTripIds.size || Math.max(0, ...variants.map(v => v.times_ridden || 0));
 
     // 4. Extract non-empty values from ANY variant in the group
     const fleetNumber = variants.find(v => normalizeKey(v.unit_number) !== "")?.unit_number;
     const registration = variants.find(v => normalizeKey(v.reg) !== "")?.reg;
 
+    const publicMaster = { ...master };
+    delete publicMaster._matchingTripIds;
+
     return {
-      ...master,
+      ...publicMaster,
       // Fallback to null if no non-empty value exists in the merge group
       unit_number: fleetNumber || null, 
       reg: registration || null,

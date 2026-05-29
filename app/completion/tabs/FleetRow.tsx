@@ -1,9 +1,23 @@
 import { CheckCircle2, CircleDashed } from "lucide-react";
 import type { Vehicle } from "../types";
 
+function normalizeLiveryName(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeCss(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
 export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
   const currentLivery = vehicle.livery?.current_bustimes_livery;
-  const previousLivery = vehicle.livery?.previous_bustimes_livery;
+  const rawPreviousLivery = vehicle.livery?.previous_bustimes_livery;
+  const previousLivery =
+    rawPreviousLivery &&
+    normalizeLiveryName(rawPreviousLivery.name) !== normalizeLiveryName(currentLivery?.name) &&
+    normalizeCss(rawPreviousLivery.css) !== normalizeCss(currentLivery?.css)
+      ? rawPreviousLivery
+      : null;
 
   return (
     <div
@@ -51,19 +65,28 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
         <span className="font-mono font-black text-[18px] sm:text-[22px] text-ts-text-1 tabular-nums leading-none">
           {vehicle.unit_number || ""}
         </span>
+
         <div className="flex flex-col gap-1">
-          <span className="shrink-0 inline-block bg-[#f5c518] text-black font-black text-[9px] sm:text-[10px] px-1.5 py-[2px] rounded-[4px] tracking-wider uppercase font-mono leading-none w-fit">
-            {vehicle.reg || "•••••••"}
-          </span>
-          {/* Previous Reg addition */}
-          {vehicle.previous_reg && vehicle.previous_reg !== vehicle.reg && (
-            <div className="flex items-center gap-1">
-              <span className="text-[7px] font-black uppercase text-ts-text-1/20">was</span>
-              <span className="text-[9px] font-bold font-mono text-ts-text-1/30 uppercase">
-                {vehicle.previous_reg}
+          {/* Reg badge (only show if valid + not same as unit number) */}
+          {vehicle.reg &&
+            vehicle.reg !== vehicle.unit_number && (
+              <span className="shrink-0 inline-block bg-[#f5c518] text-black font-black text-[9px] sm:text-[10px] px-1.5 py-[2px] rounded-[4px] tracking-wider uppercase font-mono leading-none w-fit">
+                {vehicle.reg}
               </span>
-            </div>
-          )}
+            )}
+
+          {/* Previous Reg */}
+          {vehicle.previous_reg &&
+            vehicle.previous_reg !== vehicle.reg && (
+              <div className="flex items-center gap-1">
+                <span className="text-[7px] font-black uppercase text-ts-text-1/20">
+                  was
+                </span>
+                <span className="text-[9px] font-bold font-mono text-ts-text-1/30 uppercase">
+                  {vehicle.previous_reg}
+                </span>
+              </div>
+            )}
         </div>
       </div>
 

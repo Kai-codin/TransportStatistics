@@ -10,7 +10,7 @@ import { api } from "@/convex/_generated/api";
 import { useTheme } from "@/components/ThemeProvider";
 import { 
   FileText, Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
-  Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea
+  Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea, Settings
 } from "lucide-react";
 
 const navLinks = [
@@ -42,6 +42,7 @@ export default function Sidebar() {
   const logTrip = useMutation(api.functions.trips.logTrip);
   const isMobileOpen = mobileOpenPath === pathname;
   const tripLogsPageRootRef = useRef<Root | null>(null);
+  const settingsPageRootRef = useRef<Root | null>(null);
 
   const themeOptions = [
     { key: "bright" as const, label: "Bright", icon: Sun },
@@ -192,6 +193,36 @@ export default function Sidebar() {
     }
   }
 
+  // Settings custom sub-page setup
+  function mountSettingsPage(container: HTMLDivElement) {
+    if (!settingsPageRootRef.current) {
+      settingsPageRootRef.current = createRoot(container);
+    }
+    settingsPageRootRef.current.render(
+      <div className="px-4 py-2">
+        <p className="text-sm font-semibold text-ts-text-1">Settings</p>
+        <p className="mt-1 text-xs text-ts-text-3">Configure your custom preferences here.</p>
+        {/* Add custom settings inputs/controls here */}
+      </div>
+    );
+  }
+
+  function unmountSettingsPage() {
+    settingsPageRootRef.current?.unmount();
+    settingsPageRootRef.current = null;
+  }
+
+  function mountSettingsIcon(container: HTMLDivElement) {
+    const root = createRoot(container);
+    root.render(<Settings size={16} />);
+  }
+
+  function unmountSettingsIcon(container?: HTMLDivElement) {
+    if (container) {
+      createRoot(container).unmount();
+    }
+  }
+
   const tripLogsCustomPage = {
     label: "Trip logs",
     url: "trip-logs",
@@ -201,8 +232,17 @@ export default function Sidebar() {
     unmountIcon: unmountTripLogsIcon,
   };
 
+  const settingsCustomPage = {
+    label: "Settings",
+    url: "settings",
+    mount: mountSettingsPage,
+    unmount: unmountSettingsPage,
+    mountIcon: mountSettingsIcon,
+    unmountIcon: unmountSettingsIcon,
+  };
+
   const userProfileProps = {
-    customPages: [tripLogsCustomPage],
+    customPages: [tripLogsCustomPage, settingsCustomPage],
   };
 
   function parseCsv(text: string) {
@@ -422,7 +462,7 @@ export default function Sidebar() {
           </div>
           
           {/* Toggle Buttons */}
-          <button onClick={() => setIsCollapsed(!isCollapsed)} className="hidden md:block p-1 text-ts-text-2 text-ts-text-2">
+          <button onClick={() => setIsCollapsed(!isCollapsed)} className="hidden md:block p-1 text-ts-text-2">
             {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
           <button onClick={() => setMobileOpenPath(null)} className="md:hidden p-1 text-ts-text-2">
@@ -443,7 +483,7 @@ export default function Sidebar() {
                 className={`flex whitespace-nowrap items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] font-medium transition-all duration-150 border border-transparent ${
                   isActive 
                     ? "bg-ts-accent-light text-ts-accent border-ts-accent-border" 
-                    : "text-ts-text-2 hover:bg-ts-surface-2 text-ts-text-2 hover:border-ts-border-soft"
+                    : "text-ts-text-2 hover:bg-ts-surface-2 hover:border-ts-border-soft"
                 }`}
               >
                 <div className="w-[18px] h-[20px] flex-shrink-0 flex items-center justify-center opacity-70 whitespace-nowrap">
@@ -457,7 +497,7 @@ export default function Sidebar() {
           {isStaff && !isCollapsed && (
             <div className="mt-4">
               <p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ts-text-3 px-3 py-2">Staff</p>
-              <Link href="/admin" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 text-ts-text-2 transition-all">
+              <Link href="/admin" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 transition-all">
                 <Shield size={18} /> Admin
               </Link>
             </div>
@@ -482,7 +522,7 @@ export default function Sidebar() {
                     className={`flex items-center justify-center gap-2 rounded-[6px] px-2 py-2 text-[12px] font-semibold transition-all ${
                       active
                         ? "bg-ts-accent-light text-ts-accent border border-ts-accent-border"
-                        : "text-ts-text-2 hover:bg-ts-surface text-ts-text-2 border border-transparent"
+                        : "text-ts-text-2 hover:bg-ts-surface border border-transparent"
                     } ${isCollapsed ? "aspect-square p-0" : ""}`}
                   >
                     <Icon size={16} />
@@ -524,25 +564,25 @@ export default function Sidebar() {
 
           <Show when="signed-out">
               <SignInButton>
-                <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 text-ts-text-2 w-full transition-all whitespace-nowrap">
+                <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 w-full transition-all whitespace-nowrap">
                   Login
                 </button>
               </SignInButton>
               <SignUpButton>
-                <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 text-ts-text-2 w-full transition-all whitespace-nowrap">
+                <button className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13px] text-ts-text-2 hover:bg-ts-surface-2 w-full transition-all whitespace-nowrap">
                   Register
                 </button>
               </SignUpButton>
           </Show>
           <div className="mt-4">
-              <Link href="/legal" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 text-ts-text-2 transition-all">
+              <Link href="/legal" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 transition-all">
                 <Scale size={18} /> {!isCollapsed && "Legal, Privacy & Data"}
               </Link>
             </div>
         </div>
       </aside>
 
-      {/* Mobile Hamburger Menu (Only visible when sidebar is closed on mobile) */}
+      {/* Mobile Hamburger Menu */}
       <button 
         onClick={() => setMobileOpenPath(pathname)}
         className="md:hidden fixed top-4 left-4 z-30 p-2 bg-ts-surface text-ts-text-1 rounded-md border border-ts-border-soft"

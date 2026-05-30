@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { withApiKeyAuth } from "@/lib/api-key-auth";
+import { buildBustimesUrl, getBustimesBaseUrl } from "@/lib/bustimes-source";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -71,10 +72,10 @@ async function searchTrains(q: string): Promise<SearchResult[]> {
 }
 
 // --- Bus search ---
-async function searchBuses(q: string): Promise<SearchResult[]> {
+async function searchBuses(q: string, bustimesBaseUrl: string): Promise<SearchResult[]> {
   const stripped = q.replace(/\s+/g, "");
   const res = await fetch(
-    `https://bustimes.org/api/vehicles/?search=${encodeURIComponent(stripped)}`
+    buildBustimesUrl(bustimesBaseUrl, `/api/vehicles/?search=${encodeURIComponent(stripped)}`)
   );
 
   if (!res.ok) return [];
@@ -114,6 +115,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q");
   const type = searchParams.get("type"); // "train" | "bus" | null
+  const bustimesBaseUrl = await getBustimesBaseUrl("vehicleSearch", _auth?.userId);
 
   if (!q) {
     return NextResponse.json({ error: "Missing search query" }, { status: 400 });
@@ -124,12 +126,12 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   if (type === "train") {
     results = await searchTrains(q);
   } else if (type === "bus") {
-    results = await searchBuses(q);
+    results = await searchBuses(q, bustimesBaseUrl);
   } else {
     // Search both in parallel
     const [trains, buses] = await Promise.all([
       searchTrains(q),
-      searchBuses(q),
+      searchBuses(q, bustimesBaseUrl),
     ]);
     results = [...trains, ...buses];
   }

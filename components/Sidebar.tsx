@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser, useClerk, SignOutButton, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
@@ -24,6 +24,140 @@ const navLinks = [
   { name: "Request Edit", href: "/request-edit", icon: Edit },
 ];
 
+const bustimesSourceFeatures = [
+  { key: "vehicleSearch", label: "Vehicle search" },
+  { key: "fleet", label: "Fleet lists" },
+  { key: "routes", label: "Route lists" },
+  { key: "departures", label: "Bus departures" },
+  { key: "tripLookup", label: "Trip logging" },
+  { key: "routeInfo", label: "Route details" },
+  { key: "liveVehicles", label: "Live bus map" },
+] as const;
+
+type BustimesSourceFeature = (typeof bustimesSourceFeatures)[number]["key"];
+
+type BustimesSourceSettings = {
+  bustimesBaseUrl: string;
+  bustimesEnabledFeatures: string[];
+};
+
+function SettingsPage({
+  settings,
+  onSave,
+}: {
+  settings: BustimesSourceSettings | undefined;
+  onSave: (nextSettings: {
+    bustimesBaseUrl: string;
+    bustimesEnabledFeatures: BustimesSourceFeature[];
+  }) => Promise<void>;
+}) {
+  const [baseUrl, setBaseUrl] = useState(settings?.bustimesBaseUrl ?? "https://bustimes.org");
+  const [enabledFeatures, setEnabledFeatures] = useState<BustimesSourceFeature[]>(
+    (settings?.bustimesEnabledFeatures ?? []).filter((feature): feature is BustimesSourceFeature =>
+      bustimesSourceFeatures.some((option) => option.key === feature),
+    ),
+  );
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    if (!settings) return;
+
+    setBaseUrl(settings.bustimesBaseUrl);
+    setEnabledFeatures(
+      settings.bustimesEnabledFeatures.filter((feature): feature is BustimesSourceFeature =>
+        bustimesSourceFeatures.some((option) => option.key === feature),
+      ),
+    );
+  }, [settings]);
+
+  function toggleFeature(feature: BustimesSourceFeature) {
+    setStatus("idle");
+    setEnabledFeatures((current) =>
+      current.includes(feature)
+        ? current.filter((item) => item !== feature)
+        : [...current, feature],
+    );
+  }
+
+  async function handleSave() {
+    try {
+      setStatus("saving");
+      setErrorMessage("");
+      await onSave({
+        bustimesBaseUrl: baseUrl,
+        bustimesEnabledFeatures: enabledFeatures,
+      });
+      setStatus("saved");
+    } catch (error) {
+      setStatus("error");
+      setErrorMessage(error instanceof Error ? error.message : "Settings could not be saved.");
+    }
+  }
+
+  const inputClass =
+    "mt-2 w-full rounded-md border border-ts-border bg-ts-surface px-3 py-2 text-sm text-ts-text-1 outline-none focus:border-ts-accent";
+
+  return (
+    <div className="px-4 py-2">
+      <p className="text-sm font-semibold text-ts-text-1">Settings</p>
+      <p className="mt-1 text-xs text-ts-text-3">Configure your custom preferences here.</p>
+
+      <div className="mt-5 max-w-xl">
+        <label className="block text-xs font-semibold text-ts-text-2">
+          Bus data source
+          <input
+            value={baseUrl}
+            onChange={(event) => {
+              setStatus("idle");
+              setBaseUrl(event.target.value);
+            }}
+            placeholder="https://bustimes.org"
+            className={inputClass}
+          />
+        </label>
+        <p className="mt-2 text-xs text-ts-text-3">
+          Use a Bustimes-compatible base URL. Leave it as bustimes.org for the default source.
+        </p>
+
+        <div className="mt-5">
+          <p className="text-xs font-semibold text-ts-text-2">Apply custom source to</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {bustimesSourceFeatures.map((feature) => (
+              <label
+                key={feature.key}
+                className="flex items-center gap-2 rounded-md border border-ts-border px-3 py-2 text-xs font-medium text-ts-text-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={enabledFeatures.includes(feature.key)}
+                  onChange={() => toggleFeature(feature.key)}
+                  className="h-4 w-4 accent-ts-accent"
+                />
+                {feature.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!settings || status === "saving"}
+            className="rounded-md bg-ts-accent px-4 py-2 text-xs font-semibold text-ts-text-inv disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {status === "saving" ? "Saving..." : "Save settings"}
+          </button>
+          {status === "saved" && <span className="text-xs text-ts-accent">Saved</span>}
+          {status === "error" && <span className="text-xs text-ts-danger">{errorMessage}</span>}
+          {!settings && <span className="text-xs text-ts-text-3">Loading...</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, isLoaded } = useUser();
@@ -40,6 +174,8 @@ export default function Sidebar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tripLogs = useQuery(api.functions.trips.getMyTrips) ?? [];
   const logTrip = useMutation(api.functions.trips.logTrip);
+  const bustimesSourceSettings = useQuery(api.functions.userSettings.getMyBustimesSource);
+  const saveBustimesSourceSettings = useMutation(api.functions.userSettings.saveMyBustimesSource);
   const isMobileOpen = mobileOpenPath === pathname;
   const tripLogsPageRootRef = useRef<Root | null>(null);
   const settingsPageRootRef = useRef<Root | null>(null);
@@ -99,9 +235,10 @@ export default function Sidebar() {
         "notes",
       ];
       const header = columns.join(",");
-      const rows = tripLogs.map((trip) =>
-        columns.map((column) => escapeCsv(trip?.[column])).join(",")
-      );
+      const rows = tripLogs.map((trip) => {
+        const tripData = trip as Record<string, any>;
+        return columns.map((column) => escapeCsv(tripData?.[column])).join(",");
+      });
       const csv = [header, ...rows].join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
@@ -194,17 +331,22 @@ export default function Sidebar() {
   }
 
   // Settings custom sub-page setup
+  function renderSettingsPage() {
+    settingsPageRootRef.current?.render(
+      <SettingsPage
+        settings={bustimesSourceSettings}
+        onSave={async (nextSettings) => {
+          await saveBustimesSourceSettings(nextSettings);
+        }}
+      />
+    );
+  }
+
   function mountSettingsPage(container: HTMLDivElement) {
     if (!settingsPageRootRef.current) {
       settingsPageRootRef.current = createRoot(container);
     }
-    settingsPageRootRef.current.render(
-      <div className="px-4 py-2">
-        <p className="text-sm font-semibold text-ts-text-1">Settings</p>
-        <p className="mt-1 text-xs text-ts-text-3">Configure your custom preferences here.</p>
-        {/* Add custom settings inputs/controls here */}
-      </div>
-    );
+    renderSettingsPage();
   }
 
   function unmountSettingsPage() {
@@ -222,6 +364,10 @@ export default function Sidebar() {
       createRoot(container).unmount();
     }
   }
+
+  useEffect(() => {
+    renderSettingsPage();
+  }, [bustimesSourceSettings, saveBustimesSourceSettings]);
 
   const tripLogsCustomPage = {
     label: "Trip logs",
@@ -539,7 +685,7 @@ export default function Sidebar() {
               className={`flex items-center gap-2.5 p-2 rounded-[6px] bg-ts-surface-2 border border-ts-border-soft cursor-pointer hover:border-ts-accent-border transition-all ${isCollapsed ? "justify-center" : ""}`}
             >
               <div className="pointer-events-none h-7 w-7 flex-shrink-0">
-                <UserButton userProfileProps={userProfileProps} />
+                <UserButton />
               </div>
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">

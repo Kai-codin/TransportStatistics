@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Redis } from 'ioredis';
 import { withApiKeyAuth } from '@/lib/api-key-auth';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
+import { buildBustimesUrl, getBustimesBaseUrl } from '@/lib/bustimes-source';
 const consoleDebug = false; // Set to true to enable debug logging
 // Allow disabling Redis via env
 const REDIS_DISABLED =
@@ -119,6 +120,7 @@ async function getValidAccessToken(): Promise<string> {
 
 // --- API Handler ---
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
+  const bustimesBaseUrl = await getBustimesBaseUrl("departures", _auth?.userId);
   // Identify user by IP
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
@@ -252,13 +254,13 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
 
       // Perform both calls concurrently
       const [timesRes, metaRes] = await Promise.all([
-        fetch(`https://bustimes.org/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`),
-        fetch(`https://bustimes.org/api/stops/${code}?format=json`)
+        fetch(buildBustimesUrl(bustimesBaseUrl, `/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`)),
+        fetch(buildBustimesUrl(bustimesBaseUrl, `/api/stops/${code}?format=json`))
       ]);
       
       if (!timesRes.ok) {
         log(`Bus times fetch failed: ${timesRes.status}`);
-        throw new Error(`'Failed to fetch bus departure data (${timesRes.statusText}) - possibly invalid stop code or external API issue. | URL: https://bustimes.org/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`);
+        throw new Error(`'Failed to fetch bus departure data (${timesRes.statusText}) - possibly invalid stop code or external API issue. | URL: ${buildBustimesUrl(bustimesBaseUrl, `/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`)}`);
       }
       
       const timesData = await timesRes.json();

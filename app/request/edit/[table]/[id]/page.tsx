@@ -27,7 +27,7 @@ export default function UserEditRequestPage() {
     if (currentRecord && config) {
       const initialFields: Record<string, any> = {};
       config.fields.forEach((field) => {
-        initialFields[field] = currentRecord[field] ?? '';
+        initialFields[field] = (currentRecord as Record<string, any>)[field] ?? '';
       });
       setFormData(initialFields);
     }
@@ -36,6 +36,9 @@ export default function UserEditRequestPage() {
   if (!config) return <div className="p-8 text-ts-danger font-bold">Error: Table type not configured for user edits.</div>;
   if (currentRecord === undefined) return <div className="flex justify-center p-12"><LoaderCircle className="animate-spin text-ts-accent" /></div>;
   if (currentRecord === null) return <div className="p-8 text-center text-ts-text-2">Record not found.</div>;
+
+  // CRITICAL FIX: Create a single dynamic-index safe alias for currentRecord
+  const recordData = currentRecord as Record<string, any>;
 
   const handleFieldChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -50,7 +53,7 @@ export default function UserEditRequestPage() {
       const toSnapshot: Record<string, any> = {};
 
       config.fields.forEach((field) => {
-        const originalValue = currentRecord[field];
+        const originalValue = recordData[field];
         const newValue = formData[field];
 
         if (JSON.stringify(originalValue) !== JSON.stringify(newValue)) {
@@ -101,14 +104,14 @@ export default function UserEditRequestPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="text-2xl font-bold tracking-tight mb-1 text-ts-text-1">
-        Suggest Edits to: <span className="text-ts-accent">{currentRecord[config.displayField] || id}</span>
+        Suggest Edits to: <span className="text-ts-accent">{recordData[config.displayField] || id}</span>
       </h1>
       <p className="text-sm text-ts-text-3 mb-6">Modifications undergo administrative vetting prior to going live.</p>
 
       <form onSubmit={handleSubmit} className="space-y-4 border rounded-3xl p-6 bg-ts-surface border-ts-border shadow-sm">
         {config.fields.map((field) => {
           const val = formData[field];
-          const isBool = typeof currentRecord[field] === 'boolean';
+          const isBool = typeof recordData[field] === 'boolean';
           
           // Check if this specific field has an active relational mapping configuration
           const relationConfig = config.relations?.[field];
@@ -135,10 +138,10 @@ export default function UserEditRequestPage() {
                 />
               ) : (
                 <input
-                  type={typeof currentRecord[field] === 'number' ? 'number' : 'text'}
+                  type={typeof recordData[field] === 'number' ? 'number' : 'text'}
                   step="any"
                   value={val ?? ''}
-                  onChange={(e) => handleFieldChange(field, typeof currentRecord[field] === 'number' ? parseFloat(e.target.value) : e.target.value)}
+                  onChange={(e) => handleFieldChange(field, typeof recordData[field] === 'number' ? parseFloat(e.target.value) : e.target.value)}
                   className="h-10 border border-ts-border rounded-xl bg-ts-surface-2 px-3 text-sm text-ts-text-1 focus:outline-none focus:border-ts-accent focus:ring-1 focus:ring-ts-accent-glow"
                 />
               )}

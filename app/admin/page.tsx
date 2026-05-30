@@ -1,19 +1,22 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SignInButton, useUser } from '@clerk/nextjs';
 import { useConvexAuth } from 'convex/react';
 import { adminConfig, ADMIN_TABLE_KEYS } from '@/lib/adminConfig';
 import { AdminTableView } from '@/components/admin/AdminTableView';
-import { AdminEditRequestsTab } from '@/components/admin/AdminEditRequestsTab'; // Import the new requests tab component
+import { AdminEditRequestsTab } from '@/components/admin/AdminEditRequestsTab';
 import { LoaderCircle, Shield, Settings, FileText } from 'lucide-react';
 
-export default function AdminPage() {
+// 1. Move the existing logic into a separate internal content component
+function AdminDashboardContent() {
   const { user, isLoaded } = useUser();
   const { isAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
   const isStaff = isLoaded && user?.publicMetadata?.is_staff === 'true';
   const router = useRouter();
+  
+  // useSearchParams is safe here because this component will be wrapped in Suspense
   const params = useSearchParams();
 
   // Extract the parameter or fall back to your first standard database table
@@ -170,5 +173,23 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// 2. The default export acts purely as a shell that handles the Suspense context
+export default function AdminPage() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-16">
+          <div className="rounded-3xl border border-ts-border bg-ts-surface p-6 text-center">
+            <LoaderCircle className="mx-auto mb-3 h-6 w-6 animate-spin text-ts-accent" />
+            <p className="text-sm text-ts-text-3">Loading dashboard...</p>
+          </div>
+        </div>
+      }
+    >
+      <AdminDashboardContent />
+    </Suspense>
   );
 }

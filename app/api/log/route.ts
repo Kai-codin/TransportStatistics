@@ -5,6 +5,7 @@ import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { withApiKeyAuth } from '@/lib/api-key-auth';
+import { buildBustimesUrl, getBustimesBaseUrl } from '@/lib/bustimes-source';
 import { getTrainAllocation } from "@/lib/realtime-trains";
 
 const consoleDebug = false;
@@ -102,6 +103,7 @@ async function getRTTToken(): Promise<string> {
 }
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
+  const bustimesBaseUrl = await getBustimesBaseUrl("tripLookup", _auth?.userId);
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
   
   try { 
@@ -145,7 +147,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       case 'train':
         return await handleTrainRequest(uid, date, debug, showPass);
       case 'bus':
-        return await handleBusRequest(uid, date, debug);
+        return await handleBusRequest(uid, date, debug, bustimesBaseUrl);
       default:
         return NextResponse.json({ error: `Invalid type: ${type}` }, { status: 400 });
     }
@@ -413,12 +415,12 @@ async function handleTrainRequest(uid: string, date: string, debug: boolean, sho
   }
 }
 
-async function handleBusRequest(uid: string, date: string, debug: boolean) {
+async function handleBusRequest(uid: string, date: string, debug: boolean, bustimesBaseUrl: string) {
   log(`Processing bus trip: ${uid} for ${date}`);
 
   try {
     const journeyLookupRes = await fetch(
-      `https://bustimes.org/api/vehiclejourneys/?vehicle=&service=&trip=${uid}&source=&datetime=&date=${date}`
+      buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/?vehicle=&service=&trip=${uid}&source=&datetime=&date=${date}`)
     );
 
     if (!journeyLookupRes.ok) {
@@ -432,7 +434,7 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
       return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
     }
 
-    const tripRes = await fetch(`https://bustimes.org/api/vehiclejourneys/${journeyId}/details/`);
+    const tripRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/${journeyId}/details/`));
     if (!tripRes.ok) {
       return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
     }
@@ -444,7 +446,7 @@ async function handleBusRequest(uid: string, date: string, debug: boolean) {
 
     let vehicleDetails = null;
     if (vehicleStub?.id) {
-      const vDetailsRes = await fetch(`https://bustimes.org/api/vehicles/${vehicleStub.id}/`);
+      const vDetailsRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehicles/${vehicleStub.id}/`));
       if (vDetailsRes.ok) {
         vehicleDetails = await vDetailsRes.json();
       }

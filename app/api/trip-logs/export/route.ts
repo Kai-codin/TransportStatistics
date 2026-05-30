@@ -33,7 +33,7 @@ function escapeCsv(value: unknown) {
 }
 
 export async function GET() {
-  const { userId, getToken } = auth();
+  const { userId, getToken } = await auth();
   if (!userId) {
     return new Response("Unauthorized", { status: 401 });
   }

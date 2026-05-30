@@ -4,6 +4,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { fetchQuery } from "convex/nextjs";
 import { withApiKeyAuth } from "@/lib/api-key-auth";
+import { buildBustimesUrl, getBustimesBaseUrl } from "@/lib/bustimes-source";
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
@@ -142,6 +143,7 @@ function sortVehicles(
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { userId } = await auth();
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
+  const bustimesBaseUrl = await getBustimesBaseUrl("fleet", userId);
 
   const { searchParams } = new URL(request.url);
   const operatorCode = searchParams.get("code"); // This is the slug from URL
@@ -166,7 +168,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   // 3. Parallel Data Fetching
   const [rawBustimesVehicles, relevantTrips, unitGroups] = await Promise.all([
     fetchAllBustimesVehicles(
-      `https://bustimes.org/api/vehicles/?operator=${encodeURIComponent(operatorCode)}`
+      buildBustimesUrl(bustimesBaseUrl, `/api/vehicles/?operator=${encodeURIComponent(operatorCode)}`)
     ),
     // Use the array of names so we catch trips logged under "XC" or "CrossCountry"
     fetchQuery(api.functions.vehicles.getUserTripsByOperators, {

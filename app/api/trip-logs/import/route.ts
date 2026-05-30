@@ -83,7 +83,7 @@ function normalizeServiceDate(value: string | undefined) {
 }
 
 export async function POST(request: Request) {
-  const { userId, getToken } = auth();
+  const { userId, getToken } = await auth();
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }

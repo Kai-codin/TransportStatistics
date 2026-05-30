@@ -2,6 +2,7 @@
 import { mutation, query, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
+import { ensureUserRecord } from "./users";
 
 export const fixTripLogsPaginated = mutation({
   args: {
@@ -174,13 +175,6 @@ function getPrimaryUnit(raw: unknown): TripUnitLike | undefined {
   if (!candidate || typeof candidate !== "object") return undefined;
 
   return candidate as TripUnitLike;
-}
-
-function getVehicleKey(unit?: TripUnitLike) {
-  const unitNumber = unit?.unit_number;
-  const unitReg = unit?.unit_reg?.replace(/\s+/g, "").toUpperCase();
-
-  return unitNumber ?? unitReg ?? undefined;
 }
 
 function getVehicleKeyForTransport(unit?: TripUnitLike, transportType?: string) {
@@ -442,6 +436,8 @@ export const logTrip = mutation({
     if (!identity) {
       throw new Error("You must be signed in to log a trip.");
     }
+
+    await ensureUserRecord(ctx, identity);
 
     const primaryUnit = getPrimaryUnit(args.units);
     const unit_number = primaryUnit?.unit_number;

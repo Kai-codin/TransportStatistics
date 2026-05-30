@@ -120,6 +120,19 @@ export default defineSchema({
   })
   .index("by_user_vehicle", ["user", "vehicle_key"]),
 
+  users: defineTable({
+    clerkId: v.string(),
+    username: v.string(),
+  })
+  .index("by_clerkId", ["clerkId"]),
+
+  userSettings: defineTable({
+    clerkId: v.string(),
+    bustimesBaseUrl: v.string(),
+    bustimesEnabledFeatures: v.array(v.string()),
+  })
+  .index("by_clerkId", ["clerkId"]),
+
   tripLogs: defineTable({
     user: v.string(),
     on_trip_with: v.array(v.string()),

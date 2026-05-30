@@ -4,6 +4,7 @@ import { api } from "@/convex/_generated/api";
 import { withApiKeyAuth } from "@/lib/api-key-auth";
 import { Redis } from "ioredis";
 import { RateLimiterRedis, RateLimiterMemory } from "rate-limiter-flexible";
+import { buildBustimesUrl, getBustimesBaseUrl } from "@/lib/bustimes-source";
 
 const REDIS_DISABLED =
   process.env.DISABLE_REDIS === "true" || process.env.REDIS_DISABLED === "true";
@@ -86,6 +87,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
+  const bustimesBaseUrl = await getBustimesBaseUrl("liveVehicles", _auth?.userId);
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
   try {
@@ -125,7 +127,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         ? fetch(`https://map-api.production.signalbox.io/api/locations?${bboxQuery}`)
         : Promise.resolve(null),
       showBuses
-        ? fetch(`https://bustimes.org/vehicles.json?${bboxQuery}`)
+        ? fetch(buildBustimesUrl(bustimesBaseUrl, `/vehicles.json?${bboxQuery}`))
         : Promise.resolve(null),
     ]);
 

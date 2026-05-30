@@ -1,6 +1,8 @@
+import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
-export async function getTrainAllocation(uid: string, date: string): Promise<string[]> {
+// 1. Your helper function can stay exactly as it is (just remove 'export' if you don't need it elsewhere)
+async function getTrainAllocation(uid: string, date: string): Promise<string[]> {
   const url = `https://www.realtimetrains.co.uk/service/gb-nr:${uid}/${date}/detailed`;
   
   const response = await fetch(url, {
@@ -9,7 +11,6 @@ export async function getTrainAllocation(uid: string, date: string): Promise<str
     }
   });
   
-  // LOG THIS:
   if (!response.ok) {
     const errorText = await response.text(); 
     console.error(`RTT Failed: ${response.status} ${response.statusText}`);
@@ -25,4 +26,30 @@ export async function getTrainAllocation(uid: string, date: string): Promise<str
 
   const vehicles = allocationText.split('+').map(v => v.trim());
   return vehicles.map(v => v.split(' (')[0].trim());
+}
+
+// 2. CRITICAL: Next.js needs this explicit, capitalized named export to recognize the API route
+export async function GET(request: NextRequest) {
+  try {
+    // Extract query parameters from the request URL (e.g., /api/allocation?uid=123&date=2026-05-29)
+    const { searchParams } = new URL(request.url);
+    const uid = searchParams.get('uid');
+    const date = searchParams.get('date');
+
+    if (!uid || !date) {
+      return NextResponse.json(
+        { error: 'Missing required query parameters: uid and date' },
+        { status: 400 }
+      );
+    }
+
+    const allocation = await getTrainAllocation(uid, date);
+    
+    return NextResponse.json({ allocation });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
+  }
 }

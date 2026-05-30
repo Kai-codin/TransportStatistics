@@ -17,11 +17,14 @@ import type * as functions_import from "../functions/import.js";
 import type * as functions_liveries from "../functions/liveries.js";
 import type * as functions_migrations from "../functions/migrations.js";
 import type * as functions_operators from "../functions/operators.js";
+import type * as functions_publicRelations from "../functions/publicRelations.js";
 import type * as functions_seed from "../functions/seed.js";
 import type * as functions_stats from "../functions/stats.js";
 import type * as functions_stops from "../functions/stops.js";
 import type * as functions_trains from "../functions/trains.js";
 import type * as functions_trips from "../functions/trips.js";
+import type * as functions_userSettings from "../functions/userSettings.js";
+import type * as functions_users from "../functions/users.js";
 import type * as functions_vehicles from "../functions/vehicles.js";
 
 import type {
@@ -40,11 +43,14 @@ declare const fullApi: ApiFromModules<{
   "functions/liveries": typeof functions_liveries;
   "functions/migrations": typeof functions_migrations;
   "functions/operators": typeof functions_operators;
+  "functions/publicRelations": typeof functions_publicRelations;
   "functions/seed": typeof functions_seed;
   "functions/stats": typeof functions_stats;
   "functions/stops": typeof functions_stops;
   "functions/trains": typeof functions_trains;
   "functions/trips": typeof functions_trips;
+  "functions/userSettings": typeof functions_userSettings;
+  "functions/users": typeof functions_users;
   "functions/vehicles": typeof functions_vehicles;
 }>;
 

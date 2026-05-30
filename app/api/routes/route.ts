@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import { fetchQuery } from "convex/nextjs";
 import { withApiKeyAuth } from "@/lib/api-key-auth";
+import { buildBustimesUrl, getBustimesBaseUrl } from "@/lib/bustimes-source";
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ function formatHistoricalRouteName(route: {
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { userId } = await auth();
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
+  const bustimesBaseUrl = await getBustimesBaseUrl("routes", userId);
 
   const { searchParams } = new URL(request.url);
   const operatorCode = searchParams.get("code") ?? searchParams.get("operator");
@@ -91,7 +93,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   // 3. Parallel Data Fetching
   const [rawBustimesRoutes, relevantTrips, historicalRouteGroups] = await Promise.all([
     fetchAllBustimesServices(
-      `https://bustimes.org/api/services/?operator=${encodeURIComponent(operatorCode)}`
+      buildBustimesUrl(bustimesBaseUrl, `/api/services/?operator=${encodeURIComponent(operatorCode)}`)
     ),
     // Query trips using the array of names to handle merged aliases
     fetchQuery(api.functions.vehicles.getUserTripsByOperators, {

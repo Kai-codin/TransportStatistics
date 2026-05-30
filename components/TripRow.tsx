@@ -12,6 +12,7 @@ type TripUnit = {
 };
 
 type TripLike = {
+  _id: string; 
   transport_type: string;
   service_number?: string;
   operator?: string;
@@ -24,6 +25,7 @@ type TripLike = {
   unit_type?: string;
   livery_name?: string;
   livery_css?: string;
+  first_units?: string[];
 };
 
 interface TripRowProps {

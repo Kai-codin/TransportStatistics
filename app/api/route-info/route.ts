@@ -3,6 +3,7 @@ import { Redis } from 'ioredis';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { withApiKeyAuth } from "@/lib/api-key-auth";
 import { getTrainAllocation } from "@/lib/realtime-trains";
+import { buildBustimesUrl, getBustimesBaseUrl } from "@/lib/bustimes-source";
 
 const REDIS_DISABLED =
   process.env.DISABLE_REDIS === 'true' || process.env.REDIS_DISABLED === 'true';
@@ -48,6 +49,7 @@ function normalizeAllocationUnits(allocationData: any): string[] {
 }
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
+  const bustimesBaseUrl = await getBustimesBaseUrl("routeInfo", _auth?.userId);
   // Identify user by IP
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
@@ -96,7 +98,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
 
     } else if (trip_id) {
       // --- BUS DATA FETCH ---
-      const res = await fetch(`https://bustimes.org/api/trips/${trip_id}/`);
+      const res = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/trips/${trip_id}/`));
       if (!res.ok) throw new Error("Bus data not found");
       const data = await res.json();
 

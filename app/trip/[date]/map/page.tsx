@@ -22,20 +22,18 @@ function hashString(str: string) {
 }
 
 function hslToHex(h: number, s: number, l: number) {
-  s /= 100; l /= 100;
+  s /= 100;
+  l /= 100;
+
+  const k = (n: number) => (n + h / 30) % 12;
   const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
-    return Math.round(255 * color).toString(16).padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
+  const f = (n: number) =>
+    Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+
+  return `#${f(0).toString(16).padStart(2, '0')}${f(8).toString(16).padStart(2, '0')}${f(4).toString(16).padStart(2, '0')}`;
 }
 
 function getRouteColor(trip: any, idx: number) {
-  // Use livery if set, otherwise use the old hashing logic
-  if (trip.livery_css) return trip.livery_css;
-  
   const seed = String(trip._id || idx);
   let hue = hashString(seed) % 360;
   hue = (hue + idx * 97) % 360;

@@ -23,7 +23,7 @@ export const fixTripLogsPaginated = mutation({
       .order("asc") // this now orders by (user, service_date) asc
       .paginate({
         cursor: args.cursor ?? null,
-        numItems: 750,
+        numItems: 250,
       });
 
     console.log(`Processing ${result.page.length} trips`);

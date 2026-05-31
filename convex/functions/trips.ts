@@ -19,8 +19,8 @@ export const fixTripLogsPaginated = mutation({
     // Instead: collect ALL trips, sort by service_date asc, then paginate via slice
     const result = await ctx.db
       .query("tripLogs")
-      .withIndex("by_service_date") // uses the composite index
-      .order("asc") // this now orders by (user, service_date) asc
+      .withIndex("by_user_date_departure") // uses the composite index
+      .order("asc") // this now orders by (user, service_date, scheduled_departure) asc
       .paginate({
         cursor: args.cursor ?? null,
         numItems: 250,
@@ -396,8 +396,8 @@ export const getMyTrips = query({
 
     return await ctx.db
       .query("tripLogs")
-      .withIndex("by_service_date", (q) => q.eq("user", identity.subject))
-      .order("desc")
+      .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
+      .order("desc") // This sorts DESC for both service_date and scheduled_departure
       .collect();
   },
 });

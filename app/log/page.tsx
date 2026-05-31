@@ -739,6 +739,7 @@ export default function LogPage() {
       }
 
       setSaveSuccess(isEditingTrip ? 'Trip updated!' : 'Trip saved!');
+      window.location.href = '/profile';
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save.');
     } finally { setSaving(false); }
@@ -1228,6 +1229,7 @@ export default function LogPage() {
                   )}
                   <button
                     type="submit"
+                    form="log-trip-form" 
                     suppressHydrationWarning
                     disabled={loading || saving || isConvexAuthLoading || !isAuthenticated}
                     className="inline-flex h-10 items-center gap-2 rounded-full bg-ts-accent px-5 text-sm font-bold text-ts-text-inv transition hover:bg-ts-accent-h active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"

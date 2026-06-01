@@ -592,7 +592,7 @@ export default function Sidebar() {
 
       {/* Sidebar Container */}
       <aside 
-        className={`fixed md:relative z-50 h-screen flex flex-col bg-ts-surface border-r border-ts-border-soft transition-all duration-300 ease-in-out ${
+        className={`fixed md:relative z-50 h-full flex flex-col bg-ts-surface border-r border-ts-border-soft transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-[58px]" : "w-[240px]"
         } ${
           isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"

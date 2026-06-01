@@ -80,20 +80,13 @@ async function getLatesttrainDetailsByIndex(
   field: "uid" | "rid",
   value: string,
 ) {
-  const records = await ctx.db
+  // .first() reads only 1 document instead of all of them
+  const latest = await ctx.db
     .query("trainDetails")
     .withIndex(indexName, (q) => q.eq(field, value))
-    .collect();
+    .first();
 
-  if (records.length === 0) {
-    return { latest: null, duplicates: [] as typeof records };
-  }
-
-  const sorted = [...records].sort((a, b) => b._creationTime - a._creationTime);
-  return {
-    latest: sorted[0],
-    duplicates: sorted.slice(1),
-  };
+  return { latest, duplicates: [] };
 }
 
 export const getRidWithUID = query({

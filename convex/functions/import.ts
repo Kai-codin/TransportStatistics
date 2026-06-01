@@ -1,4 +1,4 @@
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 
@@ -200,6 +200,135 @@ export const importTrips = mutation({
         vehicle_key,
         first_time,
 
+        notes: cleanString(trip.notes),
+      });
+    }
+  },
+});
+
+
+export const importTripsChunk = internalMutation({
+  args: {
+    trips: v.array(v.any()),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Your exact original logic, running on a safe chunk size
+    for (const trip of args.trips) {
+      const timestamp = typeof trip.service_date === 'string'
+        ? new Date(trip.service_date).getTime()
+        : trip.service_date;
+
+      const cleanString = (val: unknown) => {
+        if (typeof val !== 'string') return undefined;
+        const trimmed = val.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
+      };
+
+      const normaliseReg = (val?: string) =>
+        val?.replace(/\s+/g, "").toUpperCase();
+
+      const mappedTransportType = (() => {
+        const value = String(trip.transport_type || 'Other').toLowerCase();
+        if (value === 'rail' || value === 'train') return 'Rail';
+        if (value === 'bus') return 'Bus';
+        if (value === 'tram') return 'Tram';
+        if (value === 'ferry') return 'Ferry';
+        if (value === 'taxi') return 'Taxi';
+        return 'Other';
+      })();
+
+      const units = (() => {
+        if (Array.isArray(trip.units) && trip.units.length > 0) {
+          return trip.units
+            .map((u: any) => ({
+              unit_number: cleanString(u.unit_number),
+              unit_reg: cleanString(u.unit_reg),
+              unit_type: cleanString(u.unit_type),
+              livery: cleanString(u.livery),
+              livery_left: cleanString(u.livery_left),
+            }))
+            .filter((u: any) =>
+              Boolean(u.unit_number || u.unit_reg || u.unit_type || u.livery || u.livery_left)
+            );
+        }
+
+        const unit = {
+          unit_number: cleanString(trip.train_fleet_number || trip.bus_fleet_number),
+          unit_reg: cleanString(trip.bus_registration),
+          unit_type: cleanString(trip.train_type || trip.bus_type),
+          livery: cleanString(trip.bus_livery_name || trip.livery_name),
+          livery_left: cleanString(trip.bus_livery || trip.livery_css),
+        };
+
+        return unit.unit_number || unit.unit_reg || unit.unit_type || unit.livery || unit.livery_left
+          ? [unit]
+          : [];
+      })();
+
+      const primaryUnit = units[0];
+
+      const unit_number = primaryUnit?.unit_number;
+      const unit_reg = normaliseReg(primaryUnit?.unit_reg);
+
+      const vehicle_key =
+        unit_number ??
+        unit_reg ??
+        undefined;
+
+      const operator = trip.operator ?? 'Unknown';
+
+      let first_time = false;
+
+      if (vehicle_key) {
+        const existing = await ctx.db
+          .query("tripLogs")
+          .withIndex("by_user_operator_vehicle", (q) =>
+            q.eq("user", args.userId)
+             .eq("operator", operator)
+             .eq("vehicle_key", vehicle_key)
+          )
+          .first();
+
+        first_time = !existing;
+      }
+
+      await ctx.db.insert('tripLogs', {
+        user: args.userId,
+        on_trip_with: Array.isArray(trip.on_trip_with)
+          ? trip.on_trip_with
+          : Array.isArray(trip.on_trip_usernames)
+          ? trip.on_trip_usernames
+          : [],
+        logged_at: Date.now(),
+        service_number: cleanString(trip.service_number) || cleanString(trip.headcode) || 'N/A',
+        operator,
+        operator_slug: operator.toLowerCase().replace(/\s+/g, '-'),
+        service_date: timestamp,
+        transport_type: mappedTransportType as 'Rail' | 'Bus' | 'Tram' | 'Ferry' | 'Taxi' | 'Other',
+        bustimes_service_id: trip.bustimes_service_id != null && trip.bustimes_service_id !== ''
+          ? Number(trip.bustimes_service_id)
+          : undefined,
+        bustimes_service_slug: cleanString(trip.bustimes_service_slug),
+        origin_name: trip.origin_name ?? 'Unknown',
+        origin_stop_code: cleanString(trip.origin_crs) || cleanString(trip.origin_stop_code) || 'N/A',
+        destination_name: trip.destination_name ?? 'Unknown',
+        destination_stop_code: cleanString(trip.destination_crs) || cleanString(trip.destination_stop_code) || 'N/A',
+        scheduled_departure: cleanString(trip.scheduled_departure) || '00:00',
+        actual_departure: cleanString(trip.actual_departure),
+        scheduled_arrival: cleanString(trip.scheduled_arrival) || '00:00',
+        actual_arrival: cleanString(trip.actual_arrival),
+        full_route: trip.full_route ?? (trip.full_route_geometry || trip.full_locations
+          ? { geometry: trip.full_route_geometry, stops: trip.full_locations }
+          : undefined),
+        ridden_route: trip.ridden_route ?? (trip.route_geometry
+          ? { geometry: { type: 'LineString', coordinates: trip.route_geometry } }
+          : undefined),
+        units,
+        unit_number,
+        unit_reg,
+        vehicle_key,
+        first_time,
         notes: cleanString(trip.notes),
       });
     }

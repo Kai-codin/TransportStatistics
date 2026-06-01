@@ -419,40 +419,46 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
   log(`Processing bus trip: ${uid} for ${date}`);
 
   try {
+    // Always fetch the trip directly — this is the source of truth for stops + track
+    const tripGeomRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/trips/${uid}/`));
+    if (!tripGeomRes.ok) {
+      return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
+    }
+    const geomData = await tripGeomRes.json();
+    const geomTimes: any[] = geomData?.times ?? [];
+
+    // Journey lookup is best-effort — only needed for realtime + vehicle data
+    let journeyLookupData: any = null;
+    let tripData: any = null;
+    let vehicleDetails: any = null;
+
     const journeyLookupRes = await fetch(
       buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/?vehicle=&service=&trip=${uid}&source=&datetime=&date=${date}`)
     );
 
-    if (!journeyLookupRes.ok) {
-      return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
-    }
+    if (journeyLookupRes.ok) {
+      journeyLookupData = await journeyLookupRes.json();
+      const journeyId = journeyLookupData?.results?.[0]?.id;
 
-    const journeyLookupData = await journeyLookupRes.json();
-    const journeyId = journeyLookupData?.results?.[0]?.id;
+      if (journeyId) {
+        const journeyDetailsRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/${journeyId}/details/`));
+        if (journeyDetailsRes.ok) {
+          tripData = await journeyDetailsRes.json();
 
-    if (!journeyId) {
-      return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
-    }
-
-    const tripRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/${journeyId}/details/`));
-    if (!tripRes.ok) {
-      return NextResponse.json({ error: 'Bus trip not found on bustimes.org' }, { status: 404 });
-    }
-
-    const tripData = await tripRes.json();
-    const trip = tripData.trip ?? tripData;
-
-    const vehicleStub = tripData?.vehicle ?? trip?.vehicle ?? null;
-
-    let vehicleDetails = null;
-    if (vehicleStub?.id) {
-      const vDetailsRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehicles/${vehicleStub.id}/`));
-      if (vDetailsRes.ok) {
-        vehicleDetails = await vDetailsRes.json();
+          const vehicleStub = tripData?.vehicle ?? tripData?.trip?.vehicle ?? null;
+          if (vehicleStub?.id) {
+            const vDetailsRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehicles/${vehicleStub.id}/`));
+            if (vDetailsRes.ok) vehicleDetails = await vDetailsRes.json();
+          }
+        }
       }
     }
 
-    const stops = trip.times || [];
+    // Use realtime times if available, otherwise fall back to geom times
+    const trip = tripData?.trip ?? tripData ?? geomData;
+    const realtimeTimes: any[] = trip?.times ?? [];
+    const stops = realtimeTimes.length > 0 ? realtimeTimes : geomTimes;
+
     const firstStop = stops[0];
     const lastStop = stops[stops.length - 1];
 
@@ -469,54 +475,51 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
       time?.aimed_departure_time ??
       null;
 
-    // 1. Generate the unified full_route (Matches train format)
     const full_route = stops.map((time: any, index: number) => {
-      const isLast = index === stops.length - 1;
-      // bustimes track leads TO this stop, so we want the next stop's track
-      const nextTrack = !isLast && stops[index + 1]?.track?.length > 0
-        ? stops[index + 1].track
+      const isFirst = index === 0;
+      const track = !isFirst && geomTimes[index]?.track?.length > 0
+        ? geomTimes[index].track
         : null;
 
       const uniqueId = `bus-${uid}-${date}-${time.stop.atco_code ?? index}`;
-    
+
       return {
-        id:  hashStringToNumber(uniqueId),
+        id: hashStringToNumber(uniqueId),
         stop: {
           stop_code: time.stop.atco_code,
           name: time.stop.name,
           location: time.stop.location,
           bearing: null,
-          icon: null
+          icon: null,
         },
         scheduled_arrival: getAimedArrival(time),
         scheduled_departure: getAimedDeparture(time),
         actual_arrival: getActualArrival(time),
         actual_departure: getActualDeparture(time),
-        track: nextTrack,
+        track,
         timing_status: time.timing_status || time.status || "scheduled",
-        pick_up: true,
-        set_down: true
+        pick_up: time.pick_up ?? true,
+        set_down: time.set_down ?? true,
       };
     });
 
-    // 2. Stitch geometry for the full_route_geometry field
     const stitchedGeometry = {
       type: "LineString",
-      coordinates: stops
+      coordinates: geomTimes
         .filter((t: any) => t.track && Array.isArray(t.track))
         .flatMap((t: any) => t.track)
     };
 
     const responsePayload = {
-      service_number: trip?.service?.line_name ?? tripData.route_name ?? "Unknown",
-      operator: trip?.operator?.name ?? "Unknown Operator",
-      operator_slug: trip?.operator?.slug ?? trip?.operator?.noc?.toLowerCase?.() ?? "unknown",
+      service_number: geomData?.service?.line_name ?? trip?.service?.line_name ?? "Unknown",
+      operator: geomData?.operator?.name ?? trip?.operator?.name ?? "Unknown Operator",
+      operator_slug: geomData?.operator?.slug ?? geomData?.operator?.noc?.toLowerCase?.() ?? "unknown",
       service_date: dateToTimestamp(date),
-      bustimes_service_id: typeof trip?.service?.id === "number" ? trip.service.id : undefined,
-      bustimes_service_slug: trip?.service?.slug ?? undefined,
+      bustimes_service_id: typeof geomData?.service?.id === "number" ? geomData.service.id : undefined,
+      bustimes_service_slug: geomData?.service?.slug ?? undefined,
       origin_name: firstStop?.stop?.name ?? "Unknown Origin",
       origin_stop_code: firstStop?.stop?.atco_code ?? null,
-      destination_name: trip?.headsign ?? tripData.destination ?? lastStop?.stop?.name ?? "Unknown",
+      destination_name: geomData?.headsign ?? lastStop?.stop?.name ?? "Unknown",
       destination_stop_code: lastStop?.stop?.atco_code ?? null,
       scheduled_departure: getAimedDeparture(firstStop),
       actual_departure: getActualDeparture(firstStop),
@@ -537,6 +540,7 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
       debug: debug ? {
         journey_lookup_raw: journeyLookupData,
         trip_raw: tripData,
+        geom_raw: geomData,
         vehicle_raw: vehicleDetails,
       } : undefined,
     };

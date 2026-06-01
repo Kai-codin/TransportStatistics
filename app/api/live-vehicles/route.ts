@@ -30,6 +30,8 @@ if (!REDIS_DISABLED) {
   redisClient = {
     get: async (_: string) => null,
     set: async (_: string, __: string) => null,
+    mget: async (..._: string[]) => [],
+    mset: async (..._: string[]) => null,
     on: () => null,
   } as unknown as Redis;
 
@@ -84,6 +86,10 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
+}
+
+function getTrainDetailsCacheKey(rid: string) {
+  return `cache:train_details:${rid}`;
 }
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
@@ -155,11 +161,43 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
     let trainDetails: Record<string, any> = {};
     if (!isSimpleMode && showTrains && visibleTrains.length > 0) {
       const rids = visibleTrains.map((t: any) => t.rid).filter(Boolean) as string[];
-      const chunks = chunkArray(rids, 200);
-      const results = await Promise.all(
-        chunks.map((chunk) => convex.query(api.functions.trains.getDetailsForRids, { rids: chunk }))
-      );
-      for (const result of results) Object.assign(trainDetails, result);
+      const cacheKeys = rids.map(getTrainDetailsCacheKey);
+      const cachedValues = await redisClient.mget(...cacheKeys);
+      const missingRids: string[] = [];
+
+      cachedValues.forEach((value: string | null, index: number) => {
+        if (value) {
+          try {
+            trainDetails[rids[index]] = JSON.parse(value);
+          } catch {
+            missingRids.push(rids[index]);
+          }
+        } else {
+          missingRids.push(rids[index]);
+        }
+      });
+
+      if (missingRids.length > 0) {
+        const chunks = chunkArray(missingRids, 200);
+        const results = await Promise.all(
+          chunks.map((chunk) => convex.query(api.functions.trains.getDetailsForRids, { rids: chunk }))
+        );
+        const toCache: Array<string> = [];
+        for (const result of results) {
+          Object.assign(trainDetails, result);
+          for (const [rid, details] of Object.entries(result)) {
+            toCache.push(getTrainDetailsCacheKey(rid), JSON.stringify(details));
+          }
+        }
+        if (toCache.length > 0) {
+          await redisClient.mset(...toCache);
+          await Promise.all(
+            Object.keys(trainDetails).map((rid) =>
+              redisClient.set(getTrainDetailsCacheKey(rid), JSON.stringify(trainDetails[rid]), "EX", 30)
+            )
+          );
+        }
+      }
     }
 
     const response = {

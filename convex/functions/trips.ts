@@ -145,19 +145,42 @@ function normalizeServiceDate(value: number) {
   return value > 1_000_000_000_000 ? value : value * 1000;
 }
 
-function formatDateKey(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(timestamp));
+function getTripsQueryLimit() {
+  const raw = process.env.TRIPS_QUERY_LIMIT;
+  if (!raw) return 200;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 200;
+  return Math.floor(parsed);
+}
 
-  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
-  const month = parts.find((part) => part.type === "month")?.value ?? "00";
-  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+function getTripsAllLimit() {
+  const raw = process.env.TRIPS_ALL_LIMIT;
+  if (!raw) return 2000;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 2000;
+  return Math.floor(parsed);
+}
 
-  return `${year}-${month}-${day}`;
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const localeDate = new Date(date.toLocaleString("en-US", { timeZone }));
+  return date.getTime() - localeDate.getTime();
+}
+
+function getDateBounds(dateKey: string, timeZone: string) {
+  const [year, month, day] = dateKey.split("-").map((value) => Number(value));
+  if (!year || !month || !day) {
+    return { start: 0, end: 0 };
+  }
+
+  const utcStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+  const utcEnd = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
+  const startOffset = getTimeZoneOffsetMs(utcStart, timeZone);
+  const endOffset = getTimeZoneOffsetMs(utcEnd, timeZone);
+
+  return {
+    start: utcStart.getTime() - startOffset,
+    end: utcEnd.getTime() - endOffset,
+  };
 }
 
 type TripUnitLike = {
@@ -206,7 +229,7 @@ async function hasExistingTripWithVehicle(
     .withIndex("by_user_operator_vehicle", (q) =>
       q.eq("user", userId).eq("operator", operator).eq("vehicle_key", vehicleKey)
     )
-    .collect();
+    .take(2);
 
   return trips.some((trip) => trip._id !== excludeTripId);
 }
@@ -281,6 +304,13 @@ async function lookupOperatorBySlugOrName(ctx: QueryCtx, slug?: string, operator
   }
 
   if (!normalizedName) return null;
+
+  const byOperatorName = await ctx.db
+    .query("operators")
+    .withIndex("by_operator_names", (q) => q.eq("operator_names", normalizedName as never))
+    .first();
+
+  if (byOperatorName) return byOperatorName;
 
   const operators = await ctx.db.query("operators").collect();
 
@@ -389,16 +419,40 @@ export const getTripDetailsById = query({
 });
 
 export const getMyTrips = query({
-  handler: async (ctx) => {
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     
     if (!identity) return [];
 
+    const limit = args.limit ?? getTripsQueryLimit();
     return await ctx.db
       .query("tripLogs")
       .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
       .order("desc") // This sorts DESC for both service_date and scheduled_departure
-      .collect();
+      .take(limit);
+  },
+});
+
+export const getMyTripsPaginated = query({
+  args: {
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) return { page: [], continueCursor: null, isDone: true };
+
+    const limit = args.limit ?? 250;
+
+    return await ctx.db
+      .query("tripLogs")
+      .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
+      .order("desc")
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
   },
 });
 
@@ -410,21 +464,25 @@ export const getMyTripsByDate = query({
   },
   handler: async (ctx, args) => {
     const timeZone = args.timeZone ?? "UTC";
-    const allTrips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.user))
-      .collect();
 
-    if (args.date === 'all') {
-      return [...allTrips].sort((a, b) => normalizeServiceDate(b.service_date) - normalizeServiceDate(a.service_date));
+    if (args.date === "all") {
+      const limit = getTripsAllLimit();
+      return await ctx.db
+        .query("tripLogs")
+        .withIndex("by_user_date_departure", (q) => q.eq("user", args.user))
+        .order("desc")
+        .take(limit);
     }
 
-    return allTrips
-      .filter((trip) => {
-        const timestamp = normalizeServiceDate(trip.service_date);
-        return formatDateKey(timestamp, timeZone) === args.date;
-      })
-      .sort((a, b) => normalizeServiceDate(b.service_date) - normalizeServiceDate(a.service_date));
+    const { start, end } = getDateBounds(args.date, timeZone);
+
+    return await ctx.db
+      .query("tripLogs")
+      .withIndex("by_user_date_departure", (q) =>
+        q.eq("user", args.user).gte("service_date", start).lt("service_date", end)
+      )
+      .order("desc")
+      .collect();
   },
 });
 

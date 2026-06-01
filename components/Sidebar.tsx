@@ -172,7 +172,7 @@ export default function Sidebar() {
   const [isImporting, setIsImporting] = useState(false);
   const [importFormat, setImportFormat] = useState<"csv" | "json">("csv");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const tripLogs = useQuery(api.functions.trips.getMyTrips) ?? [];
+  const tripLogs = useQuery(api.functions.trips.getMyTrips, user ? { limit: 200 } : "skip") ?? [];
   const logTrip = useMutation(api.functions.trips.logTrip);
   const bustimesSourceSettings = useQuery(api.functions.userSettings.getMyBustimesSource);
   const saveBustimesSourceSettings = useMutation(api.functions.userSettings.saveMyBustimesSource);
@@ -199,52 +199,16 @@ export default function Sidebar() {
       setIsExporting(true);
       const dateTag = new Date().toISOString().split("T")[0];
 
-      if (format === "json") {
-        const payload = JSON.stringify(tripLogs, null, 2);
-        const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `trip-logs-${dateTag}.json`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        return;
+      const response = await fetch(`/api/trip-logs/export?format=${format}`);
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.status}`);
       }
 
-      const columns = [
-        "service_number",
-        "operator",
-        "operator_slug",
-        "service_date",
-        "transport_type",
-        "bustimes_service_id",
-        "bustimes_service_slug",
-        "origin_name",
-        "origin_stop_code",
-        "destination_name",
-        "destination_stop_code",
-        "scheduled_departure",
-        "actual_departure",
-        "scheduled_arrival",
-        "actual_arrival",
-        "full_route",
-        "ridden_route",
-        "units",
-        "notes",
-      ];
-      const header = columns.join(",");
-      const rows = tripLogs.map((trip) => {
-        const tripData = trip as Record<string, any>;
-        return columns.map((column) => escapeCsv(tripData?.[column])).join(",");
-      });
-      const csv = [header, ...rows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `trip-logs-${dateTag}.csv`;
+      link.download = `trip-logs-${dateTag}.${format}`;
       document.body.appendChild(link);
       link.click();
       link.remove();

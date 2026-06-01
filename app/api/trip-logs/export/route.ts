@@ -32,7 +32,7 @@ function escapeCsv(value: unknown) {
   return needsQuotes ? `"${escaped}"` : escaped;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId, getToken } = await auth();
   if (!userId) {
     return new Response("Unauthorized", { status: 401 });
@@ -52,7 +52,31 @@ export async function GET() {
     });
     convex.setAuth(token);
 
-    const trips = await convex.query(api.functions.trips.getMyTrips, {});
+    const format = new URL(request.url).searchParams.get("format") ?? "csv";
+    const trips: any[] = [];
+    let cursor: string | null = null;
+
+    while (true) {
+      const page = await convex.query(api.functions.trips.getMyTripsPaginated, {
+        cursor,
+        limit: 500,
+      });
+      trips.push(...page.page);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+
+    if (format === "json") {
+      const payload = JSON.stringify(trips, null, 2);
+      const filename = `trip-logs-${new Date().toISOString().split("T")[0]}.json`;
+      return new Response(payload, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Disposition": `attachment; filename=\"${filename}\"`,
+        },
+      });
+    }
 
     const header = CSV_COLUMNS.join(",");
     const rows = trips.map((trip: any) =>

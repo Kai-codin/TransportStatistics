@@ -38,7 +38,7 @@ function formatDateKey(timestamp: number) {
 
 export default function ProfilePage() {
   const { isSignedIn, user } = useUser();
-  const trips = useQuery(api.functions.trips.getMyTrips, user ? {} : "skip");
+  const trips = useQuery(api.functions.trips.getMyTrips, user ? { limit: 500 } : "skip");
 
   const groupedTrips = useMemo<TripGroup[]>(() => {
     if (!trips) return [];

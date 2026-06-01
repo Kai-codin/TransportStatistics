@@ -5,12 +5,25 @@ import { QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 
-type trainDetailsDoc = Doc<"trainDetails">;
+type trainDetailsSummaryDoc = Doc<"trainDetailsSummary">;
 
 type SignalboxTrainRecord = {
   rid?: string | null;
   [key: string]: unknown;
 };
+
+function buildTrainDetailsSummary(train: Record<string, unknown>) {
+  return {
+    rid: train.rid as string,
+    uid: typeof train.uid === "string" ? train.uid : null,
+    headcode: typeof train.headcode === "string" ? train.headcode : null,
+    train_operator: typeof train.train_operator === "string" ? train.train_operator : null,
+    destination_name: typeof train.destination_name === "string" ? train.destination_name : null,
+    origin_departure: typeof train.origin_departure === "string" ? train.origin_departure : null,
+    unit_numbers: Array.isArray(train.unit_numbers) ? train.unit_numbers : undefined,
+    updated_at: Date.now(),
+  };
+}
 
 export const backfillSearchText = mutation({
   args: { cursor: v.union(v.string(), v.null()) },
@@ -153,20 +166,50 @@ export const saveAllocationByUidDate = mutation({
   },
 });
 
+export const backfillTrainDetailsSummary = mutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const BATCH_SIZE = 500;
+
+    const { page, continueCursor, isDone } = await ctx.db
+      .query("trainDetails")
+      .paginate({ cursor: args.cursor, numItems: BATCH_SIZE });
+
+    for (const record of page) {
+      const summary = buildTrainDetailsSummary(record as Record<string, unknown>);
+      const existing = await ctx.db
+        .query("trainDetailsSummary")
+        .withIndex("by_rid", (q) => q.eq("rid", summary.rid))
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, summary);
+      } else {
+        await ctx.db.insert("trainDetailsSummary", summary);
+      }
+    }
+
+    return { continueCursor, isDone, updated: page.length };
+  },
+});
+
 // 1. READ: Fast, cheap local cache check
 export const getDetailsForRids = query({
   args: { rids: v.array(v.string()) },
   handler: async (ctx, args) => {
     const details = await Promise.all(
       args.rids.map((rid) =>
-        getLatesttrainDetailsByIndex(ctx, "by_rid", "rid", rid)
+        ctx.db
+          .query("trainDetailsSummary")
+          .withIndex("by_rid", (q) => q.eq("rid", rid))
+          .first()
       )
     );
 
     return details.reduce((acc, doc) => {
       if (doc) acc[doc.rid] = doc;
       return acc;
-    }, {} as Record<string, trainDetailsDoc>);
+    }, {} as Record<string, trainDetailsSummaryDoc>);
   },
 });
 
@@ -180,7 +223,7 @@ export const checkExistingRids = query({
     const results = await Promise.all(
       args.rids.map(async (rid) => {
         const doc = await ctx.db
-          .query("trainDetails")
+          .query("trainDetailsSummary")
           .withIndex("by_rid", (q) => q.eq("rid", rid))
           .first();
         return doc ? rid : null;
@@ -209,6 +252,18 @@ export const savetrainDetailsBatch = mutation({
         await ctx.db.insert("trainDetails", train);
       } else {
         await ctx.db.patch(existing._id, train);
+      }
+
+      const summary = buildTrainDetailsSummary(train as Record<string, unknown>);
+      const summaryExisting = await ctx.db
+        .query("trainDetailsSummary")
+        .withIndex("by_rid", (q) => q.eq("rid", summary.rid))
+        .first();
+
+      if (summaryExisting) {
+        await ctx.db.patch(summaryExisting._id, summary);
+      } else {
+        await ctx.db.insert("trainDetailsSummary", summary);
       }
     }
   },

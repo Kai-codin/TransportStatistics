@@ -55,6 +55,20 @@ export default defineSchema({
   .index("by_rid", ["rid"])
   .index("by_uid", ["uid"]),
 
+  // Compact train details for low-IO live vehicle lookups
+  trainDetailsSummary: defineTable({
+    rid: v.string(),
+    uid: v.optional(v.union(v.string(), v.null())),
+    headcode: v.optional(v.union(v.string(), v.null())),
+    train_operator: v.optional(v.union(v.string(), v.null())),
+    destination_name: v.optional(v.union(v.string(), v.null())),
+    origin_departure: v.optional(v.union(v.string(), v.null())),
+    unit_numbers: v.optional(v.array(v.string())),
+    updated_at: v.number(),
+  })
+  .index("by_rid", ["rid"])
+  .index("by_uid", ["uid"]),
+
   trainAllocations: defineTable({
     uid: v.string(),
     date: v.string(),

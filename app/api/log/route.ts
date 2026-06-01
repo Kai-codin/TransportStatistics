@@ -288,19 +288,19 @@ function mergeTrainStopAndTrack(locations: any[], routeData: any, uid: string, d
     searchFrom = closestIdx;
   }
 
-  // Pass 2: assign each stop the track segment from itself to the *next* stop
+  // Pass 2: assign each stop the track segment from the PREVIOUS stop to itself
   return locations.map((loc, i) => {
     const formattedStop = formatStop(loc);
-    const isLast = i === locations.length - 1;
+    const isFirst = i === 0;
 
     const stopCode = formattedStop.stop_code ?? i.toString();
     const uniqueString = `${uid}-${date}-${stopCode}`;
     const uniqueId = hashStringToNumber(uniqueString);
 
     let trackSegment: any[] = [];
-    if (!isLast) {
-      const fromIdx = closestIndices[i];
-      const toIdx = closestIndices[i + 1];
+    if (!isFirst) {
+      const fromIdx = closestIndices[i - 1];
+      const toIdx = closestIndices[i];
       trackSegment = fullCoords.slice(fromIdx, toIdx + 1);
     }
 

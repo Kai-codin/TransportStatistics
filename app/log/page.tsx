@@ -315,8 +315,9 @@ function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toS
   const stops = fullRoute.slice(fromIndex, toIndex + 1);
   const coordinates = dedupeCoordinates(
     stops.flatMap((stop, index) => {
-      const isLast = index === stops.length - 1;
-      if (!isLast && Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
+      // With backward convention, stops[0] is the start stop. 
+      // Its track is [prev -> start], which is OUTSIDE selection.
+      if (index > 0 && Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
       if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) return [stop.stop.location];
       return [];
     }),

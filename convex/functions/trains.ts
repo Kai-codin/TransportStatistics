@@ -80,20 +80,17 @@ async function getLatesttrainDetailsByIndex(
   field: "uid" | "rid",
   value: string,
 ) {
-  // .first() reads only 1 document instead of all of them
-  const latest = await ctx.db
+  // Use .first() to read only 1 document instead of all of them
+  return await ctx.db
     .query("trainDetails")
     .withIndex(indexName, (q) => q.eq(field, value))
     .first();
-
-  return { latest, duplicates: [] };
 }
 
 export const getRidWithUID = query({
   args: { uid: v.string() },
   handler: async (ctx, args) => {
-    const { latest } = await getLatesttrainDetailsByIndex(ctx, "by_uid", "uid", args.uid);
-    return latest;
+    return await getLatesttrainDetailsByIndex(ctx, "by_uid", "uid", args.uid);
   }
 });
 
@@ -166,43 +163,52 @@ export const getDetailsForRids = query({
       )
     );
 
-    return details.reduce((acc, curr) => {
-      if (curr.latest) acc[curr.latest.rid] = curr.latest;
+    return details.reduce((acc, doc) => {
+      if (doc) acc[doc.rid] = doc;
       return acc;
     }, {} as Record<string, trainDetailsDoc>);
   },
 });
 
-// 2. WRITE: Batch insertion with "upsert-style" logic
+/**
+ * Highly efficient pre-flight check for syncAllTrains.
+ * Returns only the RIDs that already have records in the database.
+ */
+export const checkExistingRids = query({
+  args: { rids: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const results = await Promise.all(
+      args.rids.map(async (rid) => {
+        const doc = await ctx.db
+          .query("trainDetails")
+          .withIndex("by_rid", (q) => q.eq("rid", rid))
+          .first();
+        return doc ? rid : null;
+      })
+    );
+    return results.filter((r): r is string => r !== null);
+  },
+});
+
+// 2. WRITE: Batch insertion with strict "upsert" logic
 export const savetrainDetailsBatch = mutation({
   args: { 
     trains: v.array(v.any()) 
   },
   handler: async (ctx, args) => {
     for (const train of args.trains) {
-      // Validate that we actually have a rid before trying to save
-      if (!train.rid) {
-        console.warn("Attempted to save train without RID:", train);
-        continue; 
-      }
+      if (!train.rid) continue;
 
+      // Use .first() for existence check - enforce one record per RID
       const existing = await ctx.db
         .query("trainDetails")
         .withIndex("by_rid", (q) => q.eq("rid", train.rid))
-        .collect();
+        .first();
 
-      const sortedExisting = [...existing].sort((a, b) => b._creationTime - a._creationTime);
-      const record = sortedExisting[0] ?? null;
-
-      if (sortedExisting.length > 1) {
-        await Promise.all(sortedExisting.slice(1).map((duplicate) => ctx.db.delete(duplicate._id)));
-      }
-
-      if (!record) {
+      if (!existing) {
         await ctx.db.insert("trainDetails", train);
       } else {
-        // Optional: Patch/Update if the data is stale
-        await ctx.db.patch(record._id, train);
+        await ctx.db.patch(existing._id, train);
       }
     }
   },
@@ -260,21 +266,17 @@ export const syncAllTrains = action({
 
     if (!rids.length) return;
 
-    // Check which RIDs we already have — parallel chunks
+    // Check which RIDs we already have — using efficient existence check
     const CHUNK_SIZE = 1000;
-    const chunks: string[][] = [];
+    const knownRids = new Set<string>();
+    
     for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
-      chunks.push(rids.slice(i, i + CHUNK_SIZE));
+      const chunk = rids.slice(i, i + CHUNK_SIZE);
+      const existing = await ctx.runQuery(api.functions.trains.checkExistingRids, { rids: chunk });
+      existing.forEach(rid => knownRids.add(rid));
     }
 
-    const existingMaps = await Promise.all(
-      chunks.map((chunk) =>
-        ctx.runQuery(api.functions.trains.getDetailsForRids, { rids: chunk })
-      )
-    );
-    const known = new Set(existingMaps.flatMap((m) => Object.keys(m)));
-    const missing = rids.filter((rid) => !known.has(rid));
-
+    const missing = rids.filter((rid) => !knownRids.has(rid));
     if (!missing.length) return;
 
     // Fetch missing in parallel batches

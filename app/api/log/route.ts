@@ -231,7 +231,7 @@ async function handleServiceRidRequest(serviceRid: string, debug: boolean, showP
     );
   }
 
-  return handleTrainRequest(uid, date, debug, showPass);
+  return handleTrainRequest(uid, date, debug, showPass, serviceRid);
 }
 
 function mergeTrainStopAndTrack(locations: any[], routeData: any, uid: string, date: string) {
@@ -335,15 +335,23 @@ function formatStop(loc: any) {
   };
 }
 
-async function handleTrainRequest(uid: string, date: string, debug: boolean, showPass: boolean) {
+async function handleTrainRequest(
+  uid: string,
+  date: string,
+  debug: boolean,
+  showPass: boolean,
+  serviceRid?: string,
+) {
   log(`Processing train: ${uid} for ${date}`);
 
-  let rid: string | null = null;
-  try {
-    const trainRecord = await fetchQuery(api.functions.trains.getRidWithUID, { uid });
-    if (trainRecord) rid = trainRecord.rid;
-  } catch (e: any) {
-    log(`Convex Lookup Error: ${e.message}`);
+  let rid: string | null = serviceRid ?? null;
+  if (!rid) {
+    try {
+      const trainRecord = await fetchQuery(api.functions.trains.getRidWithUID, { uid });
+      if (trainRecord) rid = trainRecord.rid;
+    } catch (e: any) {
+      log(`Convex Lookup Error: ${e.message}`);
+    }
   }
 
   try {

@@ -127,6 +127,13 @@ async function getLatesttrainDetailsByIndex(
 export const getRidWithUID = query({
   args: { uid: v.string() },
   handler: async (ctx, args) => {
+    const summary = await ctx.db
+      .query("trainDetailsSummary")
+      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+      .first();
+
+    if (summary) return summary;
+
     return await getLatesttrainDetailsByIndex(ctx, "by_uid", "uid", args.uid);
   }
 });

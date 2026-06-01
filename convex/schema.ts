@@ -69,6 +69,12 @@ export default defineSchema({
   .index("by_rid", ["rid"])
   .index("by_uid", ["uid"]),
 
+  trainDetailsStats: defineTable({
+    key: v.string(),
+    count: v.number(),
+  })
+  .index("by_key", ["key"]),
+
   trainAllocations: defineTable({
     uid: v.string(),
     date: v.string(),

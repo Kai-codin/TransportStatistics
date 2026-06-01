@@ -11,9 +11,16 @@ crons.interval(
 );
 
 crons.interval(
-  "cleanup old train details",
+  "cleanup old train details (5 days)",
   { hours: 2 },
   api.functions.trains.cleanupOldtrainDetails,
+  {},
+);
+
+crons.interval(
+  "cleanup old train details summary (5 days)",
+  { hours: 2 },
+  api.functions.trains.cleanupOldtrainDetailsSummary,
   {},
 );
 

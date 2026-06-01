@@ -1,7 +1,7 @@
 import { action, mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { Doc } from "../_generated/dataModel";
-import { QueryCtx } from "../_generated/server";
+import { QueryCtx, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 
@@ -23,6 +23,30 @@ function buildTrainDetailsSummary(train: Record<string, unknown>) {
     unit_numbers: Array.isArray(train.unit_numbers) ? train.unit_numbers : undefined,
     updated_at: Date.now(),
   };
+}
+
+function getTrainDetailsLimit() {
+  const raw = process.env.TRAIN_DETAILS_MAX_RECORDS;
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
+}
+
+async function getTrainDetailsStats(ctx: MutationCtx) {
+  const existing = await ctx.db
+    .query("trainDetailsStats")
+    .withIndex("by_key", (q) => q.eq("key", "singleton"))
+    .first();
+
+  if (existing) return existing;
+
+  const id = await ctx.db.insert("trainDetailsStats", {
+    key: "singleton",
+    count: 0,
+  });
+
+  return { _id: id, key: "singleton", count: 0 };
 }
 
 export const backfillSearchText = mutation({
@@ -170,10 +194,11 @@ export const backfillTrainDetailsSummary = mutation({
   args: { cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
     const BATCH_SIZE = 500;
+    const cursor = args.cursor && args.cursor !== "null" ? args.cursor : null;
 
     const { page, continueCursor, isDone } = await ctx.db
       .query("trainDetails")
-      .paginate({ cursor: args.cursor, numItems: BATCH_SIZE });
+      .paginate({ cursor, numItems: BATCH_SIZE });
 
     for (const record of page) {
       const summary = buildTrainDetailsSummary(record as Record<string, unknown>);
@@ -248,8 +273,35 @@ export const savetrainDetailsBatch = mutation({
         .withIndex("by_rid", (q) => q.eq("rid", train.rid))
         .first();
 
+      const limit = getTrainDetailsLimit();
+
       if (!existing) {
+        if (limit !== null) {
+          const stats = await getTrainDetailsStats(ctx);
+          if (stats.count >= limit) {
+            const oldest = await ctx.db.query("trainDetails").order("asc").take(1);
+            if (oldest[0]) {
+              await ctx.db.delete(oldest[0]._id);
+              const summaryToDelete = await ctx.db
+                .query("trainDetailsSummary")
+                .withIndex("by_rid", (q) => q.eq("rid", oldest[0].rid))
+                .first();
+              if (summaryToDelete) {
+                await ctx.db.delete(summaryToDelete._id);
+              }
+              await ctx.db.patch(stats._id, {
+                count: Math.max(0, stats.count - 1),
+              });
+            }
+          }
+        }
+
         await ctx.db.insert("trainDetails", train);
+
+        if (limit !== null) {
+          const stats = await getTrainDetailsStats(ctx);
+          await ctx.db.patch(stats._id, { count: stats.count + 1 });
+        }
       } else {
         await ctx.db.patch(existing._id, train);
       }
@@ -378,14 +430,14 @@ export const cleanupOldtrainDetails = mutation({
   args: { maxDeletes: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const MAX_DELETES = args.maxDeletes ?? 1000;
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 5 * 24 * 60 * 60 * 1000;
 
-    const { page } = await ctx.db
+    const { page: trainDetailsPage } = await ctx.db
       .query("trainDetails")
-      .paginate({ cursor: null, numItems: 100 });
+      .paginate({ cursor: null, numItems: 1000   });
 
     let deleted = 0;
-    for (const record of page) {
+    for (const record of trainDetailsPage) {
       if (record._creationTime < cutoff) {
         await ctx.db.delete(record._id);
         deleted += 1;
@@ -393,6 +445,34 @@ export const cleanupOldtrainDetails = mutation({
       }
     }
 
-    return { deleted, scanned: page.length };
+    const stats = await getTrainDetailsStats(ctx);
+    await ctx.db.patch(stats._id, {
+      count: Math.max(0, stats.count - deleted),
+    });
+
+    return { deleted, scanned: trainDetailsPage.length };
+  },
+});
+
+export const cleanupOldtrainDetailsSummary = mutation({
+  args: { maxDeletes: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const MAX_DELETES = args.maxDeletes ?? 1000;
+    const cutoff = Date.now() - 5 * 24 * 60 * 60 * 1000;
+
+    const { page: summaryPage } = await ctx.db
+      .query("trainDetailsSummary")
+      .paginate({ cursor: null, numItems: 1000 });
+
+    let deleted = 0;
+    for (const record of summaryPage) {
+      if (record._creationTime < cutoff) {
+        await ctx.db.delete(record._id);
+        deleted += 1;
+        if (deleted >= MAX_DELETES) break;
+      }
+    }
+
+    return { deleted, scanned: summaryPage.length };
   },
 });

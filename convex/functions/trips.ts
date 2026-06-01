@@ -424,15 +424,48 @@ export const getMyTrips = query({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    
     if (!identity) return [];
-
     const limit = args.limit ?? getTripsQueryLimit();
-    return await ctx.db
+
+    const trips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
-      .order("desc") // This sorts DESC for both service_date and scheduled_departure
+      .order("desc")
       .take(limit);
+
+    return trips.map(({
+      _id,
+      service_date,
+      transport_type,
+      service_number,
+      operator,
+      scheduled_departure,
+      origin_name,
+      destination_name,
+      units,
+      unit_number,
+      unit_reg,
+      unit_type,
+      livery_name,
+      livery_css,
+      first_units,
+    }) => ({
+      _id,
+      service_date,
+      transport_type,
+      service_number,
+      operator,
+      scheduled_departure,
+      origin_name,
+      destination_name,
+      units,
+      unit_number,
+      unit_reg,
+      unit_type,
+      livery_name,
+      livery_css,
+      first_units,
+    }));
   },
 });
 

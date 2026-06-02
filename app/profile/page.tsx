@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { TripRow } from "@/components/TripRow";
 import { useUser } from "@clerk/nextjs";
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import { MapPinned, Info } from "lucide-react";
 
 type TripGroup = {
@@ -38,7 +38,33 @@ function formatDateKey(timestamp: number) {
 
 export default function ProfilePage() {
   const { isSignedIn, user } = useUser();
-  const trips = useQuery(api.functions.trips.getMyTrips, user ? { limit: 500 } : "skip");
+
+  const { results: trips, status, loadMore } = usePaginatedQuery(
+    api.functions.trips.getMyTripsPaginated,
+    user ? {} : "skip",
+    { initialNumItems: 10 },
+  );
+
+  const counts = useQuery(api.functions.trips.getMyTripCount, user ? {} : "skip");
+
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && status === "CanLoadMore") {
+          loadMore(25);
+        }
+      },
+      { rootMargin: "200px" },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [status, loadMore]);
 
   const groupedTrips = useMemo<TripGroup[]>(() => {
     if (!trips) return [];
@@ -72,8 +98,6 @@ export default function ProfilePage() {
     );
   }
 
-  const totalDays = groupedTrips.length;
-
   return (
     <div className="max-w-4xl mx-auto px-4 pt-6 pb-8 md:px-8 md:pt-8">
 
@@ -86,11 +110,11 @@ export default function ProfilePage() {
           {/* Stats — inline on mobile, same row as title */}
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <div className="text-xl md:text-2xl font-bold text-ts-text-1 leading-none">{trips?.length ?? 0}</div>
+              <div className="text-xl md:text-2xl font-bold text-ts-text-1 leading-none">{counts?.trips ?? 0}</div>
               <div className="text-[10px] md:text-xs text-slate-400 uppercase tracking-wider mt-0.5">Trips</div>
             </div>
             <div className="text-right">
-              <div className="text-xl md:text-2xl font-bold text-ts-text-1 leading-none">{totalDays}</div>
+              <div className="text-xl md:text-2xl font-bold text-ts-text-1 leading-none">{counts?.days ?? 0}</div>
               <div className="text-[10px] md:text-xs text-slate-400 uppercase tracking-wider mt-0.5">Days</div>
             </div>
           </div>
@@ -112,57 +136,65 @@ export default function ProfilePage() {
       <div className="border-b border-white/10 mb-6 md:mb-8" />
 
       {/* ── Trip list ── */}
-      {!trips ? (
+      {status === "LoadingFirstPage" ? (
         <div className="text-center text-slate-500 py-10">Loading...</div>
       ) : trips.length === 0 ? (
         <div className="text-center py-10 text-slate-400">No trips yet.</div>
       ) : (
-        groupedTrips.map(({ dateKey, dateLabel, trips: tripList }) => (
-          <div key={dateKey} className="mb-8">
+        <>
+          {groupedTrips.map(({ dateKey, dateLabel, trips: tripList }) => (
+            <div key={dateKey} className="mb-8">
 
-            {/* Sticky date group header */}
-            <div className="sticky top-0 z-10 bg-ts-bg pt-1 pb-2">
-              <Link href={`/trip/${dateKey}`} >
-                <div className="flex items-center gap-3">
-                  {/* Date — takes up available space */}
-                  <h3 className="text-base md:text-lg font-bold text-ts-text-1 truncate">{dateLabel}</h3>
+              {/* Sticky date group header */}
+              <div className="sticky top-0 z-10 bg-ts-bg pt-1 pb-2">
+                <Link href={`/trip/${dateKey}`}>
+                  <div className="flex items-center gap-3">
+                    {/* Date — takes up available space */}
+                    <h3 className="text-base md:text-lg font-bold text-ts-text-1 truncate">{dateLabel}</h3>
 
-                  {/* Trip count badge */}
-                  <span className="shrink-0 text-xs text-slate-500 tabular-nums">
-                    {tripList.length} {tripList.length === 1 ? "trip" : "trips"}
-                  </span>
+                    {/* Trip count badge */}
+                    <span className="shrink-0 text-xs text-slate-500 tabular-nums">
+                      {tripList.length} {tripList.length === 1 ? "trip" : "trips"}
+                    </span>
 
-                  {/* Day map link — pushed to the right */}
-                  <div className="inline-flex gap-2 ml-auto ">
-                  <Link
-                    href={`/trip/${dateKey}`}
-                    className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-                  >
-                    <Info className="h-3 w-3" />
-                    Details
-                  </Link>
-                  <Link
-                    href={`/trip/${dateKey}/map`}
-                    className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-                  >
-                    <MapPinned className="h-3 w-3" />
-                    Map
-                  </Link>
+                    {/* Day map link — pushed to the right */}
+                    <div className="inline-flex gap-2 ml-auto">
+                      <Link
+                        href={`/trip/${dateKey}`}
+                        className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                      >
+                        <Info className="h-3 w-3" />
+                        Details
+                      </Link>
+                      <Link
+                        href={`/trip/${dateKey}/map`}
+                        className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                      >
+                        <MapPinned className="h-3 w-3" />
+                        Map
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              </Link>
-              {/* Subtle separator under the sticky header */}
-              <div className="mt-2 border-b border-white/5" />
-            </div>
+                </Link>
+                {/* Subtle separator under the sticky header */}
+                <div className="mt-2 border-b border-white/5" />
+              </div>
 
-            {/* Trip cards */}
-            <div className="flex flex-col gap-2 mt-2">
-              {tripList.map((trip) => (
-                <TripRow key={trip._id} trip={trip} />
-              ))}
+              {/* Trip cards */}
+              <div className="flex flex-col gap-2 mt-2">
+                {tripList.map((trip) => (
+                  <TripRow key={trip._id} trip={trip} />
+                ))}
+              </div>
             </div>
+          ))}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="py-4 text-center text-sm text-slate-500">
+            {status === "LoadingMore" && "Loading more trips..."}
+            {status === "Exhausted" && "All trips loaded"}
           </div>
-        ))
+        </>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 // convex/functions/trips.ts
-import { mutation, query, type QueryCtx } from "../_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { ensureUserRecord } from "./users";
@@ -191,6 +192,106 @@ type TripUnitLike = {
   livery_left?: string;
 };
 
+function toTripSummary(trip: Doc<"tripLogs">) {
+  return {
+    _id: trip._id,
+    _creationTime: trip._creationTime,
+    user: trip.user,
+    on_trip_with: trip.on_trip_with,
+    logged_at: trip.logged_at,
+    service_number: trip.service_number,
+    operator: trip.operator,
+    operator_slug: trip.operator_slug,
+    service_date: trip.service_date,
+    transport_type: trip.transport_type,
+    bustimes_service_id: trip.bustimes_service_id,
+    bustimes_service_slug: trip.bustimes_service_slug,
+    origin_name: trip.origin_name,
+    origin_stop_code: trip.origin_stop_code,
+    destination_name: trip.destination_name,
+    destination_stop_code: trip.destination_stop_code,
+    scheduled_departure: trip.scheduled_departure,
+    actual_departure: trip.actual_departure,
+    scheduled_arrival: trip.scheduled_arrival,
+    actual_arrival: trip.actual_arrival,
+    units: trip.units,
+    unit_number: trip.unit_number,
+    unit_reg: trip.unit_reg,
+    unit_type: trip.unit_type,
+    livery_name: trip.livery_name,
+    livery_css: trip.livery_css,
+    notes: trip.notes,
+    first_time: trip.first_time,
+    first_units: trip.first_units,
+    vehicle_key: trip.vehicle_key,
+    vehicle_keys: trip.vehicle_keys,
+    distance_km: trip.distance_km,
+    full_route: undefined,
+    ridden_route: undefined,
+    full_locations: undefined,
+  };
+}
+
+async function getRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
+  if (trip.full_route !== undefined || trip.ridden_route !== undefined || trip.full_locations !== undefined) {
+    return {
+      full_route: trip.full_route,
+      ridden_route: trip.ridden_route,
+      full_locations: trip.full_locations,
+    };
+  }
+
+  const details = await ctx.db
+    .query("tripRouteDetails")
+    .withIndex("by_tripId", (q) => q.eq("tripId", trip._id))
+    .first();
+
+  return {
+    full_route: details?.full_route ?? trip.full_route,
+    ridden_route: details?.ridden_route ?? trip.ridden_route,
+    full_locations: details?.full_locations ?? trip.full_locations,
+  };
+}
+
+async function attachRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
+  return {
+    ...toTripSummary(trip),
+    ...(await getRouteDetails(ctx, trip)),
+  };
+}
+
+async function saveRouteDetails(
+  ctx: MutationCtx,
+  tripId: Id<"tripLogs">,
+  user: string,
+  routes: {
+    full_route?: unknown;
+    ridden_route?: unknown;
+    full_locations?: unknown;
+  },
+) {
+  const existing = await ctx.db
+    .query("tripRouteDetails")
+    .withIndex("by_tripId", (q) => q.eq("tripId", tripId))
+    .first();
+
+  const payload = {
+    tripId,
+    user,
+    full_route: routes.full_route,
+    ridden_route: routes.ridden_route,
+    full_locations: routes.full_locations,
+    updated_at: Date.now(),
+  };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, payload);
+    return;
+  }
+
+  await ctx.db.insert("tripRouteDetails", payload);
+}
+
 function getPrimaryUnit(raw: unknown): TripUnitLike | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined;
 
@@ -213,6 +314,43 @@ function getVehicleKeyForTransport(unit?: TripUnitLike, transportType?: string) 
 
 function normalizeReg(value?: string) {
   return value?.replace(/\s+/g, "").toUpperCase();
+}
+
+function haversineKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, number]) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function calculateDistanceKm(fullRoute: unknown, riddenRoute: unknown) {
+  const route = riddenRoute as { geometry?: { coordinates?: unknown } } | null;
+  const full = fullRoute as { coordinates?: unknown } | null;
+  const coords = route?.geometry?.coordinates ?? full?.coordinates;
+  if (!Array.isArray(coords)) return undefined;
+
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const previous = coords[i - 1];
+    const current = coords[i];
+    if (
+      Array.isArray(previous) &&
+      Array.isArray(current) &&
+      typeof previous[0] === "number" &&
+      typeof previous[1] === "number" &&
+      typeof current[0] === "number" &&
+      typeof current[1] === "number"
+    ) {
+      total += haversineKm(previous as [number, number], current as [number, number]);
+    }
+  }
+
+  return total;
 }
 
 async function hasExistingTripWithVehicle(
@@ -358,7 +496,7 @@ export const getTripById = query({
 
     if (!trip || trip.user !== args.userId) return null;
 
-    return trip;
+    return attachRouteDetails(ctx, trip);
   },
 });
 
@@ -375,7 +513,7 @@ export const getMyTripById = query({
 
     if (!trip || trip.user !== identity.subject) return null;
 
-    return trip;
+    return attachRouteDetails(ctx, trip);
   },
 });
 
@@ -408,7 +546,7 @@ export const getTripDetailsById = query({
         ]);
 
     return {
-      trip,
+      trip: await attachRouteDetails(ctx, trip),
       originStop,
       destinationStop,
       operatorRecord,
@@ -418,74 +556,54 @@ export const getTripDetailsById = query({
   },
 });
 
-export const getMyTrips = query({
+export const getMyTripsPaginated = query({
   args: {
-    limit: v.optional(v.number()),
+    paginationOpts: paginationOptsValidator,
+    includeRoutes: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-    const limit = args.limit ?? getTripsQueryLimit();
+    if (!identity) return { page: [], continueCursor: "", isDone: true };
+
+    const result = await ctx.db
+      .query("tripLogs")
+      .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
+      .order("desc")
+      .paginate(args.paginationOpts);  // <-- pass paginationOpts directly
+
+    if (!args.includeRoutes) {
+      return {
+        ...result,
+        page: result.page.map(toTripSummary),
+      };
+    }
+
+    return {
+      ...result,
+      page: await Promise.all(result.page.map((trip) => attachRouteDetails(ctx, trip))),
+    };
+  },
+});
+
+export const getMyTripCount = query({
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { trips: 0, days: 0 };
 
     const trips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
-      .order("desc")
-      .take(limit);
+      .collect();
 
-    return trips.map(({
-      _id,
-      service_date,
-      transport_type,
-      service_number,
-      operator,
-      scheduled_departure,
-      origin_name,
-      destination_name,
-      units,
-      unit_number,
-      unit_reg,
-      unit_type,
-      livery_name,
-      livery_css,
-      first_units,
-    }) => ({
-      _id,
-      service_date,
-      transport_type,
-      service_number,
-      operator,
-      scheduled_departure,
-      origin_name,
-      destination_name,
-      units,
-      unit_number,
-      unit_reg,
-      unit_type,
-      livery_name,
-      livery_css,
-      first_units,
-    }));
-  },
-});
+    const days = new Set(
+      trips.map((t) => {
+        const ts = t.service_date > 1_000_000_000_000 ? t.service_date : t.service_date * 1000;
+        const d = new Date(ts);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })
+    ).size;
 
-export const getMyTripsPaginated = query({
-  args: {
-    cursor: v.optional(v.string()),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-
-    if (!identity) return { page: [], continueCursor: null, isDone: true };
-
-    const limit = args.limit ?? 250;
-
-    return await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
-      .order("desc")
-      .paginate({ cursor: args.cursor ?? null, numItems: limit });
+    return { trips: trips.length, days };
   },
 });
 
@@ -494,28 +612,41 @@ export const getMyTripsByDate = query({
     user: v.string(),
     date: v.string(),
     timeZone: v.optional(v.string()),
+    includeRoutes: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const timeZone = args.timeZone ?? "UTC";
 
     if (args.date === "all") {
       const limit = getTripsAllLimit();
-      return await ctx.db
+      const trips = await ctx.db
         .query("tripLogs")
         .withIndex("by_user_date_departure", (q) => q.eq("user", args.user))
         .order("desc")
         .take(limit);
+
+      if (args.includeRoutes) {
+        return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));
+      }
+
+      return trips.map(toTripSummary);
     }
 
     const { start, end } = getDateBounds(args.date, timeZone);
 
-    return await ctx.db
+    const trips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user_date_departure", (q) =>
         q.eq("user", args.user).gte("service_date", start).lt("service_date", end)
       )
       .order("desc")
       .collect();
+
+    if (args.includeRoutes) {
+      return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));
+    }
+
+    return trips.map(toTripSummary);
   },
 });
 
@@ -535,23 +666,30 @@ export const logTrip = mutation({
     const unit_reg = normalizeReg(primaryUnit?.unit_reg);
     const vehicle_key = getVehicleKeyForTransport({ ...primaryUnit, unit_reg }, args.transport_type);
     const first_time = !(await hasExistingTripWithVehicle(ctx, identity.subject, args.operator, vehicle_key));
+    const { full_route, ridden_route, ...tripFields } = args;
+    const distance_km = calculateDistanceKm(full_route, ridden_route);
 
-    return await ctx.db.insert("tripLogs", {
+    const tripId = await ctx.db.insert("tripLogs", {
       user: identity.subject,
       on_trip_with: [],
       logged_at: Date.now(),
 
-      ...args,
+      ...tripFields,
 
       unit_number,
       unit_reg,
       unit_type: primaryUnit?.unit_type,
       livery_name: primaryUnit?.livery,
       livery_css: primaryUnit?.livery_left,
+      distance_km,
 
       vehicle_key,
       first_time,
     });
+
+    await saveRouteDetails(ctx, tripId, identity.subject, { full_route, ridden_route });
+
+    return tripId;
   },
 });
 
@@ -575,6 +713,8 @@ export const updateTrip = mutation({
     const unit_reg = normalizeReg(primaryUnit?.unit_reg);
     const vehicle_key = getVehicleKeyForTransport({ ...primaryUnit, unit_reg }, args.transport_type);
     const first_time = !(await hasExistingTripWithVehicle(ctx, identity.subject, args.operator, vehicle_key, args.tripId));
+    const { full_route, ridden_route } = args;
+    const distance_km = calculateDistanceKm(full_route, ridden_route);
 
     await ctx.db.patch(args.tripId, {
       service_number: args.service_number,
@@ -592,10 +732,9 @@ export const updateTrip = mutation({
       actual_departure: args.actual_departure,
       scheduled_arrival: args.scheduled_arrival,
       actual_arrival: args.actual_arrival,
-      full_route: args.full_route,
-      ridden_route: args.ridden_route,
       units: args.units,
       notes: args.notes,
+      distance_km,
       unit_number,
       unit_reg,
       unit_type: primaryUnit?.unit_type,
@@ -604,6 +743,8 @@ export const updateTrip = mutation({
       vehicle_key,
       first_time,
     });
+
+    await saveRouteDetails(ctx, args.tripId, identity.subject, { full_route, ridden_route });
 
     return args.tripId;
   },
@@ -624,6 +765,15 @@ export const deleteTrip = mutation({
 
     if (!existingTrip || existingTrip.user !== identity.subject) {
       throw new Error("Trip not found.");
+    }
+
+    const routeDetails = await ctx.db
+      .query("tripRouteDetails")
+      .withIndex("by_tripId", (q) => q.eq("tripId", args.tripId))
+      .first();
+
+    if (routeDetails) {
+      await ctx.db.delete(routeDetails._id);
     }
 
     await ctx.db.delete(args.tripId);

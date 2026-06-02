@@ -172,7 +172,6 @@ export default function Sidebar() {
   const [isImporting, setIsImporting] = useState(false);
   const [importFormat, setImportFormat] = useState<"csv" | "json">("csv");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const tripLogs = useQuery(api.functions.trips.getMyTrips, user ? { limit: 200 } : "skip") ?? [];
   const logTrip = useMutation(api.functions.trips.logTrip);
   const bustimesSourceSettings = useQuery(api.functions.userSettings.getMyBustimesSource);
   const saveBustimesSourceSettings = useMutation(api.functions.userSettings.saveMyBustimesSource);
@@ -185,14 +184,6 @@ export default function Sidebar() {
     { key: "light" as const, label: "Light", icon: Palette },
     { key: "dark" as const, label: "Dark", icon: Sun },
   ];
-
-  function escapeCsv(value: unknown) {
-    if (value == null) return "";
-    const raw = typeof value === "string" ? value : JSON.stringify(value);
-    const needsQuotes = /[",\n]/.test(raw);
-    const escaped = raw.replace(/"/g, '""');
-    return needsQuotes ? `"${escaped}"` : escaped;
-  }
 
   async function handleExport(format: "csv" | "json") {
     try {

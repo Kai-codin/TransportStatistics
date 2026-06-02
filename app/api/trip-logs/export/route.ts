@@ -54,14 +54,14 @@ export async function GET(request: Request) {
 
     const format = new URL(request.url).searchParams.get("format") ?? "csv";
     const trips: any[] = [];
-    let cursor: string | undefined = undefined;
+    let cursor: string | null = null;
 
     while (true) {
       const page: any = await convex.query(api.functions.trips.getMyTripsPaginated, {
-        cursor,
-        limit: 500,
+        paginationOpts: { cursor, numItems: 500 },
+        includeRoutes: true,
       });
-      
+
       trips.push(...page.page);
       if (page.isDone) break;
       cursor = page.continueCursor;

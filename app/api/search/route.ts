@@ -33,6 +33,7 @@ interface SearchResult {
 async function searchTrains(q: string): Promise<SearchResult[]> {
   const units = await convex.query(api.functions.trains.searchForUnits, {
     search: q,
+    limit: 20,
   });
 
   if (units.length === 0) return [];

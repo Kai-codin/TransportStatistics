@@ -2,6 +2,22 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 
+function toTripMatchSummary(trip: Doc<"tripLogs">) {
+  return {
+    _id: trip._id,
+    service_number: trip.service_number,
+    operator: trip.operator,
+    operator_slug: trip.operator_slug,
+    bustimes_service_id: trip.bustimes_service_id,
+    bustimes_service_slug: trip.bustimes_service_slug,
+    units: trip.units,
+    unit_number: trip.unit_number,
+    unit_reg: trip.unit_reg,
+    vehicle_key: trip.vehicle_key,
+    vehicle_keys: trip.vehicle_keys,
+  };
+}
+
 export const getOperatorByCode = query({
   args: { code: v.string() },
   handler: async (ctx, args) => {
@@ -54,21 +70,23 @@ export const getHistoricalRoutesByOperatorIds = query({
 export const getUserTripsByUser = query({
   args: { user: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const trips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user", (q) => q.eq("user", args.user))
       .collect();
+    return trips.map(toTripMatchSummary);
   },
 });
 
 export const getUserTripsByOperator = query({
   args: { user: v.string(), operatorName: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const trips = await ctx.db
       .query("tripLogs")
       .withIndex("by_user", (q) => q.eq("user", args.user))
       .filter((q) => q.eq(q.field("operator"), args.operatorName))
       .collect();
+    return trips.map(toTripMatchSummary);
   },
 });
 
@@ -86,7 +104,7 @@ export const getUserTripsByOperators = query({
           .collect()
       )
     );
-    return tripGroups.flat();
+    return tripGroups.flat().map(toTripMatchSummary);
   },
 });
 

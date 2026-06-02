@@ -191,6 +191,7 @@ export default defineSchema({
     livery_name: v.optional(v.string()),
     livery_css: v.optional(v.string()),
     notes: v.optional(v.string()),
+    distance_km: v.optional(v.number()),
     first_time: v.optional(v.boolean()),
     first_units: v.optional(v.array(v.string())),
     vehicle_key: v.optional(v.string()),
@@ -200,6 +201,17 @@ export default defineSchema({
     .index("by_user_and_operator", ["user", "operator"])
     .index("by_user_date_departure", ["user", "service_date", "scheduled_departure"])
     .index("by_user_operator_vehicle", ["user", "operator", "vehicle_key"]),
+
+  tripRouteDetails: defineTable({
+    tripId: v.id("tripLogs"),
+    user: v.string(),
+    full_route: v.optional(v.any()),
+    ridden_route: v.optional(v.any()),
+    full_locations: v.optional(v.any()),
+    updated_at: v.number(),
+  })
+    .index("by_tripId", ["tripId"])
+    .index("by_user", ["user"]),
 
   editRequests: defineTable({
     userId: v.string(),    

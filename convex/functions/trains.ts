@@ -100,14 +100,15 @@ export const getUnitDetails = query({
 });
 
 export const searchForUnits = query({
-  args: { search: v.string() },
+  args: { search: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
     return await ctx.db
       .query("units")
       .withSearchIndex("search_units", (q) =>
         q.search("search_text", args.search)
       )
-      .collect();
+      .take(limit);
   },
 });
 

@@ -1,6 +1,7 @@
 // convex/functions/completion.ts
-import { query } from "../_generated/server";
+import { query, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 
 // Helper functions (copied from your stats.ts logic)
 function haversineKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, number]): number {
@@ -33,6 +34,25 @@ function getDateParts(timestamp: number, timeZone: string) {
 function formatDate(timestamp: number, timeZone: string): string {
   const { year, month, day } = getDateParts(timestamp, timeZone);
   return `${year}-${month}-${day}`;
+}
+
+async function getTripRoutes(ctx: QueryCtx, trip: Doc<"tripLogs">) {
+  if (trip.full_route !== undefined || trip.ridden_route !== undefined) {
+    return {
+      full_route: trip.full_route,
+      ridden_route: trip.ridden_route,
+    };
+  }
+
+  const details = await ctx.db
+    .query("tripRouteDetails")
+    .withIndex("by_tripId", (q) => q.eq("tripId", trip._id))
+    .first();
+
+  return {
+    full_route: details?.full_route ?? trip.full_route,
+    ridden_route: details?.ridden_route ?? trip.ridden_route,
+  };
 }
 
 export const getOperatorByAnyCode = query({
@@ -91,12 +111,17 @@ export const getOperatorCompletionStats = query({
       }
 
       // Distance
-      const coords: [number, number][] =
-        trip.ridden_route?.geometry?.coordinates ??
-        trip.full_route?.coordinates ??
-        [];
-      for (let i = 1; i < coords.length; i++) {
-        totalDistanceKm += haversineKm(coords[i - 1], coords[i]);
+      if (typeof trip.distance_km === "number") {
+        totalDistanceKm += trip.distance_km;
+      } else {
+        const routes = await getTripRoutes(ctx, trip);
+        const coords: [number, number][] =
+          routes.ridden_route?.geometry?.coordinates ??
+          routes.full_route?.coordinates ??
+          [];
+        for (let i = 1; i < coords.length; i++) {
+          totalDistanceKm += haversineKm(coords[i - 1], coords[i]);
+        }
       }
 
       // Time

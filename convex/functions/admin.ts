@@ -20,11 +20,22 @@ const ADMIN_TABLES = [
   "operators",
   "historicalRoutes",
   "tripLogs",
+  "tripRouteDetails",
 ] as const;
 
 const SEARCH_INDEXES: Record<string, string[]> = {
   units: ["search_units"],
 };
+
+const LARGE_TABLES = new Set<string>([
+  "stops",
+  "trainDetails",
+  "trainAllocations",
+  "units",
+  "historicalRoutes",
+  "tripLogs",
+  "tripRouteDetails",
+]);
 
 function assertTable(table: string) {
   if (!ADMIN_TABLES.includes(table as (typeof ADMIN_TABLES)[number])) {
@@ -108,7 +119,7 @@ export const list = query({
 
     queryRef = applyFilters(queryRef, args.filters as FilterSpec[] | undefined);
 
-    if (args.sort) {
+    if (args.sort && !LARGE_TABLES.has(args.table)) {
       const all = await queryRef.collect();
       const sorted = sortRecords(all, args.sort);
       const offset = args.paginationOpts?.cursor

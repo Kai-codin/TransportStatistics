@@ -1,5 +1,25 @@
-import { query } from "../_generated/server";
+import { query, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
+
+async function getTripRoutes(ctx: QueryCtx, trip: Doc<"tripLogs">) {
+  if (trip.full_route !== undefined || trip.ridden_route !== undefined) {
+    return {
+      full_route: trip.full_route,
+      ridden_route: trip.ridden_route,
+    };
+  }
+
+  const details = await ctx.db
+    .query("tripRouteDetails")
+    .withIndex("by_tripId", (q) => q.eq("tripId", trip._id))
+    .first();
+
+  return {
+    full_route: details?.full_route ?? trip.full_route,
+    ridden_route: details?.ridden_route ?? trip.ridden_route,
+  };
+}
 
 export const getUserStats = query({
   args: { user: v.string(), year: v.optional(v.number()), timeZone: v.optional(v.string()) },
@@ -65,8 +85,14 @@ export const getUserStats = query({
     // --- Distance travelled ---
     let totalDistanceKm = 0;
     for (const trip of trips) {
-      const coords: [number, number][] = trip.ridden_route?.geometry?.coordinates
-        ?? trip.full_route?.coordinates
+      if (typeof trip.distance_km === "number") {
+        totalDistanceKm += trip.distance_km;
+        continue;
+      }
+
+      const routes = await getTripRoutes(ctx, trip);
+      const coords: [number, number][] = routes.ridden_route?.geometry?.coordinates
+        ?? routes.full_route?.coordinates
         ?? [];
       for (let i = 1; i < coords.length; i++) {
         totalDistanceKm += haversineKm(coords[i - 1], coords[i]);

@@ -53,7 +53,7 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
   const mapInstance = useRef<maplibregl.Map | null>(null);
 
   const trips = useQuery(api.functions.trips.getMyTripsByDate, 
-    user?.id ? { user: user.id, date: date, timeZone } : "skip"
+    user?.id ? { user: user.id, date: date, timeZone, includeRoutes: true } : "skip"
   );
 
   useEffect(() => {

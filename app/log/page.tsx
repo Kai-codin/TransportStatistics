@@ -1210,11 +1210,6 @@ export default function LogPage() {
                 </span>
               )}
               <div className="flex items-center justify-between gap-3">
-                <p className="min-w-0 flex-1 truncate text-xs text-ts-text-3">
-                  {riddenRoute
-                    ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}`
-                    : 'Choose start and end stops'}
-                </p>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   {saveSuccess && <span className="text-xs font-semibold text-ts-accent sm:hidden">{saveSuccess}</span>}
                   {saveError && <span className="max-w-[200px] truncate text-xs text-red-300">{saveError}</span>}
@@ -1242,6 +1237,11 @@ export default function LogPage() {
               </div>
             </div>
           </div>
+          <p className="min-w-0 flex-1 truncate text-xs text-ts-text-3">
+            {riddenRoute
+            ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}`
+            : 'Choose start and end stops'}
+          </p>
 
           {/* Tab bar */}
           <div className="flex">

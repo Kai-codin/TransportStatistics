@@ -153,12 +153,7 @@ export const TripRow = ({ trip }: TripRowProps) => {
             <span className="text-[12px] text-ts-text-3 font-medium truncate">
               {trip.operator}
             </span>
-            <Link
-              href={`/trip/me/${trip._id}`}
-              className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full p-1 text-[16px] tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-              >
-              <Info className="h-4 w-4" />
-            </Link>
+              <Info className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full p-1 text-[16px] tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent" />
           </div>
 
           {/* Time + origin → destination */}

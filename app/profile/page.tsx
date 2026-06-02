@@ -147,36 +147,33 @@ export default function ProfilePage() {
 
               {/* Sticky date group header */}
               <div className="sticky top-0 z-10 bg-ts-bg pt-1 pb-2">
-                <Link href={`/trip/${dateKey}`}>
-                  <div className="flex items-center gap-3">
-                    {/* Date — takes up available space */}
+                <div className="flex items-center gap-3">
+                  {/* Date — clickable via Link */}
+                  <Link href={`/trip/${dateKey}`} className="flex items-center gap-3 min-w-0 flex-1">
                     <h3 className="text-base md:text-lg font-bold text-ts-text-1 truncate">{dateLabel}</h3>
-
-                    {/* Trip count badge */}
                     <span className="shrink-0 text-xs text-slate-500 tabular-nums">
                       {tripList.length} {tripList.length === 1 ? "trip" : "trips"}
                     </span>
+                  </Link>
 
-                    {/* Day map link — pushed to the right */}
-                    <div className="inline-flex gap-2 ml-auto">
-                      <Link
-                        href={`/trip/${dateKey}`}
-                        className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-                      >
-                        <Info className="h-3 w-3" />
-                        Details
-                      </Link>
-                      <Link
-                        href={`/trip/${dateKey}/map`}
-                        className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-                      >
-                        <MapPinned className="h-3 w-3" />
-                        Map
-                      </Link>
-                    </div>
+                  {/* Day map link — pushed to the right */}
+                  <div className="inline-flex gap-2 ml-auto">
+                    <Link
+                      href={`/trip/${dateKey}`}
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                    >
+                      <Info className="h-3 w-3" />
+                      Details
+                    </Link>
+                    <Link
+                      href={`/trip/${dateKey}/map`}
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                    >
+                      <MapPinned className="h-3 w-3" />
+                      Map
+                    </Link>
                   </div>
-                </Link>
-                {/* Subtle separator under the sticky header */}
+                </div>
                 <div className="mt-2 border-b border-white/5" />
               </div>
 

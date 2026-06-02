@@ -199,6 +199,7 @@ export default defineSchema({
   })
     .index("by_user", ["user"])
     .index("by_user_and_operator", ["user", "operator"])
+    .index("by_user_service_date", ["user", "service_date"])
     .index("by_user_date_departure", ["user", "service_date", "scheduled_departure"])
     .index("by_user_operator_vehicle", ["user", "operator", "vehicle_key"]),
 

@@ -3,25 +3,29 @@ import { api } from "./_generated/api";
 
 const crons = cronJobs();
 
-crons.interval(
-  "sync train details",
-  { seconds: 30 },
-  api.functions.trains.syncAllTrains,
-  {},
-);
+const isProd = process.env.ENVIRONMENT === "production";
 
-crons.interval(
-  "cleanup old train details (5 days)",
-  { hours: 2 },
-  api.functions.trains.cleanupOldtrainDetails,
-  {},
-);
+if (isProd) {
+  crons.interval(
+    "sync train details",
+    { seconds: 30 },
+    api.functions.trains.syncAllTrains,
+    {},
+  );
 
-crons.interval(
-  "cleanup old train details summary (5 days)",
-  { hours: 2 },
-  api.functions.trains.cleanupOldtrainDetailsSummary,
-  {},
-);
+  crons.interval(
+    "cleanup old train details (5 days)",
+    { hours: 2 },
+    api.functions.trains.cleanupOldtrainDetails,
+    {},
+  );
+
+  crons.interval(
+    "cleanup old train details summary (5 days)",
+    { hours: 2 },
+    api.functions.trains.cleanupOldtrainDetailsSummary,
+    {},
+  );
+}
 
 export default crons;

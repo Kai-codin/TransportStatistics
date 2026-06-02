@@ -615,7 +615,7 @@ export const getMyTripsByDate = query({
     includeRoutes: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const timeZone = args.timeZone ?? "UTC";
+    const tz = args.timeZone ?? "Europe/London";
 
     if (args.date === "all") {
       const limit = getTripsAllLimit();
@@ -624,20 +624,52 @@ export const getMyTripsByDate = query({
         .withIndex("by_user_date_departure", (q) => q.eq("user", args.user))
         .order("desc")
         .take(limit);
-
-      if (args.includeRoutes) {
-        return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));
-      }
-
       return trips.map(toTripSummary);
     }
 
-    const { start, end } = getDateBounds(args.date, timeZone);
+    const [year, month, day] = args.date.split("-").map((value) => Number(value));
+    if (!year || !month || !day) return [];
 
+    // 1. Establish absolute UTC midnight as the anchor baseline
+    const utcMidnightEpoch = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+
+    // 2. Explicitly extract what that exact moment looks like in the target timezone
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour12: false,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+    }).formatToParts(new Date(utcMidnightEpoch));
+
+    const getPart = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    
+    // 3. Reconstruct what the wall-clock target says
+    const tzYear = getPart("year");
+    const tzMonth = getPart("month");
+    const tzDay = getPart("day");
+    let tzHour = getPart("hour");
+    
+    // Handle 24-hour runtime inconsistencies where midnight can show up as 24 instead of 0
+    if (tzHour === 24) tzHour = 0;
+
+    // 4. Calculate the real absolute offset in milliseconds
+    const tzMidnightEpoch = Date.UTC(tzYear, tzMonth - 1, tzDay, tzHour, 0, 0, 0);
+    const offsetMs = utcMidnightEpoch - tzMidnightEpoch;
+
+    // 5. Shift our query bounds by that exact offset amount
+    const start = utcMidnightEpoch + offsetMs;
+    const end = start + 24 * 60 * 60 * 1000;
+
+    // Execute query using our dedicated two-field index
     const trips = await ctx.db
       .query("tripLogs")
-      .withIndex("by_user_date_departure", (q) =>
-        q.eq("user", args.user).gte("service_date", start).lt("service_date", end)
+      .withIndex("by_user_service_date", (q) =>
+        q.eq("user", args.user)
+         .gte("service_date", start)
+         .lt("service_date", end)
       )
       .order("desc")
       .collect();

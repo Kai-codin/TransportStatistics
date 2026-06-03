@@ -158,10 +158,19 @@ export const saveAllocationByUidDate = mutation({
     unit_allocation: v.any(),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("trainAllocations")
-      .withIndex("by_uid_date", (q) => q.eq("uid", args.uid).eq("date", args.date))
-      .first();
+    // Upsert allocation and fetch trainDetails candidate in parallel
+    const [existing, allRecords] = await Promise.all([
+      ctx.db
+        .query("trainAllocations")
+        .withIndex("by_uid_date", (q) =>
+          q.eq("uid", args.uid).eq("date", args.date)
+        )
+        .first(),
+      ctx.db
+        .query("trainDetails")
+        .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+        .collect(),
+    ]);
 
     const payload = {
       uid: args.uid,
@@ -171,30 +180,25 @@ export const saveAllocationByUidDate = mutation({
       updated_at: Date.now(),
     };
 
-    if (existing) {
-      await ctx.db.patch(existing._id, payload);
-    } else {
-      await ctx.db.insert("trainAllocations", payload);
-    }
-
-    const records = await ctx.db
-      .query("trainDetails")
-      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
-      .collect();
-
-    const match = records.find((record) => {
+    // Identify the matching trainDetails record from already-fetched results
+    const match = allRecords.find((record) => {
       const departureDate =
-        typeof record.origin_departure === "string" && record.origin_departure.includes("T")
+        typeof record.origin_departure === "string" &&
+        record.origin_departure.includes("T")
           ? record.origin_departure.split("T")[0]
           : null;
       return departureDate === args.date;
     });
 
-    if (match) {
-      await ctx.db.patch(match._id, {
-        unit_numbers: args.unit_numbers,
-      });
-    }
+    // Execute all writes in parallel
+    await Promise.all([
+      existing
+        ? ctx.db.patch(existing._id, payload)
+        : ctx.db.insert("trainAllocations", payload),
+      match
+        ? ctx.db.patch(match._id, { unit_numbers: args.unit_numbers })
+        : Promise.resolve(),
+    ]);
   },
 });
 
@@ -208,19 +212,32 @@ export const backfillTrainDetailsSummary = mutation({
       .query("trainDetails")
       .paginate({ cursor, numItems: BATCH_SIZE });
 
-    for (const record of page) {
-      const summary = buildTrainDetailsSummary(record as Record<string, unknown>);
-      const existing = await ctx.db
-        .query("trainDetailsSummary")
-        .withIndex("by_rid", (q) => q.eq("rid", summary.rid))
-        .first();
+    if (page.length === 0) return { continueCursor, isDone, updated: 0 };
 
-      if (existing) {
-        await ctx.db.patch(existing._id, summary);
-      } else {
-        await ctx.db.insert("trainDetailsSummary", summary);
-      }
-    }
+    // Batch-fetch all existing summaries for this page in parallel
+    const summaries = page.map((r) =>
+      buildTrainDetailsSummary(r as Record<string, unknown>)
+    );
+
+    const existingResults = await Promise.all(
+      summaries.map((s) =>
+        ctx.db
+          .query("trainDetailsSummary")
+          .withIndex("by_rid", (q) => q.eq("rid", s.rid))
+          .first()
+      )
+    );
+
+    // Execute all upserts in parallel
+    await Promise.all(
+      summaries.map((summary, i) => {
+        const existing = existingResults[i];
+        if (existing) {
+          return ctx.db.patch(existing._id, summary);
+        }
+        return ctx.db.insert("trainDetailsSummary", summary);
+      })
+    );
 
     return { continueCursor, isDone, updated: page.length };
   },
@@ -254,78 +271,155 @@ export const checkExistingRids = query({
   args: { rids: v.array(v.string()) },
   handler: async (ctx, args) => {
     const results = await Promise.all(
-      args.rids.map(async (rid) => {
-        const doc = await ctx.db
-          .query("trainDetailsSummary")
+      args.rids.map((rid) =>
+        ctx.db
+          .query("ridIndex")
           .withIndex("by_rid", (q) => q.eq("rid", rid))
-          .first();
-        return doc ? rid : null;
-      })
+          .first()
+      )
     );
-    return results.filter((r): r is string => r !== null);
+    return results
+      .map((doc, i) => (doc ? args.rids[i] : null))
+      .filter((r): r is string => r !== null);
   },
 });
 
 // 2. WRITE: Batch insertion with strict "upsert" logic
 export const savetrainDetailsBatch = mutation({
-  args: { 
-    trains: v.array(v.any()) 
+  args: {
+    trains: v.array(v.any()),
   },
   handler: async (ctx, args) => {
-    for (const train of args.trains) {
-      if (!train.rid) continue;
+    const validTrains = (args.trains as Record<string, unknown>[]).filter(
+      (t) => typeof t.rid === "string" && t.rid.length > 0
+    );
+    if (validTrains.length === 0) return;
 
-      // Use .first() for existence check - enforce one record per RID
-      const existing = await ctx.db
-        .query("trainDetails")
-        .withIndex("by_rid", (q) => q.eq("rid", train.rid))
-        .first();
+    const limit = getTrainDetailsLimit();
+    const rids = validTrains.map((t) => t.rid as string);
 
-      const limit = getTrainDetailsLimit();
+    // Batch-fetch all three tables in parallel
+    const [detailResults, summaryResults, ridIndexResults] = await Promise.all([
+      Promise.all(
+        rids.map((rid) =>
+          ctx.db
+            .query("trainDetails")
+            .withIndex("by_rid", (q) => q.eq("rid", rid))
+            .first()
+        )
+      ),
+      Promise.all(
+        rids.map((rid) =>
+          ctx.db
+            .query("trainDetailsSummary")
+            .withIndex("by_rid", (q) => q.eq("rid", rid))
+            .first()
+        )
+      ),
+      Promise.all(
+        rids.map((rid) =>
+          ctx.db
+            .query("ridIndex")
+            .withIndex("by_rid", (q) => q.eq("rid", rid))
+            .first()
+        )
+      ),
+    ]);
 
-      if (!existing) {
-        if (limit !== null) {
-          const stats = await getTrainDetailsStats(ctx);
-          if (stats.count >= limit) {
-            const oldest = await ctx.db.query("trainDetails").order("asc").take(1);
-            if (oldest[0]) {
-              await ctx.db.delete(oldest[0]._id);
-              const summaryToDelete = await ctx.db
+    const existingDetails = new Map(
+      detailResults
+        .filter((d): d is NonNullable<typeof d> => d !== null)
+        .map((d) => [d.rid, d])
+    );
+    const existingSummaries = new Map(
+      summaryResults
+        .filter((s): s is NonNullable<typeof s> => s !== null)
+        .map((s) => [s.rid, s])
+    );
+    const existingRidIndex = new Map(
+      ridIndexResults
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .map((r) => [r.rid, r])
+    );
+
+    const toInsert = validTrains.filter((t) => !existingDetails.has(t.rid as string));
+    const toUpdate = validTrains.filter((t) => existingDetails.has(t.rid as string));
+
+    // Handle eviction — delete from all three tables together
+    if (limit !== null && toInsert.length > 0) {
+      const stats = await getTrainDetailsStats(ctx);
+      const evictionsNeeded = Math.max(0, stats.count + toInsert.length - limit);
+
+      if (evictionsNeeded > 0) {
+        const oldest = await ctx.db
+          .query("trainDetails")
+          .order("asc")
+          .take(evictionsNeeded);
+
+        const evictedRids = oldest.map((r) => r.rid);
+
+        const [evictedSummaries, evictedRidIndexDocs] = await Promise.all([
+          Promise.all(
+            evictedRids.map((rid) =>
+              ctx.db
                 .query("trainDetailsSummary")
-                .withIndex("by_rid", (q) => q.eq("rid", oldest[0].rid))
-                .first();
-              if (summaryToDelete) {
-                await ctx.db.delete(summaryToDelete._id);
-              }
-              await ctx.db.patch(stats._id, {
-                count: Math.max(0, stats.count - 1),
-              });
-            }
-          }
-        }
+                .withIndex("by_rid", (q) => q.eq("rid", rid))
+                .first()
+            )
+          ),
+          Promise.all(
+            evictedRids.map((rid) =>
+              ctx.db
+                .query("ridIndex")
+                .withIndex("by_rid", (q) => q.eq("rid", rid))
+                .first()
+            )
+          ),
+        ]);
 
-        await ctx.db.insert("trainDetails", train);
+        await Promise.all([
+          ...oldest.map((r) => ctx.db.delete(r._id)),
+          ...evictedSummaries
+            .filter((s): s is NonNullable<typeof s> => s !== null)
+            .map((s) => ctx.db.delete(s._id)),
+          ...evictedRidIndexDocs
+            .filter((r): r is NonNullable<typeof r> => r !== null)
+            .map((r) => ctx.db.delete(r._id)),
+        ]);
 
-        if (limit !== null) {
-          const stats = await getTrainDetailsStats(ctx);
-          await ctx.db.patch(stats._id, { count: stats.count + 1 });
-        }
+        const netChange = toInsert.length - oldest.length;
+        await ctx.db.patch(stats._id, {
+          count: Math.max(0, stats.count + netChange),
+        });
       } else {
-        await ctx.db.patch(existing._id, train);
-      }
-
-      const summary = buildTrainDetailsSummary(train as Record<string, unknown>);
-      const summaryExisting = await ctx.db
-        .query("trainDetailsSummary")
-        .withIndex("by_rid", (q) => q.eq("rid", summary.rid))
-        .first();
-
-      if (summaryExisting) {
-        await ctx.db.patch(summaryExisting._id, summary);
-      } else {
-        await ctx.db.insert("trainDetailsSummary", summary);
+        await ctx.db.patch(stats._id, {
+          count: stats.count + toInsert.length,
+        });
       }
     }
+
+    // All writes in parallel across all three tables
+    await Promise.all([
+      // trainDetails
+      ...toInsert.map((train) =>
+        ctx.db.insert("trainDetails", train as Parameters<typeof ctx.db.insert<"trainDetails">>[1])
+      ),
+      ...toUpdate.map((train) =>
+        ctx.db.patch(existingDetails.get(train.rid as string)!._id, train)
+      ),
+      // trainDetailsSummary
+      ...validTrains.map((train) => {
+        const summary = buildTrainDetailsSummary(train);
+        const existing = existingSummaries.get(summary.rid);
+        return existing
+          ? ctx.db.patch(existing._id, summary)
+          : ctx.db.insert("trainDetailsSummary", summary);
+      }),
+      // ridIndex — only insert if not already present, never needs patching
+      ...toInsert
+        .filter((train) => !existingRidIndex.has(train.rid as string))
+        .map((train) => ctx.db.insert("ridIndex", { rid: train.rid as string })),
+    ]);
   },
 });
 
@@ -440,25 +534,70 @@ export const cleanupOldtrainDetails = mutation({
     const MAX_DELETES = args.maxDeletes ?? 1000;
     const cutoff = Date.now() - 5 * 24 * 60 * 60 * 1000;
 
-    const { page: trainDetailsPage } = await ctx.db
+    const candidates = await ctx.db
       .query("trainDetails")
-      .paginate({ cursor: null, numItems: 1000   });
+      .order("asc")
+      .take(MAX_DELETES);
 
-    let deleted = 0;
-    for (const record of trainDetailsPage) {
-      if (record._creationTime < cutoff) {
-        await ctx.db.delete(record._id);
-        deleted += 1;
-        if (deleted >= MAX_DELETES) break;
-      }
-    }
+    const toDelete = candidates.filter((r) => r._creationTime < cutoff);
+    if (toDelete.length === 0) return { deleted: 0, scanned: candidates.length };
 
-    const stats = await getTrainDetailsStats(ctx);
+    const evictedRids = toDelete.map((r) => r.rid);
+
+    // Fetch ridIndex docs for evicted records in parallel with stats
+    const [ridIndexDocs, stats] = await Promise.all([
+      Promise.all(
+        evictedRids.map((rid) =>
+          ctx.db
+            .query("ridIndex")
+            .withIndex("by_rid", (q) => q.eq("rid", rid))
+            .first()
+        )
+      ),
+      getTrainDetailsStats(ctx),
+    ]);
+
+    await Promise.all([
+      ...toDelete.map((r) => ctx.db.delete(r._id)),
+      ...ridIndexDocs
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .map((r) => ctx.db.delete(r._id)),
+    ]);
+
     await ctx.db.patch(stats._id, {
-      count: Math.max(0, stats.count - deleted),
+      count: Math.max(0, stats.count - toDelete.length),
     });
 
-    return { deleted, scanned: trainDetailsPage.length };
+    return { deleted: toDelete.length, scanned: candidates.length };
+  },
+});
+
+export const backfillRidIndex = mutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const { page, continueCursor, isDone } = await ctx.db
+      .query("trainDetails")
+      .paginate({ cursor: args.cursor, numItems: 500 });
+
+    if (page.length === 0) return { continueCursor, isDone, inserted: 0 };
+
+    // Check which rids already have a ridIndex entry
+    const existingResults = await Promise.all(
+      page.map((r) =>
+        ctx.db
+          .query("ridIndex")
+          .withIndex("by_rid", (q) => q.eq("rid", r.rid))
+          .first()
+      )
+    );
+
+    const toInsert = page.filter((_, i) => existingResults[i] === null);
+
+    await Promise.all(
+      toInsert.map((r) => ctx.db.insert("ridIndex", { rid: r.rid }))
+    );
+
+    return { continueCursor, isDone, inserted: toInsert.length };
   },
 });
 
@@ -468,19 +607,17 @@ export const cleanupOldtrainDetailsSummary = mutation({
     const MAX_DELETES = args.maxDeletes ?? 1000;
     const cutoff = Date.now() - 5 * 24 * 60 * 60 * 1000;
 
-    const { page: summaryPage } = await ctx.db
+    const candidates = await ctx.db
       .query("trainDetailsSummary")
-      .paginate({ cursor: null, numItems: 1000 });
+      .order("asc")
+      .take(MAX_DELETES);
 
-    let deleted = 0;
-    for (const record of summaryPage) {
-      if (record._creationTime < cutoff) {
-        await ctx.db.delete(record._id);
-        deleted += 1;
-        if (deleted >= MAX_DELETES) break;
-      }
+    const toDelete = candidates.filter((r) => r._creationTime < cutoff);
+
+    if (toDelete.length > 0) {
+      await Promise.all(toDelete.map((r) => ctx.db.delete(r._id)));
     }
 
-    return { deleted, scanned: summaryPage.length };
+    return { deleted: toDelete.length, scanned: candidates.length };
   },
 });

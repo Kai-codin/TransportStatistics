@@ -35,8 +35,19 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
     localStorage.setItem("showTrains", JSON.stringify(showTrains));
   }, [showBuses, showTrains]);
 
-  // Change: keyed map instead of flat array
+  // Refs so the polling loop always reads the latest values without restarting
+  const boundsRef = useRef(bounds);
+  const showBusesRef = useRef(showBuses);
+  const showTrainsRef = useRef(showTrains);
+
+  useEffect(() => { boundsRef.current = bounds; }, [bounds]);
+  useEffect(() => { showBusesRef.current = showBuses; }, [showBuses]);
+  useEffect(() => { showTrainsRef.current = showTrains; }, [showTrains]);
+
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+
+  // Stable ref to the fetch function so external triggers can call it
+  const fetchVehiclesRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
@@ -188,18 +199,17 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
       .setPopup(popup);
   };
 
-  const updateMarkerElement = (marker: maplibregl.Marker, item: any, type: "train" | "bus") => {
-    // Just move it — popup and click handler are untouched
+  const updateMarkerElement = (marker: maplibregl.Marker, item: any) => {
     marker.setLngLat([item.location.lon, item.location.lat]);
-
-    // Optionally update the rotation of the inner div without rebuilding the whole element
     const inner = marker.getElement().querySelector<HTMLElement>("div[style*='transform:rotate']");
     if (inner) {
       inner.style.transform = `rotate(${item.rotation || 0}deg)`;
     }
   };
 
-  // ── Polling Logic ──────────────────────────────────────────────────────────
+  // ── Core polling effect — runs once per map instance ──────────────────────
+  // Bounds and filters are read via refs, so this never restarts on map moves
+  // or filter toggles (which would flash all markers).
   useEffect(() => {
     if (!map) return;
 
@@ -208,7 +218,10 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
         if (typeof (map as any).isStyleLoaded === "function" && !(map as any).isStyleLoaded()) return;
         if (!map.getSource || !map.getLayer || !map.getSource("vehicles-source")) return;
 
-        const { minLat, maxLat, minLon, maxLon } = bounds;
+        const { minLat, maxLat, minLon, maxLon } = boundsRef.current;
+        const showBuses = showBusesRef.current;
+        const showTrains = showTrainsRef.current;
+
         const res = await fetch(
           `/api/live-vehicles?xmin=${minLon}&ymin=${minLat}&xmax=${maxLon}&ymax=${maxLat}&showTrains=${showTrains}&showBuses=${showBuses}&debug=true`
         );
@@ -228,7 +241,6 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
         }
 
         if (allVehicles.length > DENSITY_THRESHOLD) {
-          // High density: use GeoJSON layer, clear individual markers
           markersRef.current.forEach((m) => m.remove());
           markersRef.current.clear();
 
@@ -248,10 +260,7 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
             console.warn("Skipped setLayoutProperty(visible)", err);
           }
         } else {
-          // Diff existing markers against new data
           const incomingIds = new Set(allVehicles.map((v: any) => String(v.id)));
-
-          // Remove vehicles no longer in the response
           markersRef.current.forEach((marker, id) => {
             if (!incomingIds.has(id)) {
               marker.remove();
@@ -259,11 +268,10 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
             }
           });
 
-          // Update existing or create new
           filteredTrains.forEach((t: any) => {
             const id = String(t.id);
             if (markersRef.current.has(id)) {
-              updateMarkerElement(markersRef.current.get(id)!, t, "train");
+              updateMarkerElement(markersRef.current.get(id)!, t);
             } else {
               markersRef.current.set(id, createMarker(t, "train").addTo(map));
             }
@@ -272,7 +280,7 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
           filteredBuses.forEach((b: any) => {
             const id = String(b.id);
             if (markersRef.current.has(id)) {
-              updateMarkerElement(markersRef.current.get(id)!, b, "bus");
+              updateMarkerElement(markersRef.current.get(id)!, b);
             } else {
               markersRef.current.set(id, createMarker(b, "bus").addTo(map));
             }
@@ -281,14 +289,30 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
       } catch (e) { console.error("Failed to update vehicles", e); }
     };
 
+    // Expose the fetch function so bounds/filter change effects can call it
+    fetchVehiclesRef.current = fetchVehicles;
+
     const interval = setInterval(fetchVehicles, POLL_INTERVAL_MS);
     fetchVehicles();
+
     return () => {
+      fetchVehiclesRef.current = null;
       clearInterval(interval);
       markersRef.current.forEach((m) => m.remove());
       markersRef.current.clear();
     };
-  }, [map, bounds, showBuses, showTrains]);
+  }, [map]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch immediately when bounds change (map pan/zoom), but don't restart
+  // the polling effect — markers stay on screen with no flash.
+  useEffect(() => {
+    fetchVehiclesRef.current?.();
+  }, [bounds]);
+
+  // Re-fetch immediately when filters toggle
+  useEffect(() => {
+    fetchVehiclesRef.current?.();
+  }, [showBuses, showTrains]);
 
   return (
     <div className="absolute top-4 left-12 p-2 rounded shadow-md flex flex-col gap-1 text-sm z-10"

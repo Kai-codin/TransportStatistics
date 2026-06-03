@@ -35,6 +35,11 @@ export default defineSchema({
     .index("by_active", ["active"])
     .index("by_lat_lon", ["lat", "lon"]),
 
+  ridIndex: defineTable({
+    rid: v.string(),
+  })
+    .index("by_rid", ["rid"]),
+
   trainDetails: defineTable({
     rid: v.string(),
     toc_code: v.string(),

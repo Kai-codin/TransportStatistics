@@ -10,18 +10,18 @@ export const fixTripLogsPaginated = mutation({
     cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // On the first page, wipe all seenUnits.
+    // Use paginated deletes to avoid loading the entire table into memory.
     if (!args.cursor) {
       const allSeen = await ctx.db.query("seenUnits").collect();
       await Promise.all(allSeen.map((doc) => ctx.db.delete(doc._id)));
       console.log(`Wiped ${allSeen.length} seenUnits entries`);
     }
 
-    // ⚠️ Can't sort by service_date via paginate, so fetch all and sort manually on first page only
-    // Instead: collect ALL trips, sort by service_date asc, then paginate via slice
     const result = await ctx.db
       .query("tripLogs")
-      .withIndex("by_user_date_departure") // uses the composite index
-      .order("asc") // this now orders by (user, service_date, scheduled_departure) asc
+      .withIndex("by_user_date_departure")
+      .order("asc")
       .paginate({
         cursor: args.cursor ?? null,
         numItems: 250,
@@ -29,10 +29,20 @@ export const fixTripLogsPaginated = mutation({
 
     console.log(`Processing ${result.page.length} trips`);
 
+    // --- Step 1: Derive all (user, vehicleKey) pairs needed for this page ---
+    type TripMeta = {
+      trip: Doc<"tripLogs">;
+      uniqueKeys: string[];
+    };
+
+    const tripMetas: TripMeta[] = [];
+
+    // Also collect every unique (user, vehicleKey) pair so we can batch-lookup
+    // seenUnits in parallel rather than one-at-a-time inside a loop.
+    const lookupPairs = new Map<string, { user: string; vehicle_key: string }>();
+
     for (const trip of result.page) {
-      const operator = trip.operator;
-      const user = trip.user;
-      const transportType = trip.transport_type;
+      const { operator, transport_type: transportType } = trip;
 
       const rawUnits = (trip.units ?? []) as Array<{
         unit_number?: string;
@@ -40,10 +50,11 @@ export const fixTripLogsPaginated = mutation({
       }>;
 
       const normalizedUnits: Array<{ unit_number?: string; unit_reg?: string }> = [];
+
       for (const unit of rawUnits) {
         const reg = unit.unit_reg?.replace(/\s+/g, "").toUpperCase();
         if (unit.unit_number?.includes(" + ")) {
-          for (const num of unit.unit_number.split(" + ").map(s => s.trim()).filter(Boolean)) {
+          for (const num of unit.unit_number.split(" + ").map((s) => s.trim()).filter(Boolean)) {
             normalizedUnits.push({ unit_number: num, unit_reg: reg });
           }
         } else {
@@ -60,38 +71,83 @@ export const fixTripLogsPaginated = mutation({
 
       const vehicleKeys: string[] = [];
       for (const unit of normalizedUnits) {
-        let key: string | undefined;
-        if (transportType === "Bus") {
-          key = unit.unit_reg ?? unit.unit_number;
-        } else {
-          key = unit.unit_number ?? unit.unit_reg;
-        }
+        const key =
+          transportType === "Bus"
+            ? (unit.unit_reg ?? unit.unit_number)
+            : (unit.unit_number ?? unit.unit_reg);
         if (key) vehicleKeys.push(`${operator}_${key}`);
       }
 
       const uniqueKeys = [...new Set(vehicleKeys)];
+      tripMetas.push({ trip, uniqueKeys });
+
+      for (const key of uniqueKeys) {
+        const lookupKey = `${trip.user}__${key}`;
+        if (!lookupPairs.has(lookupKey)) {
+          lookupPairs.set(lookupKey, { user: trip.user, vehicle_key: key });
+        }
+      }
+    }
+
+    // --- Step 2: Batch-lookup all seenUnits for this page in parallel ---
+    const seenResults = await Promise.all(
+      [...lookupPairs.values()].map(({ user, vehicle_key }) =>
+        ctx.db
+          .query("seenUnits")
+          .withIndex("by_user_vehicle", (q) =>
+            q.eq("user", user).eq("vehicle_key", vehicle_key)
+          )
+          .first()
+          .then((doc) => ({ user, vehicle_key, exists: doc !== null }))
+      )
+    );
+
+    // Build an in-memory set of already-seen keys: "user__vehicleKey"
+    const alreadySeen = new Set<string>();
+    for (const { user, vehicle_key, exists } of seenResults) {
+      if (exists) alreadySeen.add(`${user}__${vehicle_key}`);
+    }
+
+    // --- Step 3: Compute patches and inserts, then execute in parallel ---
+    const inserts: Array<{ user: string; vehicle_key: string }> = [];
+    const patches: Array<{
+      id: Id<"tripLogs">;
+      vehicle_keys: string[];
+      first_units: string[];
+      first_time: boolean;
+    }> = [];
+
+    for (const { trip, uniqueKeys } of tripMetas) {
       const firstUnits: string[] = [];
 
       for (const key of uniqueKeys) {
-        const exists = await ctx.db
-          .query("seenUnits")
-          .withIndex("by_user_vehicle", (q) =>
-            q.eq("user", user).eq("vehicle_key", key)
-          )
-          .first();
-
-        if (!exists) {
+        const lookupKey = `${trip.user}__${key}`;
+        if (!alreadySeen.has(lookupKey)) {
           firstUnits.push(key);
-          await ctx.db.insert("seenUnits", { user, vehicle_key: key });
+          // Mark as seen in-memory so subsequent trips on this page that share
+          // a vehicle key don't incorrectly treat it as a first encounter.
+          alreadySeen.add(lookupKey);
+          inserts.push({ user: trip.user, vehicle_key: key });
         }
       }
 
-      await ctx.db.patch(trip._id, {
+      patches.push({
+        id: trip._id,
         vehicle_keys: uniqueKeys,
         first_units: firstUnits,
         first_time: firstUnits.length > 0,
       });
     }
+
+    // Fire all inserts and patches in parallel
+    await Promise.all([
+      ...inserts.map(({ user, vehicle_key }) =>
+        ctx.db.insert("seenUnits", { user, vehicle_key })
+      ),
+      ...patches.map(({ id, vehicle_keys, first_units, first_time }) =>
+        ctx.db.patch(id, { vehicle_keys, first_units, first_time })
+      ),
+    ]);
 
     return {
       continueCursor: result.continueCursor,
@@ -428,62 +484,86 @@ async function lookupStopByCode(ctx: QueryCtx, code?: string) {
     .first();
 }
 
-async function lookupOperatorBySlugOrName(ctx: QueryCtx, slug?: string, operatorName?: string) {
+async function lookupOperatorBySlugOrName(
+  ctx: QueryCtx,
+  slug?: string,
+  operatorName?: string
+) {
   const normalizedSlug = slug?.trim().toLowerCase();
   const normalizedName = operatorName?.trim().toLowerCase();
 
-  if (normalizedSlug) {
-    const bySlug = await ctx.db
-      .query("operators")
-      .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", normalizedSlug as never))
-      .unique();
+  // Run both indexed lookups in parallel when both values are present
+  const [bySlug, byName] = await Promise.all([
+    normalizedSlug
+      ? ctx.db
+          .query("operators")
+          .withIndex("by_operator_slugs", (q) =>
+            q.eq("operator_slugs", normalizedSlug as never)
+          )
+          .first()
+      : Promise.resolve(null),
+    normalizedName
+      ? ctx.db
+          .query("operators")
+          .withIndex("by_operator_names", (q) =>
+            q.eq("operator_names", normalizedName as never)
+          )
+          .first()
+      : Promise.resolve(null),
+  ]);
 
-    if (bySlug) return bySlug;
-  }
+  if (bySlug) return bySlug;
+  if (byName) return byName;
 
-  if (!normalizedName) return null;
-
-  const byOperatorName = await ctx.db
-    .query("operators")
-    .withIndex("by_operator_names", (q) => q.eq("operator_names", normalizedName as never))
-    .first();
-
-  if (byOperatorName) return byOperatorName;
+  // Last-resort: full scan for display_name match or fuzzy slug/name match.
+  // This only runs when both indexed lookups miss, which should be rare in
+  // practice. Consider adding a by_display_name index to eliminate this path.
+  if (!normalizedName && !normalizedSlug) return null;
 
   const operators = await ctx.db.query("operators").collect();
 
-  return operators.find((operator) => {
-    const displayName = operator.display_name?.trim().toLowerCase();
-    const names = (operator.operator_names ?? []).map((name: string) => name.trim().toLowerCase());
-    const slugs = (operator.operator_slugs ?? []).map((value: string) => value.trim().toLowerCase());
-
-    return displayName === normalizedName || names.includes(normalizedName) || slugs.includes(normalizedSlug ?? "");
-  }) ?? null;
+  return (
+    operators.find((operator) => {
+      const displayName = operator.display_name?.trim().toLowerCase();
+      const names = (operator.operator_names ?? []).map((n: string) =>
+        n.trim().toLowerCase()
+      );
+      const slugs = (operator.operator_slugs ?? []).map((s: string) =>
+        s.trim().toLowerCase()
+      );
+      return (
+        (normalizedName && (displayName === normalizedName || names.includes(normalizedName))) ||
+        (normalizedSlug && slugs.includes(normalizedSlug))
+      );
+    }) ?? null
+  );
 }
 
 async function lookupRailDetailsByTrip(ctx: QueryCtx, trip: Doc<"tripLogs">) {
   if (trip.transport_type !== "Rail") return null;
 
-  const candidates = [trip.service_number, trip.bustimes_service_slug, trip.vehicle_key]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const candidates = [trip.service_number, trip.bustimes_service_slug, trip.vehicle_key].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
 
-  for (const candidate of candidates) {
-    const byUid = await ctx.db
-      .query("trainDetails")
-      .withIndex("by_uid", (q) => q.eq("uid", candidate))
-      .first();
+  if (candidates.length === 0) return null;
 
-    if (byUid) return byUid;
+  // Issue all uid + rid lookups in parallel
+  const results = await Promise.all(
+    candidates.flatMap((candidate) => [
+      ctx.db
+        .query("trainDetails")
+        .withIndex("by_uid", (q) => q.eq("uid", candidate))
+        .first(),
+      ctx.db
+        .query("trainDetails")
+        .withIndex("by_rid", (q) => q.eq("rid", candidate))
+        .first(),
+    ])
+  );
 
-    const byRid = await ctx.db
-      .query("trainDetails")
-      .withIndex("by_rid", (q) => q.eq("rid", candidate))
-      .first();
-
-    if (byRid) return byRid;
-  }
-
-  return null;
+  // Return the first non-null result, preserving the original uid-before-rid priority
+  return results.find((r) => r !== null) ?? null;
 }
 
 export const getTripById = query({
@@ -524,29 +604,34 @@ export const getTripDetailsById = query({
   },
   handler: async (ctx, args) => {
     const trip = await ctx.db.get(args.tripId);
-
     if (!trip || trip.user !== args.userId) return null;
 
-    const originStop = await lookupStopByCode(ctx, trip.origin_stop_code);
-    const destinationStop = await lookupStopByCode(ctx, trip.destination_stop_code);
-    const operatorRecord = await lookupOperatorBySlugOrName(ctx, trip.operator_slug, trip.operator);
-    const railDetails = await lookupRailDetailsByTrip(ctx, trip);
+    // Run all independent lookups in parallel
+    const [originStop, destinationStop, operatorRecord, railDetails, routeDetails] =
+      await Promise.all([
+        lookupStopByCode(ctx, trip.origin_stop_code),
+        lookupStopByCode(ctx, trip.destination_stop_code),
+        lookupOperatorBySlugOrName(ctx, trip.operator_slug, trip.operator),
+        lookupRailDetailsByTrip(ctx, trip),
+        getRouteDetails(ctx, trip),
+      ]);
 
     const units = normalizeTripUnits(trip.units);
-    const fallbackUnits = units.length > 0
-      ? units
-      : normalizeTripUnits([
-          {
-            unit_number: trip.unit_number,
-            unit_reg: trip.unit_reg,
-            unit_type: trip.unit_type,
-            livery: trip.livery_name,
-            livery_left: trip.livery_css,
-          },
-        ]);
+    const fallbackUnits =
+      units.length > 0
+        ? units
+        : normalizeTripUnits([
+            {
+              unit_number: trip.unit_number,
+              unit_reg: trip.unit_reg,
+              unit_type: trip.unit_type,
+              livery: trip.livery_name,
+              livery_left: trip.livery_css,
+            },
+          ]);
 
     return {
-      trip: await attachRouteDetails(ctx, trip),
+      trip: { ...toTripSummary(trip), ...routeDetails },
       originStop,
       destinationStop,
       operatorRecord,
@@ -686,37 +771,38 @@ export const logTrip = mutation({
   args: tripLogArgs,
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-
-    if (!identity) {
-      throw new Error("You must be signed in to log a trip.");
-    }
-
-    await ensureUserRecord(ctx, identity);
+    if (!identity) throw new Error("You must be signed in to log a trip.");
 
     const primaryUnit = getPrimaryUnit(args.units);
     const unit_number = primaryUnit?.unit_number;
     const unit_reg = normalizeReg(primaryUnit?.unit_reg);
-    const vehicle_key = getVehicleKeyForTransport({ ...primaryUnit, unit_reg }, args.transport_type);
-    const first_time = !(await hasExistingTripWithVehicle(ctx, identity.subject, args.operator, vehicle_key));
+    const vehicle_key = getVehicleKeyForTransport(
+      { ...primaryUnit, unit_reg },
+      args.transport_type
+    );
+
     const { full_route, ridden_route, ...tripFields } = args;
     const distance_km = calculateDistanceKm(full_route, ridden_route);
+
+    // ensureUserRecord and hasExistingTripWithVehicle are independent — run in parallel
+    const [, existingTripExists] = await Promise.all([
+      ensureUserRecord(ctx, identity),
+      hasExistingTripWithVehicle(ctx, identity.subject, args.operator, vehicle_key),
+    ]);
 
     const tripId = await ctx.db.insert("tripLogs", {
       user: identity.subject,
       on_trip_with: [],
       logged_at: Date.now(),
-
       ...tripFields,
-
       unit_number,
       unit_reg,
       unit_type: primaryUnit?.unit_type,
       livery_name: primaryUnit?.livery,
       livery_css: primaryUnit?.livery_left,
       distance_km,
-
       vehicle_key,
-      first_time,
+      first_time: !existingTripExists,
     });
 
     await saveRouteDetails(ctx, tripId, identity.subject, { full_route, ridden_route });
@@ -729,13 +815,9 @@ export const updateTrip = mutation({
   args: tripLogUpdateArgs,
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-
-    if (!identity) {
-      throw new Error("You must be signed in to edit a trip.");
-    }
+    if (!identity) throw new Error("You must be signed in to edit a trip.");
 
     const existingTrip = await ctx.db.get(args.tripId);
-
     if (!existingTrip || existingTrip.user !== identity.subject) {
       throw new Error("Trip not found.");
     }
@@ -743,10 +825,25 @@ export const updateTrip = mutation({
     const primaryUnit = getPrimaryUnit(args.units);
     const unit_number = primaryUnit?.unit_number;
     const unit_reg = normalizeReg(primaryUnit?.unit_reg);
-    const vehicle_key = getVehicleKeyForTransport({ ...primaryUnit, unit_reg }, args.transport_type);
-    const first_time = !(await hasExistingTripWithVehicle(ctx, identity.subject, args.operator, vehicle_key, args.tripId));
+    const vehicle_key = getVehicleKeyForTransport(
+      { ...primaryUnit, unit_reg },
+      args.transport_type
+    );
+
     const { full_route, ridden_route } = args;
     const distance_km = calculateDistanceKm(full_route, ridden_route);
+
+    // Vehicle check and route detail lookup are independent — run in parallel
+    const [existingTripExists] = await Promise.all([
+      hasExistingTripWithVehicle(
+        ctx,
+        identity.subject,
+        args.operator,
+        vehicle_key,
+        args.tripId
+      ),
+      saveRouteDetails(ctx, args.tripId, identity.subject, { full_route, ridden_route }),
+    ]);
 
     await ctx.db.patch(args.tripId, {
       service_number: args.service_number,
@@ -773,10 +870,8 @@ export const updateTrip = mutation({
       livery_name: primaryUnit?.livery,
       livery_css: primaryUnit?.livery_left,
       vehicle_key,
-      first_time,
+      first_time: !existingTripExists,
     });
-
-    await saveRouteDetails(ctx, args.tripId, identity.subject, { full_route, ridden_route });
 
     return args.tripId;
   },

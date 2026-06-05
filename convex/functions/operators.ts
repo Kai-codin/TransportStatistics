@@ -103,37 +103,32 @@ export const getUserRiddenOperators = query({
 
     if (!trips.length) return [];
 
-    // Clean and normalize slugs from trip logs
-    const riddenSlugs = [...new Set(
-      trips.map((t) => t.operator_slug?.toLowerCase().trim()).filter(Boolean)
-    )];
+    const riddenSlugs = [
+      ...new Set(
+        trips.map((t) => t.operator_slug?.toLowerCase().trim()).filter(Boolean)
+      ),
+    ];
 
-    const results: Doc<"operators">[] = [];
-    
-    // We'll fetch all operators once to do a manual "in-memory" match 
-    // as a fallback if the index match is being finicky with array types.
+    // Single pass: build slug→op and code→op maps in memory.
     const allOps = await ctx.db.query("operators").collect();
-
-    for (const slug of riddenSlugs) {
-      // 1. Try the optimized index path first
-      let op = await ctx.db
-        .query("operators")
-        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", slug as any))
-        .unique();
-      
-      // 2. Fallback: Manual search in the local list (prevents index/type mismatches)
-      if (!op) {
-        op = allOps.find(o => 
-          o.operator_slugs?.some(s => s.toLowerCase() === slug)
-        ) ?? null;
+    const slugToOp = new Map<string, Doc<"operators">>();
+    const codeToOp = new Map<string, Doc<"operators">>();
+    for (const op of allOps) {
+      for (const slug of op.operator_slugs ?? []) {
+        slugToOp.set(slug.toLowerCase(), op);
       }
-      
-      if (op && !results.some(r => r._id === op._id)) {
-        results.push(op);
+      for (const code of op.operator_codes ?? []) {
+        codeToOp.set(code.toLowerCase(), op);
       }
     }
 
-    return results.sort((a, b) => 
+    const results = new Map<string, Doc<"operators">>();
+    for (const slug of riddenSlugs) {
+      const op = slugToOp.get(slug) ?? codeToOp.get(slug);
+      if (op) results.set(op._id, op);
+    }
+
+    return [...results.values()].sort((a, b) =>
       (a.display_name ?? "").localeCompare(b.display_name ?? "")
     );
   },

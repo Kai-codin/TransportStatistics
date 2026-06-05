@@ -492,8 +492,7 @@ async function lookupOperatorBySlugOrName(
   const normalizedSlug = slug?.trim().toLowerCase();
   const normalizedName = operatorName?.trim().toLowerCase();
 
-  // Run both indexed lookups in parallel when both values are present
-  const [bySlug, byName] = await Promise.all([
+  const [bySlug, byName, byDisplayName] = await Promise.all([
     normalizedSlug
       ? ctx.db
           .query("operators")
@@ -510,16 +509,24 @@ async function lookupOperatorBySlugOrName(
           )
           .first()
       : Promise.resolve(null),
+    operatorName
+      ? ctx.db
+          .query("operators")
+          .withIndex("by_display_name", (q) =>
+            q.eq("display_name", operatorName.trim())
+          )
+          .first()
+      : Promise.resolve(null),
   ]);
 
   if (bySlug) return bySlug;
   if (byName) return byName;
+  if (byDisplayName) return byDisplayName;
 
-  // Last-resort: full scan for display_name match or fuzzy slug/name match.
-  // This only runs when both indexed lookups miss, which should be rare in
-  // practice. Consider adding a by_display_name index to eliminate this path.
   if (!normalizedName && !normalizedSlug) return null;
 
+  // Fallback: collect all and do case-insensitive match.
+  // Operators table is small (<200 rows) so this is cheap.
   const operators = await ctx.db.query("operators").collect();
 
   return (

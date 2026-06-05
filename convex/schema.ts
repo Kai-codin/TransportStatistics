@@ -125,7 +125,8 @@ export default defineSchema({
   .index("by_bustimes_id", ["bustimes_id"])
   .index("by_operator_names", ["operator_names"])
   .index("by_operator_slugs", ["operator_slugs"])
-  .index("by_operator_codes", ["operator_codes"]),
+    .index("by_operator_codes", ["operator_codes"])
+    .index("by_display_name", ["display_name"]),
 
   historicalRoutes: defineTable({
     bustimes_service_id: v.optional(v.number()),

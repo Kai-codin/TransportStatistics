@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 
 function toTripMatchSummary(trip: Doc<"tripLogs">) {
   return {
@@ -83,8 +83,9 @@ export const getUserTripsByOperator = query({
   handler: async (ctx, args) => {
     const trips = await ctx.db
       .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.user))
-      .filter((q) => q.eq(q.field("operator"), args.operatorName))
+      .withIndex("by_user_and_operator", (q) =>
+        q.eq("user", args.user).eq("operator", args.operatorName)
+      )
       .collect();
     return trips.map(toTripMatchSummary);
   },
@@ -115,48 +116,74 @@ export const getDetailsByUnits = query({
   handler: async (ctx, args) => {
     const vehicles: Record<string, any> = {};
 
+    // Batch-fetch all units in parallel
+    const unitResults = await Promise.all(
+      args.unitNumbers.map((unitNumber) =>
+        unitNumber === "unknown"
+          ? Promise.resolve(null)
+          : ctx.db
+              .query("units")
+              .withIndex("unit_number", (q) => q.eq("unit_number", unitNumber))
+              .first()
+      )
+    );
+
+    // Collect unique type/livery IDs for batch resolution
+    const typeIds = new Set<string>();
+    const liveryIds = new Set<string>();
+    const validUnits = unitResults.filter((u): u is NonNullable<typeof u> => u !== null);
+    for (const unit of validUnits) {
+      const typeId = ctx.db.normalizeId("types", unit.type_id);
+      if (typeId) typeIds.add(typeId);
+      const liveryId = ctx.db.normalizeId("liveries", unit.livery_id);
+      if (liveryId) liveryIds.add(liveryId);
+    }
+
+    // Batch-resolve all types and liveries in parallel
+    const [types, liveries] = await Promise.all([
+      Promise.all([...typeIds].map((id) => ctx.db.get(id as Id<"types">))),
+      Promise.all([...liveryIds].map((id) => ctx.db.get(id as Id<"liveries">))),
+    ]);
+
+    const typeMap = new Map(
+      types.filter((t): t is NonNullable<typeof t> => t !== null).map((t) => [t._id, t])
+    );
+    const liveryMap = new Map(
+      liveries.filter((l): l is NonNullable<typeof l> => l !== null).map((l) => [l._id, l])
+    );
+
     for (let i = 0; i < args.unitNumbers.length; i++) {
       const unitNumber = args.unitNumbers[i];
 
-      // 1. Skip if it's the "unknown" fallback from your scraper
       if (unitNumber === "unknown") {
         vehicles[i.toString()] = {
           unit_number: "unknown",
           unit_type: "Unknown",
           livery: "Unknown",
-          livery_left: ""
+          livery_left: "",
         };
         continue;
       }
 
-      // 2. Find the unit in the database
-      const unit = await ctx.db
-        .query("units")
-        .withIndex("unit_number", (q) => q.eq("unit_number", unitNumber))
-        .first();
-
+      const unit = unitResults[i];
       if (unit) {
-        // 3. Resolve the Type and Livery using the IDs
         const typeId = ctx.db.normalizeId("types", unit.type_id);
-        const type = typeId ? await ctx.db.get(typeId) : null;
-        
+        const type = typeId ? typeMap.get(typeId) : null;
         const liveryId = ctx.db.normalizeId("liveries", unit.livery_id);
-        const livery = liveryId ? await ctx.db.get(liveryId) : null;
+        const livery = liveryId ? liveryMap.get(liveryId) : null;
 
-        // 4. Build the output object
         vehicles[i.toString()] = {
           unit_number: unit.unit_number || unitNumber,
           unit_type: type ? type.type_name : "Unknown",
           livery: livery ? livery.livery_name : "Unknown",
-          livery_left: livery ? livery.css_class : ""
+          livery_left: livery ? livery.css_class : "",
         };
       } else {
-        // Fallback if the unit exists in RTT but isn't saved in your DB yet
         vehicles[i.toString()] = {
           unit_number: unitNumber,
           unit_type: "Unknown",
           livery: "Unknown",
-          livery_left: ""
+          livery_left: "",
         };
       }
     }

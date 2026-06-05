@@ -25,83 +25,60 @@ export const getUserStats = query({
   args: { user: v.string(), year: v.optional(v.number()), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const timeZone = args.timeZone ?? "UTC";
-    const allTrips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.user))
-      .collect();
 
-    if (allTrips.length === 0) return null;
+    // When year is specified, filter at DB level — avoids reading all trips
+    let trips: Doc<"tripLogs">[];
+    if (args.year) {
+      const yearStart = Date.UTC(args.year, 0, 1);
+      const yearEnd = Date.UTC(args.year + 1, 0, 1);
+      trips = await ctx.db
+        .query("tripLogs")
+        .withIndex("by_user_service_date", (q) =>
+          q.eq("user", args.user).gte("service_date", yearStart).lt("service_date", yearEnd)
+        )
+        .collect();
+    } else {
+      trips = await ctx.db
+        .query("tripLogs")
+        .withIndex("by_user", (q) => q.eq("user", args.user))
+        .collect();
+    }
 
-    const availableYears = [...new Set(allTrips.map((t) => getYearFromTimestamp(t.service_date, timeZone)))]
-      .sort((a, b) => b - a);
-
-    const trips = args.year 
-      ? allTrips.filter((t) => getYearFromTimestamp(t.service_date, timeZone) === args.year)
-      : allTrips;
-    
     if (trips.length === 0) return null;
 
-    // --- Most ridden livery ---
-    const liveryCounts: Record<string, { count: number; css: string; name: string }> = {};
-    for (const trip of trips) {
-      const units: any[] = Array.isArray(trip.units) ? trip.units : [];
-      for (const unit of units) {
-        const name = unit.livery ?? trip.livery_name ?? '';
-        const css = unit.livery_left ?? trip.livery_css ?? '';
-        if (!name) continue;
-        if (!liveryCounts[name]) liveryCounts[name] = { count: 0, css, name };
-        liveryCounts[name].count++;
-      }
-      if (units.length === 0 && trip.livery_name) {
-        const name = trip.livery_name;
-        if (!liveryCounts[name]) liveryCounts[name] = { count: 0, css: trip.livery_css ?? '', name };
-        liveryCounts[name].count++;
-      }
-    }
-    const topLiveries = Object.values(liveryCounts).sort((a, b) => b.count - a.count).slice(0, 10);
-
-    // --- Most ridden type ---
-    const typeCounts: Record<string, number> = {};
-    for (const trip of trips) {
-      const type = trip.transport_type ?? 'Other';
-      typeCounts[type] = (typeCounts[type] ?? 0) + 1;
-    }
-    const topTypes = Object.entries(typeCounts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    // --- Most ridden operator ---
-    const operatorCounts: Record<string, { count: number; slug: string }> = {};
-    for (const trip of trips) {
-      const name = trip.operator ?? 'Unknown';
-      if (!operatorCounts[name]) operatorCounts[name] = { count: 0, slug: trip.operator_slug ?? '' };
-      operatorCounts[name].count++;
-    }
-    const topOperators = Object.entries(operatorCounts)
-      .map(([name, { count, slug }]) => ({ name, count, slug }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
-    // --- Distance travelled ---
+    // ── Single pass through trips for all stats ──
     let totalDistanceKm = 0;
+    let totalMinutes = 0;
+    let totalDelayMins = 0;
+    let punctualityCount = 0;
+    let tripWithTimes = 0;
+    const liveryCounts: Record<string, { count: number; css: string; name: string }> = {};
+    const typeCounts: Record<string, number> = {};
+    const operatorCounts: Record<string, { count: number; slug: string }> = {};
+    const tripsByMonth: Record<string, number> = {};
+    const routeGroups: Record<string, { count: number; serviceNum: string; stationPairs: Record<string, number> }> = {};
+    const companionCounts: Record<string, number> = {};
+    const dayOfWeekCounts: Record<string, number> = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const unitTypeCounts: Record<string, number> = {};
+    const stopCounts: Record<string, number> = {};
+    const dailyCounts: Record<string, number> = {};
+    const allDates = new Set<string>();
+
     for (const trip of trips) {
+      // Distance
       if (typeof trip.distance_km === "number") {
         totalDistanceKm += trip.distance_km;
-        continue;
+      } else {
+        const routes = await getTripRoutes(ctx, trip);
+        const coords: [number, number][] =
+          routes.ridden_route?.geometry?.coordinates ?? routes.full_route?.coordinates ?? [];
+        for (let i = 1; i < coords.length; i++) {
+          totalDistanceKm += haversineKm(coords[i - 1], coords[i]);
+        }
       }
 
-      const routes = await getTripRoutes(ctx, trip);
-      const coords: [number, number][] = routes.ridden_route?.geometry?.coordinates
-        ?? routes.full_route?.coordinates
-        ?? [];
-      for (let i = 1; i < coords.length; i++) {
-        totalDistanceKm += haversineKm(coords[i - 1], coords[i]);
-      }
-    }
-
-    // --- Time spent travelling ---
-    let totalMinutes = 0;
-    for (const trip of trips) {
+      // Time & Delay
       const dep = trip.actual_departure ?? trip.scheduled_departure;
       const arr = trip.actual_arrival ?? trip.scheduled_arrival;
       if (dep && arr) {
@@ -109,96 +86,9 @@ export const getUserStats = query({
         const arrDate = new Date(`${formatDate(trip.service_date, timeZone)}T${arr}`);
         const diff = (arrDate.getTime() - depDate.getTime()) / 60000;
         if (diff > 0 && diff < 1440) totalMinutes += diff;
-      }
-    }
 
-    // --- Trips per month ---
-    const tripsByMonth: Record<string, number> = {};
-    for (const trip of trips) {
-      const { year, month } = getDateParts(trip.service_date, timeZone);
-      const key = `${year}-${month}`;
-      tripsByMonth[key] = (tripsByMonth[key] ?? 0) + 1;
-    }
-    const tripsPerMonth = Object.entries(tripsByMonth)
-      .map(([month, count]) => ({ month, count }))
-      .sort((a, b) => a.month.localeCompare(b.month));
-
-    // --- Most visited routes (Merged by Service ID) ---
-    const routeGroups: Record<string, { 
-      count: number; 
-      serviceNum: string; 
-      stationPairs: Record<string, number> 
-    }> = {};
-
-    for (const trip of trips) {
-      const origin = trip.origin_name ?? "Unknown";
-      const destination = trip.destination_name ?? "Unknown";
-      const serviceId = trip.bustimes_service_id?.toString();
-      const serviceNum = trip.service_number ?? "Unknown";
-      
-      const sortedStations = [origin, destination].sort();
-      const stationsLabel = `${sortedStations[0]} ↔ ${sortedStations[1]}`;
-      
-      // Use Service ID as group key if available, otherwise Service Number + Stations
-      const groupKey = serviceId 
-        ? `sid-${serviceId}` 
-        : `fallback-${serviceNum}-${stationsLabel}`;
-
-      if (!routeGroups[groupKey]) {
-        routeGroups[groupKey] = { 
-          count: 0, 
-          serviceNum, 
-          stationPairs: {} 
-        };
-      }
-
-      routeGroups[groupKey].count++;
-      routeGroups[groupKey].stationPairs[stationsLabel] = (routeGroups[groupKey].stationPairs[stationsLabel] ?? 0) + 1;
-    }
-
-    // Convert groups into final display format
-    const topRoutes = Object.values(routeGroups)
-      .map((group) => {
-        // Find the most frequent station pair for this group
-        const mostFrequentStations = Object.entries(group.stationPairs)
-          .sort((a, b) => b[1] - a[1])[0][0];
-
-        return {
-          route: `${group.serviceNum}: ${mostFrequentStations}`,
-          count: group.count
-        };
-      })
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-
-    const uniqueOperators = new Set(trips.map((t) => t.operator)).size;
-    const uniqueRoutes = Object.keys(routeGroups).length;
-
-    const tripDates = [...new Set(trips.map((t) => {
-      const { year, month, day } = getDateParts(t.service_date, timeZone);
-      return `${year}-${month}-${day}`;
-    }))].sort();
-
-    let totalDelayMins = 0;
-    let punctualityCount = 0; // "On time" = <= 1 min late
-    let tripWithTimes = 0;
-
-    // --- Social & Companions (3) ---
-    const companionCounts: Record<string, number> = {};
-
-    // --- Time & Heatmap (4) ---
-    const dayOfWeekCounts: Record<string, number> = { 
-      'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 
-    };
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    for (const trip of trips) {
-      // 1. Delays
-      const schArr = trip.scheduled_arrival;
-      const actArr = trip.actual_arrival;
-      if (schArr && actArr) {
-        const schDate = new Date(`1970-01-01T${schArr}`);
-        const actDate = new Date(`1970-01-01T${actArr}`);
+        const schDate = new Date(`1970-01-01T${trip.scheduled_arrival}`);
+        const actDate = new Date(`1970-01-01T${trip.actual_arrival}`);
         const delay = (actDate.getTime() - schDate.getTime()) / 60000;
         if (delay >= 0) {
           totalDelayMins += delay;
@@ -207,79 +97,120 @@ export const getUserStats = query({
         }
       }
 
-      // 3. Social
-      const companions = trip.on_trip_with ?? [];
-      for (const person of companions) {
+      // Liveries & Unit types
+      const units: any[] = Array.isArray(trip.units) ? trip.units : [];
+      for (const unit of units) {
+        const name = unit.livery ?? trip.livery_name ?? "";
+        if (name) {
+          const css = unit.livery_left ?? trip.livery_css ?? "";
+          if (!liveryCounts[name]) liveryCounts[name] = { count: 0, css, name };
+          liveryCounts[name].count++;
+        }
+        const utype = unit.unit_type ?? trip.unit_type;
+        if (utype) unitTypeCounts[utype] = (unitTypeCounts[utype] ?? 0) + 1;
+      }
+      if (units.length === 0) {
+        if (trip.livery_name) {
+          const { livery_name: name, livery_css: css } = trip;
+          if (!liveryCounts[name]) liveryCounts[name] = { count: 0, css: css ?? "", name };
+          liveryCounts[name].count++;
+        }
+        if (trip.unit_type) unitTypeCounts[trip.unit_type] = (unitTypeCounts[trip.unit_type] ?? 0) + 1;
+      }
+
+      // Transport type
+      const ttype = trip.transport_type ?? "Other";
+      typeCounts[ttype] = (typeCounts[ttype] ?? 0) + 1;
+
+      // Operator
+      const opName = trip.operator ?? "Unknown";
+      if (!operatorCounts[opName]) operatorCounts[opName] = { count: 0, slug: trip.operator_slug ?? "" };
+      operatorCounts[opName].count++;
+
+      // Month
+      const { year, month } = getDateParts(trip.service_date, timeZone);
+      const monthKey = `${year}-${month}`;
+      tripsByMonth[monthKey] = (tripsByMonth[monthKey] ?? 0) + 1;
+
+      // Routes
+      const origin = trip.origin_name ?? "Unknown";
+      const destination = trip.destination_name ?? "Unknown";
+      const serviceId = trip.bustimes_service_id?.toString();
+      const serviceNum = trip.service_number ?? "Unknown";
+      const stationsLabel = [origin, destination].sort().join(" ↔ ");
+      const groupKey = serviceId ? `sid-${serviceId}` : `fallback-${serviceNum}-${stationsLabel}`;
+      if (!routeGroups[groupKey]) routeGroups[groupKey] = { count: 0, serviceNum, stationPairs: {} };
+      routeGroups[groupKey].count++;
+      routeGroups[groupKey].stationPairs[stationsLabel] = (routeGroups[groupKey].stationPairs[stationsLabel] ?? 0) + 1;
+
+      // Social
+      for (const person of trip.on_trip_with ?? []) {
         companionCounts[person] = (companionCounts[person] ?? 0) + 1;
       }
 
-      // 4. Time Heatmap
-      const date = new Date(`${formatDate(trip.service_date, timeZone)}T00:00:00`);
-      dayOfWeekCounts[days[date.getDay()]]++;
+      // Day of week
+      const dateStr = formatDate(trip.service_date, timeZone);
+      const dateObj = new Date(`${dateStr}T00:00:00`);
+      dayOfWeekCounts[days[dateObj.getDay()]]++;
+
+      // Stops
+      stopCounts[origin] = (stopCounts[origin] ?? 0) + 1;
+      stopCounts[destination] = (stopCounts[destination] ?? 0) + 1;
+
+      allDates.add(dateStr);
+      dailyCounts[dateStr] = (dailyCounts[dateStr] ?? 0) + 1;
     }
 
-    // --- Most ridden unit types ---
-    const unitTypeCounts: Record<string, number> = {};
-    for (const trip of trips) {
-    const units: any[] = Array.isArray(trip.units) ? trip.units : [];
-    for (const unit of units) {
-        const type = unit.unit_type ?? trip.unit_type;
-        if (type) {
-        unitTypeCounts[type] = (unitTypeCounts[type] ?? 0) + 1;
-        }
-    }
-    // Fallback for trips without a units array
-    if (units.length === 0 && trip.unit_type) {
-        unitTypeCounts[trip.unit_type] = (unitTypeCounts[trip.unit_type] ?? 0) + 1;
-    }
-    }
+    // ── Derive final shapes ──
+    const availableYears = [
+      ...new Set(trips.map((t) => getYearFromTimestamp(t.service_date, timeZone))),
+    ].sort((a, b) => b - a);
 
-    const topUnitTypes = Object.entries(unitTypeCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    const topLiveries = Object.values(liveryCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
 
-    // --- Streaks (4) ---
-    const sortedDates = [...new Set(trips.map((t) => formatDate(t.service_date, timeZone)))].sort();
+    const topTypes = Object.entries(typeCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const topOperators = Object.entries(operatorCounts)
+      .map(([name, { count, slug }]) => ({ name, count, slug }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const tripsPerMonth = Object.entries(tripsByMonth)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const topRoutes = Object.values(routeGroups)
+      .map((g) => ({
+        route: `${g.serviceNum}: ${
+          Object.entries(g.stationPairs).sort((a, b) => b[1] - a[1])[0][0]
+        }`,
+        count: g.count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const sortedDates = [...allDates].sort();
     let maxStreak = 0;
     let currentStreak = 0;
     for (let i = 0; i < sortedDates.length; i++) {
-        if (i > 0) {
-          const prev = new Date(`${sortedDates[i - 1]}T00:00:00`);
-          const curr = new Date(`${sortedDates[i]}T00:00:00`);
-            const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 3600 * 24);
-            if (diffDays === 1) {
-                currentStreak++;
-            } else {
-                currentStreak = 1;
-            }
-        } else {
-            currentStreak = 1;
-        }
-        maxStreak = Math.max(maxStreak, currentStreak);
+      if (i > 0) {
+        const prev = new Date(`${sortedDates[i - 1]}T00:00:00`);
+        const curr = new Date(`${sortedDates[i]}T00:00:00`);
+        currentStreak =
+          (curr.getTime() - prev.getTime()) / (1000 * 3600 * 24) === 1
+            ? currentStreak + 1
+            : 1;
+      } else {
+        currentStreak = 1;
+      }
+      maxStreak = Math.max(maxStreak, currentStreak);
     }
 
-    const topCompanion = Object.entries(companionCounts)
-      .sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
-
-    const dailyCounts: Record<string, number> = {};
-    for (const trip of trips) {
-      const dateKey = formatDate(trip.service_date, timeZone);
-        dailyCounts[dateKey] = (dailyCounts[dateKey] ?? 0) + 1;
-    }
-
-    const stopCounts: Record<string, number> = {};
-    for (const trip of trips) {
-    const origin = trip.origin_name ?? "Unknown";
-    const destination = trip.destination_name ?? "Unknown";
-    stopCounts[origin] = (stopCounts[origin] ?? 0) + 1;
-    stopCounts[destination] = (stopCounts[destination] ?? 0) + 1;
-    }
-
-    const topStops = Object.entries(stopCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    const topCompanion = Object.entries(companionCounts).sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
 
     return {
       totalTrips: trips.length,
@@ -291,11 +222,11 @@ export const getUserStats = query({
       tripsPerMonth,
       tripsByType: topTypes,
       topRoutes,
-      uniqueOperators,
-      uniqueRoutes,
+      uniqueOperators: Object.keys(operatorCounts).length,
+      uniqueRoutes: Object.keys(routeGroups).length,
       availableYears,
-      firstTripDate: tripDates[0] ?? null,
-      latestTripDate: tripDates[tripDates.length - 1] ?? null,
+      firstTripDate: sortedDates[0] ?? null,
+      latestTripDate: sortedDates[sortedDates.length - 1] ?? null,
       onTimePercentage: tripWithTimes > 0 ? Math.round((punctualityCount / tripWithTimes) * 100) : 100,
       avgDelay: tripWithTimes > 0 ? (totalDelayMins / tripWithTimes).toFixed(1) : 0,
       topCompanionName: topCompanion[0],
@@ -303,8 +234,14 @@ export const getUserStats = query({
       maxStreak,
       dayOfWeekCounts: Object.entries(dayOfWeekCounts).map(([day, count]) => ({ day, count })),
       dailyCounts,
-      topUnitTypes,
-      topStops,
+      topUnitTypes: Object.entries(unitTypeCounts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
+      topStops: Object.entries(stopCounts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
     };
   },
 });

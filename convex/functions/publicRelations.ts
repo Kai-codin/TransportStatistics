@@ -13,7 +13,7 @@ export const list = query({
     const targetTable = args.table as TableNames;
     
     // Fallback to basic query scanning if no dynamic index is provided for public queries
-    let queryBuilder = ctx.db.query(targetTable);
+    const queryBuilder = ctx.db.query(targetTable);
 
     const results = await queryBuilder.paginate(args.paginationOpts);
 

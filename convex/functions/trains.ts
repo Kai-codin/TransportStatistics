@@ -577,8 +577,8 @@ export const backfillRidIndex = mutation({
   handler: async (ctx, args) => {
     const { page, continueCursor, isDone } = await ctx.db
       .query("trainDetails")
-      .paginate({ cursor: args.cursor, numItems: 500 });
-
+      .paginate({ cursor: args.cursor ?? null, numItems: 500 });
+      
     if (page.length === 0) return { continueCursor, isDone, inserted: 0 };
 
     // Check which rids already have a ridIndex entry

@@ -13,32 +13,36 @@ export const getLiveryGrid = query({
 
     for (const trip of trips) {
       const units = Array.isArray(trip.units) ? trip.units : [];
-      
       if (units.length > 0) {
         for (const unit of units) {
           const name = unit.livery ?? trip.livery_name;
-          const css = unit.livery_left ?? trip.livery_css; 
-          if (name) updateMap(liveryMap, name, css);
+          const css = unit.livery_left ?? trip.livery_css;
+          if (name) {
+            const entry = liveryMap[name];
+            if (entry) {
+              entry.count++;
+            } else {
+              liveryMap[name] = { name, css: css ?? "", count: 1 };
+            }
+          }
         }
       } else if (trip.livery_name) {
-        updateMap(liveryMap, trip.livery_name, trip.livery_css ?? "");
+        const entry = liveryMap[trip.livery_name];
+        if (entry) {
+          entry.count++;
+        } else {
+          liveryMap[trip.livery_name] = {
+            name: trip.livery_name,
+            css: trip.livery_css ?? "",
+            count: 1,
+          };
+        }
       }
     }
 
     return Object.values(liveryMap).sort((a, b) => {
-      // 1. Primary Sort: Trip Count (Descending)
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      // 2. Secondary Sort: Alphabetical Name (Ascending)
+      if (b.count !== a.count) return b.count - a.count;
       return a.name.localeCompare(b.name);
     });
   },
 });
-
-function updateMap(map: any, name: string, css: string) {
-  if (!map[name]) {
-    map[name] = { name, css, count: 0 };
-  }
-  map[name].count++;
-}

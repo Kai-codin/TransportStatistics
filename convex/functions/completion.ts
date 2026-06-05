@@ -58,13 +58,57 @@ async function getTripRoutes(ctx: QueryCtx, trip: Doc<"tripLogs">) {
 export const getOperatorByAnyCode = query({
   args: { code: v.string() },
   handler: async (ctx, args) => {
-    const searchCode = args.code.toLowerCase();
-    const allOperators = await ctx.db.query("operators").collect();
+    const code = args.code;
 
-    // MUST return the result of the find
-    return allOperators.find((op) => 
-      (op.operator_codes ?? []).some(c => c.toLowerCase() === searchCode) ||
-      (op.operator_slugs ?? []).some(s => s.toLowerCase() === searchCode)
+    // Try indexed lookups in parallel with exact match
+    const [bySlug, byCode] = await Promise.all([
+      ctx.db
+        .query("operators")
+        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", code as never))
+        .first(),
+      ctx.db
+        .query("operators")
+        .withIndex("by_operator_codes", (q) => q.eq("operator_codes", code as never))
+        .first(),
+    ]);
+
+    if (bySlug) return bySlug;
+    if (byCode) return byCode;
+
+    // Try case variations — codes are usually uppercase, slugs lowercase
+    const upper = code.toUpperCase();
+    if (upper !== code) {
+      const byCodeUpper = await ctx.db
+        .query("operators")
+        .withIndex("by_operator_codes", (q) => q.eq("operator_codes", upper as never))
+        .first();
+      if (byCodeUpper) return byCodeUpper;
+    }
+
+    const lower = code.toLowerCase();
+    if (lower !== code) {
+      const bySlugLower = await ctx.db
+        .query("operators")
+        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", lower as never))
+        .first();
+      if (bySlugLower) return bySlugLower;
+    }
+
+    const byDisplayName = await ctx.db
+      .query("operators")
+      .withIndex("by_display_name", (q) => q.eq("display_name", code))
+      .first();
+    if (byDisplayName) return byDisplayName;
+
+    // Fallback: collect all operators and do case-insensitive match in memory.
+    // Array-field indexes can be unreliable — this ensures we always find a match.
+    const searchCode = code.toLowerCase();
+    const allOperators = await ctx.db.query("operators").collect();
+    return (
+      allOperators.find((op) =>
+        (op.operator_codes ?? []).some((c) => c.toLowerCase() === searchCode) ||
+        (op.operator_slugs ?? []).some((s) => s.toLowerCase() === searchCode)
+      ) ?? null
     );
   },
 });

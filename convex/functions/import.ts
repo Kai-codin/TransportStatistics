@@ -35,7 +35,7 @@ export const importBatch = mutation({
 
     let inserted = 0;
     let updated = 0;
-    let skipped = args.features.length - validFeatures.length;
+    const skipped = args.features.length - validFeatures.length;
 
     for (const feature of validFeatures) {
       const stopData = {

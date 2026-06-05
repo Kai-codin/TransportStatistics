@@ -19,6 +19,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" data-ts-theme="dark">
+      <script defer src="https://umami.nextstoplabs.org/script.js" data-website-id="99db04f7-a5bc-47ff-badc-646033044041"></script>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AppProviders>
           <LayoutShell>{children}</LayoutShell>

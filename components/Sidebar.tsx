@@ -10,7 +10,8 @@ import { api } from "@/convex/_generated/api";
 import { useTheme } from "@/components/ThemeProvider";
 import { 
   FileText, Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
-  Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea, Settings
+  Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea, Settings,
+  FolderUp,
 } from "lucide-react";
 
 const navLinks = [
@@ -22,6 +23,7 @@ const navLinks = [
   { name: "Liveries", href: "/liveries", icon: Palette },
   { name: "Update", href: "/update", icon: RefreshCw },
   { name: "Request Edit", href: "/request-edit", icon: Edit },
+  { name: "Import TT", href: "/import/tt", icon: FolderUp },
 ];
 
 const bustimesSourceFeatures = [

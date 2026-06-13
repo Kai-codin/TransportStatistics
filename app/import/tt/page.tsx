@@ -325,6 +325,9 @@ export default function TTImportPage() {
   const [mappings, setMappings] = useState<FieldMapping>({});
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [rawPreview, setRawPreview] = useState<string | null>(null);
+  const [pathSearch, setPathSearch] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const rawData = allTrips[tripIndex] ?? null;
@@ -333,6 +336,19 @@ export default function TTImportPage() {
     if (!rawData) return [];
     return flattenTTKeys(rawData).filter(Boolean);
   }, [rawData]);
+
+  const filteredPaths = useMemo(() => {
+    const mapped = new Set(Object.values(mappings).filter(Boolean));
+    if (!pathSearch.trim()) {
+      return ttFlattened.filter((p) => mapped.has(p)).length > 0
+        ? ttFlattened.filter((p) => mapped.has(p))
+        : ttFlattened.slice(0, 30);
+    }
+    const q = pathSearch.toLowerCase();
+    return ttFlattened.filter(
+      (p) => mapped.has(p) || displayPath(p).toLowerCase().includes(q),
+    );
+  }, [ttFlattened, pathSearch, mappings]);
 
   const ttSummary = useMemo(() => {
     if (!rawData) return null;
@@ -360,16 +376,20 @@ export default function TTImportPage() {
   const handleFile = useCallback(async (file: File) => {
     setParseError('');
     setFileName(file.name);
+    setLoading(true);
     try {
       const text = await file.text();
       const { trips } = parseTTFile(text);
       setAllTrips(trips);
       setTripIndex(0);
       setMappings({});
+      setRawPreview(null);
       setStep('map');
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Failed to parse file');
       setAllTrips([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -498,18 +518,26 @@ export default function TTImportPage() {
         </div>
 
         <Card>
-          <div
-            className="flex cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-ts-border p-12 text-center transition hover:border-ts-accent/50 hover:bg-ts-accent/5"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div className="rounded-full bg-ts-accent/10 p-4 text-ts-accent">
-              <Upload className="h-8 w-8" />
+          {loading ? (
+            <div className="flex flex-col items-center gap-4 rounded-2xl p-12 text-center">
+              <LoaderCircle className="h-8 w-8 animate-spin text-ts-accent" />
+              <p className="text-sm font-semibold text-ts-text-1">Processing file...</p>
+              <p className="text-xs text-ts-text-3">Parsing {fileName}</p>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-ts-text-1">Click to upload TT export JSON</p>
-              <p className="mt-1 text-xs text-ts-text-3">.json files from Transit Tracker data exports</p>
+          ) : (
+            <div
+              className="flex cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-ts-border p-12 text-center transition hover:border-ts-accent/50 hover:bg-ts-accent/5"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="rounded-full bg-ts-accent/10 p-4 text-ts-accent">
+                <Upload className="h-8 w-8" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-ts-text-1">Click to upload TT export JSON</p>
+                <p className="mt-1 text-xs text-ts-text-3">.json files from Transit Tracker data exports</p>
+              </div>
             </div>
-          </div>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -580,13 +608,25 @@ export default function TTImportPage() {
               <StatBadge label="Nodes (Stops)" value={String(ttSummary?.nodeCount ?? 0)} />
               <StatBadge label="Consist (Units)" value={String(ttSummary?.consistCount ?? 0)} />
             </div>
-            <details className="mt-3">
+            <details
+              className="mt-3"
+              onToggle={(e) => {
+                if ((e.target as HTMLDetailsElement).open && !rawPreview) {
+                  setTimeout(() => setRawPreview(JSON.stringify(rawData, null, 2).slice(0, 50000)), 0);
+                }
+              }}
+            >
               <summary className="cursor-pointer text-xs font-semibold text-ts-text-3 hover:text-ts-text-2">
                 Preview raw data
               </summary>
-              <pre className="mt-2 max-h-[300px] overflow-auto rounded-2xl border border-ts-border bg-ts-bg p-3 text-[10px] leading-relaxed text-ts-text-2">
-                {JSON.stringify(rawData, null, 2)}
-              </pre>
+              {rawPreview ? (
+                <pre className="mt-2 max-h-[300px] overflow-auto rounded-2xl border border-ts-border bg-ts-bg p-3 text-[10px] leading-relaxed text-ts-text-2">
+                  {rawPreview}
+                  {rawPreview.length >= 50000 ? '\n\n... (truncated)' : ''}
+                </pre>
+              ) : (
+                <div className="mt-2 text-xs text-ts-text-3">Generating preview...</div>
+              )}
             </details>
           </SectionCard>
 
@@ -638,6 +678,20 @@ export default function TTImportPage() {
               </div>
             ) : null}
 
+            <div className="mb-3">
+              <input
+                value={pathSearch}
+                onChange={(e) => setPathSearch(e.target.value)}
+                placeholder="Search fields... (leave empty to show mapped only)"
+                className={inputCls()}
+              />
+              <div className="mt-1 text-[10px] text-ts-text-3">
+                {pathSearch
+                  ? `${filteredPaths.length} of ${ttFlattened.length} paths match`
+                  : `${ttFlattened.length} available — type to search`}
+              </div>
+            </div>
+
             <div className="space-y-2">
               {INTERNAL_FIELDS.map((field) => {
                 const currentValue = mappings[field.key] || '';
@@ -662,7 +716,10 @@ export default function TTImportPage() {
                         className={`flex-1 ${inputCls()} text-xs`}
                       >
                         <option value="">— Not mapped —</option>
-                        {ttFlattened.map((path) => (
+                        {currentValue && !filteredPaths.includes(currentValue) ? (
+                          <option value={currentValue}>{displayPath(currentValue)}</option>
+                        ) : null}
+                        {filteredPaths.map((path) => (
                           <option key={path} value={path}>{displayPath(path)}</option>
                         ))}
                       </select>

@@ -161,6 +161,9 @@ export const importTrips = mutation({
         first_time = !existing;
       }
 
+      const vehicle_keys = deriveVehicleKeys(units, mappedTransportType, operator);
+      const first_units = first_time ? vehicle_keys : [];
+
       await ctx.db.insert('tripLogs', {
         user: args.userId,
         on_trip_with: Array.isArray(trip.on_trip_with)
@@ -198,7 +201,9 @@ export const importTrips = mutation({
         unit_number,
         unit_reg,
         vehicle_key,
+        vehicle_keys,
         first_time,
+        first_units,
 
         notes: cleanString(trip.notes),
       });
@@ -293,6 +298,9 @@ export const importTripsChunk = internalMutation({
         first_time = !existing;
       }
 
+      const vehicle_keys = deriveVehicleKeys(units, mappedTransportType, operator);
+      const first_units = first_time ? vehicle_keys : [];
+
       await ctx.db.insert('tripLogs', {
         user: args.userId,
         on_trip_with: Array.isArray(trip.on_trip_with)
@@ -328,12 +336,42 @@ export const importTripsChunk = internalMutation({
         unit_number,
         unit_reg,
         vehicle_key,
+        vehicle_keys,
         first_time,
+        first_units,
         notes: cleanString(trip.notes),
       });
     }
   },
 });
+
+function deriveVehicleKeys(
+  units: Array<{ unit_number?: string; unit_reg?: string }>,
+  transportType?: string,
+  operator?: string,
+): string[] {
+  const normalizedUnits: Array<{ unit_number?: string; unit_reg?: string }> = [];
+  for (const unit of units ?? []) {
+    const reg = unit.unit_reg?.replace(/\s+/g, "").toUpperCase();
+    if (unit.unit_number?.includes(" + ")) {
+      for (const num of unit.unit_number.split(" + ").map((s) => s.trim()).filter(Boolean)) {
+        normalizedUnits.push({ unit_number: num, unit_reg: reg });
+      }
+    } else {
+      normalizedUnits.push({ unit_number: unit.unit_number, unit_reg: reg });
+    }
+  }
+
+  const keys: string[] = [];
+  for (const unit of normalizedUnits) {
+    const key =
+      transportType === "Bus"
+        ? (unit.unit_reg ?? unit.unit_number)
+        : (unit.unit_number ?? unit.unit_reg);
+    if (key) keys.push(`${operator}_${key}`);
+  }
+  return [...new Set(keys)];
+}
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");

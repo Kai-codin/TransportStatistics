@@ -357,6 +357,34 @@ function getPrimaryUnit(raw: unknown): TripUnitLike | undefined {
   return candidate as TripUnitLike;
 }
 
+function deriveVehicleKeys(
+  units: Array<{ unit_number?: string; unit_reg?: string }>,
+  transportType?: string,
+  operator?: string,
+): string[] {
+  const normalizedUnits: Array<{ unit_number?: string; unit_reg?: string }> = [];
+  for (const unit of units ?? []) {
+    const reg = unit.unit_reg?.replace(/\s+/g, "").toUpperCase();
+    if (unit.unit_number?.includes(" + ")) {
+      for (const num of unit.unit_number.split(" + ").map((s) => s.trim()).filter(Boolean)) {
+        normalizedUnits.push({ unit_number: num, unit_reg: reg });
+      }
+    } else {
+      normalizedUnits.push({ unit_number: unit.unit_number, unit_reg: reg });
+    }
+  }
+
+  const keys: string[] = [];
+  for (const unit of normalizedUnits) {
+    const key =
+      transportType === "Bus"
+        ? (unit.unit_reg ?? unit.unit_number)
+        : (unit.unit_number ?? unit.unit_reg);
+    if (key) keys.push(`${operator}_${key}`);
+  }
+  return [...new Set(keys)];
+}
+
 function getVehicleKeyForTransport(unit?: TripUnitLike, transportType?: string) {
   const unitNumber = unit?.unit_number?.trim() || undefined;
   const unitReg = unit?.unit_reg?.replace(/\s+/g, "").toUpperCase();
@@ -716,6 +744,11 @@ export const getMyTripsByDate = query({
         .withIndex("by_user_date_departure", (q) => q.eq("user", args.user))
         .order("desc")
         .take(limit);
+
+      if (args.includeRoutes) {
+        return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));
+      }
+
       return trips.map(toTripSummary);
     }
 
@@ -797,6 +830,10 @@ export const logTrip = mutation({
       hasExistingTripWithVehicle(ctx, identity.subject, args.operator, vehicle_key),
     ]);
 
+    const first_time = !existingTripExists;
+    const vehicle_keys = deriveVehicleKeys(args.units, args.transport_type, args.operator);
+    const first_units = first_time ? vehicle_keys : [];
+
     const tripId = await ctx.db.insert("tripLogs", {
       user: identity.subject,
       on_trip_with: [],
@@ -809,7 +846,9 @@ export const logTrip = mutation({
       livery_css: primaryUnit?.livery_left,
       distance_km,
       vehicle_key,
-      first_time: !existingTripExists,
+      vehicle_keys,
+      first_time,
+      first_units,
     });
 
     await saveRouteDetails(ctx, tripId, identity.subject, { full_route, ridden_route });
@@ -852,6 +891,10 @@ export const updateTrip = mutation({
       saveRouteDetails(ctx, args.tripId, identity.subject, { full_route, ridden_route }),
     ]);
 
+    const first_time = !existingTripExists;
+    const vehicle_keys = deriveVehicleKeys(args.units, args.transport_type, args.operator);
+    const first_units = first_time ? vehicle_keys : [];
+
     await ctx.db.patch(args.tripId, {
       service_number: args.service_number,
       operator: args.operator,
@@ -877,7 +920,9 @@ export const updateTrip = mutation({
       livery_name: primaryUnit?.livery,
       livery_css: primaryUnit?.livery_left,
       vehicle_key,
-      first_time: !existingTripExists,
+      vehicle_keys,
+      first_time,
+      first_units,
     });
 
     return args.tripId;

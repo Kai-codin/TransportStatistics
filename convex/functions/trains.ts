@@ -468,10 +468,16 @@ export const syncAllTrains = action({
 
     if (!rids.length) return;
 
-    // Check which RIDs we already have with one lookup pass instead of chunked point reads.
-    const knownRids = new Set(
-      await ctx.runQuery(api.functions.trains.checkExistingRids, { rids })
-    );
+    // Check which RIDs we already have with one lookup pass instead of chunked point reads
+    // Check which RIDs we already have — using efficient existence check
+    const CHUNK_SIZE = 1000;
+    const knownRids = new Set<string>();
+    
+    for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
+      const chunk = rids.slice(i, i + CHUNK_SIZE);
+      const existing = await ctx.runQuery(api.functions.trains.checkExistingRids, { rids: chunk });
+      existing.forEach(rid => knownRids.add(rid));
+    }
 
     const missing = rids.filter((rid) => !knownRids.has(rid));
     if (!missing.length) return;

@@ -13,6 +13,7 @@ import type * as functions_admin from "../functions/admin.js";
 import type * as functions_completion from "../functions/completion.js";
 import type * as functions_delete_stop_of_type from "../functions/delete_stop_of_type.js";
 import type * as functions_editRequests from "../functions/editRequests.js";
+import type * as functions_friends from "../functions/friends.js";
 import type * as functions_import from "../functions/import.js";
 import type * as functions_liveries from "../functions/liveries.js";
 import type * as functions_migrations from "../functions/migrations.js";
@@ -24,6 +25,7 @@ import type * as functions_stops from "../functions/stops.js";
 import type * as functions_trains from "../functions/trains.js";
 import type * as functions_trips from "../functions/trips.js";
 import type * as functions_userSettings from "../functions/userSettings.js";
+import type * as functions_userTrips from "../functions/userTrips.js";
 import type * as functions_users from "../functions/users.js";
 import type * as functions_vehicles from "../functions/vehicles.js";
 
@@ -39,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   "functions/completion": typeof functions_completion;
   "functions/delete_stop_of_type": typeof functions_delete_stop_of_type;
   "functions/editRequests": typeof functions_editRequests;
+  "functions/friends": typeof functions_friends;
   "functions/import": typeof functions_import;
   "functions/liveries": typeof functions_liveries;
   "functions/migrations": typeof functions_migrations;
@@ -50,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   "functions/trains": typeof functions_trains;
   "functions/trips": typeof functions_trips;
   "functions/userSettings": typeof functions_userSettings;
+  "functions/userTrips": typeof functions_userTrips;
   "functions/users": typeof functions_users;
   "functions/vehicles": typeof functions_vehicles;
 }>;

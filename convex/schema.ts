@@ -220,6 +220,53 @@ export default defineSchema({
     .index("by_tripId", ["tripId"])
     .index("by_user", ["user"]),
 
+  // ── Friends System ──
+
+  userProfiles: defineTable({
+    clerkId: v.string(),
+    visibility: v.union(
+      v.literal("public"),
+      v.literal("friends"),
+      v.literal("private")
+    ),
+  })
+    .index("by_clerkId", ["clerkId"]),
+
+  friendRequests: defineTable({
+    fromUser: v.string(),
+    toUser: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_toUser_status", ["toUser", "status"])
+    .index("by_fromUser_toUser", ["fromUser", "toUser"])
+    .index("by_fromUser_status", ["fromUser", "status"]),
+
+  friends: defineTable({
+    userA: v.string(),
+    userB: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_userA_userB", ["userA", "userB"])
+    .index("by_userB_userA", ["userB", "userA"]),
+
+  tripParticipants: defineTable({
+    tripId: v.id("tripLogs"),
+    user: v.string(),
+    addedAt: v.number(),
+    first_time: v.optional(v.boolean()),
+    first_units: v.optional(v.array(v.string())),
+    vehicle_key: v.optional(v.string()),
+    vehicle_keys: v.optional(v.array(v.string())),
+  })
+    .index("by_tripId_user", ["tripId", "user"])
+    .index("by_user", ["user"]),
+
   editRequests: defineTable({
     userId: v.string(),    
     userEmail: v.string(), 

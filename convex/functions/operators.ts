@@ -2,6 +2,7 @@ import { action, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 import { Doc } from "../_generated/dataModel";
+import { getAllUserTrips } from "./userTrips";
 
 interface BusTimesOperator {
   id: number;
@@ -37,7 +38,7 @@ export const getOperatorsBySlugs = query({
     for (const slug of args.slugs) {
       const op = await ctx.db
         .query("operators")
-        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", slug as any))
+        .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", [slug]))
         .unique();
       if (op) results.push(op);
     }
@@ -57,7 +58,7 @@ export const upsertOperator = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("operators")
-      .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", args.slug as any))
+      .withIndex("by_operator_slugs", (q) => q.eq("operator_slugs", [args.slug]))
       .unique();
 
     if (existing) {
@@ -85,10 +86,7 @@ export const upsertOperator = mutation({
 export const getUserTripSlugs = query({
   args: { userId: v.string() },
   handler: async (ctx, args): Promise<string[]> => {
-    const trips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.userId))
-      .collect();
+    const trips = await getAllUserTrips(ctx, args.userId);
     return trips.map((t) => t.operator_slug);
   },
 });
@@ -96,10 +94,7 @@ export const getUserTripSlugs = query({
 export const getUserRiddenOperators = query({
   args: { userId: v.string() },
   handler: async (ctx, args): Promise<Doc<"operators">[]> => {
-    const trips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.userId))
-      .collect();
+    const trips = await getAllUserTrips(ctx, args.userId);
 
     if (!trips.length) return [];
 

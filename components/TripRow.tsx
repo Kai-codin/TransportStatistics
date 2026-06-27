@@ -25,6 +25,7 @@ type TripLike = {
   unit_type?: string;
   livery_name?: string;
   livery_css?: string;
+  first_time?: boolean;
   first_units?: string[];
 };
 
@@ -125,7 +126,7 @@ export const TripRow = ({ trip }: TripRowProps) => {
                 {allUnits[0]?.unit_type || 'Unknown Type'}
               </span>
               <div className="flex items-baseline gap-1.5 min-w-0">
-                {trip.first_units && trip.first_units.length > 0 && (
+                {(trip.first_time || (trip.first_units && trip.first_units.length > 0)) && (
                   <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-amber-400 transition hover:border-amber-400/50 hover:bg-amber-500/15">
                     <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 12 12" fill="currentColor">
                       <path d="M6 1l1.2 3.6H11l-3 2.2 1.1 3.6L6 8.2l-3.1 2.2L4 7 1 4.8h3.8z"/>

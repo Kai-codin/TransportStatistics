@@ -2,6 +2,12 @@
 import { query, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import { getAllUserTrips } from "./userTrips";
+
+type TripUnitLike = {
+  unit_number?: string;
+  unit_reg?: string;
+};
 
 // Helper functions (copied from your stats.ts logic)
 function haversineKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, number]): number {
@@ -117,12 +123,8 @@ export const getOperatorCompletionStats = query({
   args: { user: v.string(), operator_name: v.string(), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const timeZone = args.timeZone ?? "UTC";
-    const operatorTrips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user_and_operator", (q) =>
-        q.eq("user", args.user).eq("operator", args.operator_name)
-      )
-      .collect();
+    const operatorTrips = (await getAllUserTrips(ctx, args.user))
+      .filter((trip) => trip.operator === args.operator_name);
 
     let totalDistanceKm = 0;
     let totalMinutes = 0;
@@ -143,7 +145,7 @@ export const getOperatorCompletionStats = query({
       );
 
       // Vehicles
-      const units: any[] = Array.isArray(trip.units) ? trip.units : [];
+      const units: TripUnitLike[] = Array.isArray(trip.units) ? trip.units : [];
       if (units.length > 0) {
         for (const unit of units) {
           const vehicleKey = `${unit?.unit_number ?? ""}|${unit?.unit_reg ?? ""}`.trim();

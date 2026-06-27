@@ -4,6 +4,8 @@ import { paginationOptsValidator } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { ensureUserRecord } from "./users";
+import { areFriends } from "./friends";
+import { getAllUserTrips } from "./userTrips";
 
 export const fixTripLogsPaginated = mutation({
   args: {
@@ -200,14 +202,6 @@ const tripLogUpdateArgs = {
 
 function normalizeServiceDate(value: number) {
   return value > 1_000_000_000_000 ? value : value * 1000;
-}
-
-function getTripsQueryLimit() {
-  const raw = process.env.TRIPS_QUERY_LIMIT;
-  if (!raw) return 200;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 200;
-  return Math.floor(parsed);
 }
 
 function getTripsAllLimit() {
@@ -615,6 +609,59 @@ export const getTripById = query({
   },
 });
 
+export const getTripByIdNoAuth = query({
+  args: {
+    tripId: v.id("tripLogs"),
+  },
+  handler: async (ctx, args) => {
+    const trip = await ctx.db.get(args.tripId);
+    if (!trip) return null;
+    return attachRouteDetails(ctx, trip);
+  },
+});
+
+export const getTripDetailsByIdNoAuth = query({
+  args: {
+    tripId: v.id("tripLogs"),
+  },
+  handler: async (ctx, args) => {
+    const trip = await ctx.db.get(args.tripId);
+    if (!trip) return null;
+
+    const [originStop, destinationStop, operatorRecord, railDetails, routeDetails] =
+      await Promise.all([
+        lookupStopByCode(ctx, trip.origin_stop_code),
+        lookupStopByCode(ctx, trip.destination_stop_code),
+        lookupOperatorBySlugOrName(ctx, trip.operator_slug, trip.operator),
+        lookupRailDetailsByTrip(ctx, trip),
+        getRouteDetails(ctx, trip),
+      ]);
+
+    const units = normalizeTripUnits(trip.units);
+    const fallbackUnits =
+      units.length > 0
+        ? units
+        : normalizeTripUnits([
+            {
+              unit_number: trip.unit_number,
+              unit_reg: trip.unit_reg,
+              unit_type: trip.unit_type,
+              livery: trip.livery_name,
+              livery_left: trip.livery_css,
+            },
+          ]);
+
+    return {
+      trip: { ...toTripSummary(trip), ...routeDetails },
+      originStop,
+      destinationStop,
+      operatorRecord,
+      railDetails,
+      units: fallbackUnits,
+    };
+  },
+});
+
 export const getMyTripById = query({
   args: {
     tripId: v.id("tripLogs"),
@@ -710,10 +757,76 @@ export const getMyTripCount = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { trips: 0, days: 0 };
 
-    const trips = await ctx.db
+    const trips = await getAllUserTrips(ctx, identity.subject);
+
+    const days = new Set(
+      trips.map((t) => {
+        const ts = t.service_date > 1_000_000_000_000 ? t.service_date : t.service_date * 1000;
+        const d = new Date(ts);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })
+    ).size;
+
+    return { trips: trips.length, days };
+  },
+});
+
+export const getUserTripsPaginated = query({
+  args: {
+    userId: v.string(),
+    paginationOpts: paginationOptsValidator,
+    includeRoutes: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { page: [], continueCursor: "", isDone: true };
+    const me = identity.subject;
+
+    if (me === args.userId) {
+      const result = await ctx.db
+        .query("tripLogs")
+        .withIndex("by_user_date_departure", (q) => q.eq("user", args.userId))
+        .order("desc")
+        .paginate(args.paginationOpts);
+      return {
+        ...result,
+        page: args.includeRoutes
+          ? await Promise.all(result.page.map((trip) => attachRouteDetails(ctx, trip)))
+          : result.page.map(toTripSummary),
+      };
+    }
+
+    const isFriend = await areFriends(ctx, me, args.userId);
+    if (!isFriend) return { page: [], continueCursor: "", isDone: true };
+
+    const result = await ctx.db
       .query("tripLogs")
-      .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
-      .collect();
+      .withIndex("by_user_date_departure", (q) => q.eq("user", args.userId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+
+    return {
+      ...result,
+      page: args.includeRoutes
+        ? await Promise.all(result.page.map((trip) => attachRouteDetails(ctx, trip)))
+        : result.page.map(toTripSummary),
+    };
+  },
+});
+
+export const getUserTripCount = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const me = identity.subject;
+
+    if (me !== args.userId) {
+      const isFriend = await areFriends(ctx, me, args.userId);
+      if (!isFriend) return null;
+    }
+
+    const trips = await getAllUserTrips(ctx, args.userId);
 
     const days = new Set(
       trips.map((t) => {
@@ -739,11 +852,7 @@ export const getMyTripsByDate = query({
 
     if (args.date === "all") {
       const limit = getTripsAllLimit();
-      const trips = await ctx.db
-        .query("tripLogs")
-        .withIndex("by_user_date_departure", (q) => q.eq("user", args.user))
-        .order("desc")
-        .take(limit);
+      const trips = (await getAllUserTrips(ctx, args.user)).slice(0, limit);
 
       if (args.includeRoutes) {
         return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));
@@ -752,52 +861,14 @@ export const getMyTripsByDate = query({
       return trips.map(toTripSummary);
     }
 
-    const [year, month, day] = args.date.split("-").map((value) => Number(value));
-    if (!year || !month || !day) return [];
-
-    // 1. Establish absolute UTC midnight as the anchor baseline
-    const utcMidnightEpoch = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
-
-    // 2. Explicitly extract what that exact moment looks like in the target timezone
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hour12: false,
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-    }).formatToParts(new Date(utcMidnightEpoch));
-
-    const getPart = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-    
-    // 3. Reconstruct what the wall-clock target says
-    const tzYear = getPart("year");
-    const tzMonth = getPart("month");
-    const tzDay = getPart("day");
-    let tzHour = getPart("hour");
-    
-    // Handle 24-hour runtime inconsistencies where midnight can show up as 24 instead of 0
-    if (tzHour === 24) tzHour = 0;
-
-    // 4. Calculate the real absolute offset in milliseconds
-    const tzMidnightEpoch = Date.UTC(tzYear, tzMonth - 1, tzDay, tzHour, 0, 0, 0);
-    const offsetMs = utcMidnightEpoch - tzMidnightEpoch;
-
-    // 5. Shift our query bounds by that exact offset amount
-    const start = utcMidnightEpoch + offsetMs;
-    const end = start + 24 * 60 * 60 * 1000;
+    const { start, end } = getDateBounds(args.date, tz);
+    if (!start || !end) return [];
 
     // Execute query using our dedicated two-field index
-    const trips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user_service_date", (q) =>
-        q.eq("user", args.user)
-         .gte("service_date", start)
-         .lt("service_date", end)
-      )
-      .order("desc")
-      .collect();
+    const trips = (await getAllUserTrips(ctx, args.user)).filter((trip) =>
+      normalizeServiceDate(trip.service_date) >= start &&
+      normalizeServiceDate(trip.service_date) < end
+    );
 
     if (args.includeRoutes) {
       return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));

@@ -1,6 +1,15 @@
 import { query, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import { getAllUserTrips } from "./userTrips";
+
+type TripUnitLike = {
+  unit_number?: string;
+  unit_reg?: string;
+  unit_type?: string;
+  livery?: string;
+  livery_left?: string;
+};
 
 async function getTripRoutes(ctx: QueryCtx, trip: Doc<"tripLogs">) {
   if (trip.full_route !== undefined || trip.ridden_route !== undefined) {
@@ -21,27 +30,59 @@ async function getTripRoutes(ctx: QueryCtx, trip: Doc<"tripLogs">) {
   };
 }
 
+async function getTripCompanions(ctx: QueryCtx, trip: Doc<"tripLogs">, userId: string) {
+  const viewer = await ctx.db
+    .query("users")
+    .withIndex("by_clerkId", (q) => q.eq("clerkId", userId))
+    .first();
+  const viewerUsername = viewer?.username;
+
+  const companions = new Set<string>(trip.on_trip_with ?? []);
+  if (viewerUsername) companions.delete(viewerUsername);
+
+  const participants = await ctx.db
+    .query("tripParticipants")
+    .withIndex("by_tripId_user", (q) => q.eq("tripId", trip._id))
+    .collect();
+
+  const participantUsers = await Promise.all(
+    participants.map((participant) =>
+      ctx.db.query("users").withIndex("by_clerkId", (q) => q.eq("clerkId", participant.user)).first()
+    )
+  );
+
+  participantUsers.forEach((participantUser, index) => {
+    if (!participantUser) return;
+    if (participants[index].user === userId) return;
+    companions.add(participantUser.username);
+  });
+
+  const didUserParticipate = participants.some((participant) => participant.user === userId);
+  if (didUserParticipate && trip.user !== userId) {
+    const owner = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", trip.user))
+      .first();
+    if (owner?.username && owner.username !== viewerUsername) companions.add(owner.username);
+  }
+
+  return [...companions].filter((name) => name.trim().length > 0);
+}
+
 export const getUserStats = query({
   args: { user: v.string(), year: v.optional(v.number()), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const timeZone = args.timeZone ?? "UTC";
 
     // When year is specified, filter at DB level — avoids reading all trips
-    let trips: Doc<"tripLogs">[];
+    let trips = await getAllUserTrips(ctx, args.user);
     if (args.year) {
-      const yearStart = Date.UTC(args.year, 0, 1);
-      const yearEnd = Date.UTC(args.year + 1, 0, 1);
-      trips = await ctx.db
-        .query("tripLogs")
-        .withIndex("by_user_service_date", (q) =>
-          q.eq("user", args.user).gte("service_date", yearStart).lt("service_date", yearEnd)
-        )
-        .collect();
-    } else {
-      trips = await ctx.db
-        .query("tripLogs")
-        .withIndex("by_user", (q) => q.eq("user", args.user))
-        .collect();
+      trips = trips.filter((trip) => {
+        const year = new Date(
+          trip.service_date > 1_000_000_000_000 ? trip.service_date : trip.service_date * 1000,
+        ).getUTCFullYear();
+        return year === args.year;
+      });
     }
 
     if (trips.length === 0) return null;
@@ -98,7 +139,7 @@ export const getUserStats = query({
       }
 
       // Liveries & Unit types
-      const units: any[] = Array.isArray(trip.units) ? trip.units : [];
+      const units: TripUnitLike[] = Array.isArray(trip.units) ? trip.units : [];
       for (const unit of units) {
         const name = unit.livery ?? trip.livery_name ?? "";
         if (name) {
@@ -144,7 +185,7 @@ export const getUserStats = query({
       routeGroups[groupKey].stationPairs[stationsLabel] = (routeGroups[groupKey].stationPairs[stationsLabel] ?? 0) + 1;
 
       // Social
-      for (const person of trip.on_trip_with ?? []) {
+      for (const person of await getTripCompanions(ctx, trip, args.user)) {
         companionCounts[person] = (companionCounts[person] ?? 0) + 1;
       }
 

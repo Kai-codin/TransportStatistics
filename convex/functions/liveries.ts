@@ -1,13 +1,11 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { getAllUserTrips } from "./userTrips";
 
 export const getLiveryGrid = query({
   args: { user: v.string() },
   handler: async (ctx, args) => {
-    const trips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.user))
-      .collect();
+    const trips = await getAllUserTrips(ctx, args.user);
 
     const liveryMap: Record<string, { name: string; css: string; count: number }> = {};
 

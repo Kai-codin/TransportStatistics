@@ -4,12 +4,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation } from 'convex/react';
+import { useUser } from '@clerk/nextjs';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getMapStyleUrl } from '@/components/mapStyleUrl';
 import { useTheme } from '@/components/ThemeProvider';
 import type { Id } from '@/convex/_generated/dataModel';
 import { api } from '@/convex/_generated/api';
+import { useQuery } from 'convex/react';
+import { IWasHereButton } from '@/components/IWasHereButton';
 import {
   ArrowLeft,
   BadgeInfo,
@@ -87,6 +90,7 @@ type UnitInfo = {
 type TripDetailsData = {
   trip: {
     _id: Id<'tripLogs'>;
+    user: string;
     transport_type: string;
     service_number: string;
     operator: string;
@@ -121,8 +125,17 @@ type TripDetailsData = {
   units: UnitInfo[];
 };
 
+type TripParticipant = {
+  userId: string;
+  username: string;
+  addedAt: number;
+  first_time?: boolean;
+  first_units?: string[];
+};
+
 type Props = {
   data: TripDetailsData;
+  isOwner?: boolean;
 };
 
 function pad(value: number) {
@@ -306,7 +319,7 @@ function SectionCard({
   );
 }
 
-export function TripDetailsClient({ data }: Props) {
+export function TripDetailsClient({ data, isOwner = true }: Props) {
   const { theme } = useTheme();
   const router = useRouter();
   const deleteTrip = useMutation(api.functions.trips.deleteTrip);
@@ -316,10 +329,30 @@ export function TripDetailsClient({ data }: Props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const trip = data.trip;
+  const isParticipating = useQuery(
+    api.functions.friends.getMyParticipationStatus,
+    !isOwner ? { tripId: trip._id } : "skip",
+  );
+  const tripOwner = useQuery(
+    api.functions.friends.getUserByClerkId,
+    !isOwner ? { clerkId: trip.user } : "skip",
+  );
+  const { user } = useUser();
+  const tripParticipants = useQuery(api.functions.friends.getTripParticipants, { tripId: trip._id }) as TripParticipant[] | undefined;
+  const participatedTrips = useQuery(
+    api.functions.friends.getUserParticipatedTrips,
+    user ? { userId: user.id } : "skip",
+  ) as Array<{ _id: string; first_time?: boolean; first_units?: string[] }> | undefined;
   const accentClasses = getAccentClasses(trip.transport_type);
   const operatorName = data.operatorRecord?.display_name ?? trip.operator;
   const tripUnits = useMemo(() => normalizeTripUnits(trip), [trip]);
-  const isFirstTime = Boolean(trip.first_units?.length || trip.first_time);
+  const viewerParticipation = useMemo(
+    () => participatedTrips?.find((participant) => participant._id === trip._id) ?? null,
+    [participatedTrips, trip._id],
+  );
+  const isFirstTime = isOwner
+    ? Boolean(trip.first_units?.length || trip.first_time)
+    : Boolean(viewerParticipation?.first_time || viewerParticipation?.first_units?.length);
 
   const fullCoordinates = useMemo(() => extractCoordinates(trip.full_route), [trip.full_route]);
   const riddenCoordinates = useMemo(() => extractCoordinates(trip.ridden_route), [trip.ridden_route]);
@@ -547,13 +580,23 @@ export function TripDetailsClient({ data }: Props) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
       <div className="mb-5 flex items-center justify-between gap-3">
-        <Link
-          href="/profile"
-          className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface px-3 py-2 text-sm text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to trips
-        </Link>
+        {isOwner ? (
+          <Link
+            href="/profile"
+            className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface px-3 py-2 text-sm text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to trips
+          </Link>
+        ) : (
+          <Link
+            href={`/profile/${trip.user}`}
+            className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface px-3 py-2 text-sm text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {tripOwner?.username ?? 'User'}&apos;s trips
+          </Link>
+        )}
 
         <div className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface px-3 py-2 text-xs text-ts-text-3">
           <CalendarDays className="h-3.5 w-3.5" />
@@ -578,6 +621,21 @@ export function TripDetailsClient({ data }: Props) {
               {getTransportIcon(trip.transport_type)}
               {trip.transport_type}
             </span>
+            {!isOwner && tripOwner ? (
+              <Link
+                href={`/profile/${trip.user}`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-300 hover:border-sky-400/50 hover:bg-sky-500/20 transition-colors"
+              >
+                <UserRound className="h-3 w-3" />
+                Trip by {tripOwner.username}
+              </Link>
+            ) : null}
+            {!isOwner && isParticipating ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                <MapPinned className="h-3 w-3" />
+                You were on this trip
+              </span>
+            ) : null}
             {isFirstTime ? (
               <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">
                 <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 12 12" fill="currentColor">
@@ -735,7 +793,15 @@ export function TripDetailsClient({ data }: Props) {
           </SectionCard>
 
           <SectionCard title="Companions" icon={<UserRound className="h-4 w-4" />}>
-            {trip.on_trip_with.length > 0 ? (
+            {tripParticipants && tripParticipants.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {tripParticipants.map((participant) => (
+                  <span key={participant.userId} className="rounded-full border border-ts-border bg-ts-surface-2 px-3 py-1.5 text-sm text-ts-text-1">
+                    {participant.username}
+                  </span>
+                ))}
+              </div>
+            ) : trip.on_trip_with.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {trip.on_trip_with.map((name) => (
                   <span key={name} className="rounded-full border border-ts-border bg-ts-surface-2 px-3 py-1.5 text-sm text-ts-text-1">
@@ -758,23 +824,29 @@ export function TripDetailsClient({ data }: Props) {
 
           <SectionCard title="Actions" icon={<BadgeInfo className="h-4 w-4" />}>
             <div className="flex flex-wrap gap-2">
-              <Link
-                href={`/log?trip_id=${trip._id}`}
-                className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface-2 px-4 py-2 text-sm text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-              >
-                <LoaderCircle className="h-4 w-4" />
-                Edit trip
-              </Link>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="inline-flex items-center gap-2 rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Delete your own trip"
-              >
-                <Trash2 className="h-4 w-4" />
-                {isDeleting ? 'Deleting...' : 'Delete trip'}
-              </button>
+              {isOwner ? (
+                <>
+                  <Link
+                    href={`/log?trip_id=${trip._id}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-ts-border bg-ts-surface-2 px-4 py-2 text-sm text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                  >
+                    <LoaderCircle className="h-4 w-4" />
+                    Edit trip
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="inline-flex items-center gap-2 rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    title="Delete your own trip"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {isDeleting ? 'Deleting...' : 'Delete trip'}
+                  </button>
+                </>
+              ) : (
+                <IWasHereButton tripId={trip._id} tripUserId={trip.user} />
+              )}
               <button
                 type="button"
                 onClick={handleShare}

@@ -1,6 +1,14 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { getAllUserTrips } from "./userTrips";
+
+type VehicleSummary = {
+  unit_number: string;
+  unit_type: string;
+  livery: string;
+  livery_left: string;
+};
 
 function toTripMatchSummary(trip: Doc<"tripLogs">) {
   return {
@@ -23,7 +31,7 @@ export const getOperatorByCode = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("operators")
-      .withIndex("by_operator_codes", (q) => q.eq("operator_codes", args.code as any))
+      .withIndex("by_operator_codes", (q) => q.eq("operator_codes", [args.code]))
       .first(); 
   },
 });
@@ -33,7 +41,7 @@ export const getOperatorsByCode = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("operators")
-      .withIndex("by_operator_codes", (q) => q.eq("operator_codes", args.code as any))
+      .withIndex("by_operator_codes", (q) => q.eq("operator_codes", [args.code]))
       .collect();
   },
 });
@@ -57,7 +65,7 @@ export const getHistoricalRoutesByOperatorIds = query({
     for (const operatorId of uniqueOperatorIds) {
       const operatorRoutes = await ctx.db
         .query("historicalRoutes")
-        .withIndex("by_operator_id", (q) => q.eq("operator_id", operatorId as any))
+        .withIndex("by_operator_id", (q) => q.eq("operator_id", operatorId))
         .collect();
 
       routes.push(...operatorRoutes);
@@ -70,10 +78,7 @@ export const getHistoricalRoutesByOperatorIds = query({
 export const getUserTripsByUser = query({
   args: { user: v.string() },
   handler: async (ctx, args) => {
-    const trips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.user))
-      .collect();
+    const trips = await getAllUserTrips(ctx, args.user);
     return trips.map(toTripMatchSummary);
   },
 });
@@ -81,12 +86,8 @@ export const getUserTripsByUser = query({
 export const getUserTripsByOperator = query({
   args: { user: v.string(), operatorName: v.string() },
   handler: async (ctx, args) => {
-    const trips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user_and_operator", (q) =>
-        q.eq("user", args.user).eq("operator", args.operatorName)
-      )
-      .collect();
+    const trips = (await getAllUserTrips(ctx, args.user))
+      .filter((trip) => trip.operator === args.operatorName);
     return trips.map(toTripMatchSummary);
   },
 });
@@ -95,15 +96,9 @@ export const getUserTripsByOperators = query({
   args: { user: v.string(), operatorNames: v.array(v.string()) },
   handler: async (ctx, args) => {
     const uniqueNames = [...new Set(args.operatorNames)];
-    const tripGroups = await Promise.all(
-      uniqueNames.map((operatorName) =>
-        ctx.db
-          .query("tripLogs")
-          .withIndex("by_user_and_operator", (q) =>
-            q.eq("user", args.user).eq("operator", operatorName)
-          )
-          .collect()
-      )
+    const allTrips = await getAllUserTrips(ctx, args.user);
+    const tripGroups = uniqueNames.map((operatorName) =>
+      allTrips.filter((trip) => trip.operator === operatorName)
     );
     return tripGroups.flat().map(toTripMatchSummary);
   },
@@ -114,7 +109,7 @@ export const getDetailsByUnits = query({
     unitNumbers: v.array(v.string()) 
   },
   handler: async (ctx, args) => {
-    const vehicles: Record<string, any> = {};
+    const vehicles: Record<string, VehicleSummary> = {};
 
     // Batch-fetch all units in parallel
     const unitResults = await Promise.all(

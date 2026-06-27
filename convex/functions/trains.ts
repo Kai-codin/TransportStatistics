@@ -270,17 +270,10 @@ export const getDetailsForRids = query({
 export const checkExistingRids = query({
   args: { rids: v.array(v.string()) },
   handler: async (ctx, args) => {
-    const results = await Promise.all(
-      args.rids.map((rid) =>
-        ctx.db
-          .query("ridIndex")
-          .withIndex("by_rid", (q) => q.eq("rid", rid))
-          .first()
-      )
-    );
-    return results
-      .map((doc, i) => (doc ? args.rids[i] : null))
-      .filter((r): r is string => r !== null);
+    // Read the small lookup table once, then do in-memory membership checks.
+    const existingRids = await ctx.db.query("ridIndex").collect();
+    const known = new Set(existingRids.map((doc) => doc.rid));
+    return args.rids.filter((rid) => known.has(rid));
   },
 });
 
@@ -475,15 +468,10 @@ export const syncAllTrains = action({
 
     if (!rids.length) return;
 
-    // Check which RIDs we already have — using efficient existence check
-    const CHUNK_SIZE = 1000;
-    const knownRids = new Set<string>();
-    
-    for (let i = 0; i < rids.length; i += CHUNK_SIZE) {
-      const chunk = rids.slice(i, i + CHUNK_SIZE);
-      const existing = await ctx.runQuery(api.functions.trains.checkExistingRids, { rids: chunk });
-      existing.forEach(rid => knownRids.add(rid));
-    }
+    // Check which RIDs we already have with one lookup pass instead of chunked point reads.
+    const knownRids = new Set(
+      await ctx.runQuery(api.functions.trains.checkExistingRids, { rids })
+    );
 
     const missing = rids.filter((rid) => !knownRids.has(rid));
     if (!missing.length) return;

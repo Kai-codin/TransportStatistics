@@ -7,6 +7,7 @@ import { TripRow } from "@/components/TripRow";
 import { useUser } from "@clerk/nextjs";
 import { useMemo, useEffect, useRef } from "react";
 import { MapPinned, Info } from "lucide-react";
+import { ProfileVisibilitySelector } from "@/components/ProfileVisibilitySelector";
 
 type TripGroup = {
   dateLabel: string;
@@ -16,19 +17,34 @@ type TripGroup = {
 
 type TripRecord = {
   _id: string;
+  user?: string;
+  on_trip_with?: string[];
+  logged_at?: number;
   service_date: number;
   transport_type: string;
   service_number?: string;
   operator?: string;
+  operator_slug?: string;
   scheduled_departure?: string;
+  actual_departure?: string;
+  scheduled_arrival?: string;
+  actual_arrival?: string;
   origin_name?: string;
+  origin_stop_code?: string;
   destination_name?: string;
+  destination_stop_code?: string;
   units?: { unit_number?: string; unit_reg?: string; unit_type?: string; livery?: string; livery_left?: string }[];
   unit_number?: string;
   unit_reg?: string;
   unit_type?: string;
   livery_name?: string;
   livery_css?: string;
+  notes?: string;
+  first_time?: boolean;
+  first_units?: string[];
+  vehicle_key?: string;
+  vehicle_keys?: string[];
+  distance_km?: number;
 };
 
 function formatDateKey(timestamp: number) {
@@ -46,6 +62,10 @@ export default function ProfilePage() {
   );
 
   const counts = useQuery(api.functions.trips.getMyTripCount, user ? {} : "skip");
+  const participatedTrips = useQuery(
+    api.functions.friends.getUserParticipatedTrips,
+    user ? { userId: user.id } : "skip",
+  );
 
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -67,11 +87,19 @@ export default function ProfilePage() {
   }, [status, loadMore]);
 
   const groupedTrips = useMemo<TripGroup[]>(() => {
-    if (!trips) return [];
+    const combinedTrips = [...(trips ?? []), ...(participatedTrips ?? [])];
+    if (combinedTrips.length === 0) return [];
 
     const groups = new Map<string, TripGroup>();
 
-    trips.forEach((trip) => {
+    combinedTrips
+      .slice()
+      .sort((a, b) => {
+        const aTimestamp = a.service_date > 1_000_000_000_000 ? a.service_date : a.service_date * 1000;
+        const bTimestamp = b.service_date > 1_000_000_000_000 ? b.service_date : b.service_date * 1000;
+        return bTimestamp - aTimestamp;
+      })
+      .forEach((trip) => {
       const timestamp = trip.service_date > 1_000_000_000_000
         ? trip.service_date
         : trip.service_date * 1000;
@@ -88,7 +116,7 @@ export default function ProfilePage() {
     });
 
     return [...groups.values()];
-  }, [trips]);
+  }, [participatedTrips, trips]);
 
   if (!isSignedIn) {
     return (
@@ -120,16 +148,19 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Map button — full-width pill on mobile, inline on desktop */}
-        {trips && trips.length > 0 && (
-          <Link
-            href="/trip/all/map"
-            className="flex items-center justify-center gap-2 w-full md:w-auto md:inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
-          >
-            <MapPinned className="h-4 w-4 shrink-0" />
-            View all on map
-          </Link>
-        )}
+        {/* Map button + Visibility */}
+        <div className="flex flex-wrap items-center gap-3">
+          {trips && trips.length > 0 && (
+            <Link
+              href="/trip/all/map"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+            >
+              <MapPinned className="h-4 w-4 shrink-0" />
+              View all on map
+            </Link>
+          )}
+          <ProfileVisibilitySelector />
+        </div>
       </div>
 
       {/* Divider */}

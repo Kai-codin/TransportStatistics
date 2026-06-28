@@ -712,6 +712,98 @@ export const getMyParticipationRecord = query({
   },
 });
 
+export const addTripParticipant = mutation({
+  args: { tripId: v.id("tripLogs"), friendClerkId: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    const me = identity.subject;
+
+    const trip = await ctx.db.get(args.tripId);
+    if (!trip) throw new Error("Trip not found");
+
+    if (trip.user !== me) throw new Error("Only the trip owner can add participants");
+    if (args.friendClerkId === me) throw new Error("Cannot add yourself as participant");
+
+    const friendCheck = await areFriends(ctx, me, args.friendClerkId);
+    if (!friendCheck) throw new Error("You can only add friends as participants");
+
+    const existing = (await ctx.db
+      .query("tripParticipants")
+      .withIndex("by_tripId_user", (q) => q.eq("tripId", args.tripId).eq("user", args.friendClerkId))
+      .first()) as Doc<"tripParticipants"> | null;
+
+    const friendOwnedTrips = await ctx.db
+      .query("tripLogs")
+      .withIndex("by_user", (q) => q.eq("user", args.friendClerkId))
+      .collect();
+
+    const friendParticipations = await ctx.db
+      .query("tripParticipants")
+      .withIndex("by_user", (q) => q.eq("user", args.friendClerkId))
+      .collect();
+
+    const friendParticipationTrips = (await Promise.all(
+      friendParticipations.map((p) => ctx.db.get(p.tripId))
+    )).filter((t): t is NonNullable<typeof t> => t !== null);
+
+    const seenVehicleKeys = new Set<string>();
+    const historyTrips = [...friendOwnedTrips, ...friendParticipationTrips].filter(
+      (historyTrip) => String(historyTrip._id) !== String(args.tripId)
+    );
+
+    for (const previousTrip of historyTrips) {
+      for (const key of deriveVehicleKeysForParticipation(previousTrip)) {
+        if (typeof key === "string" && key.trim()) {
+          seenVehicleKeys.add(key);
+        }
+      }
+    }
+
+    const currentVehicleKeys = deriveVehicleKeysForParticipation(trip);
+    const firstUnits = currentVehicleKeys.filter((key) => !seenVehicleKeys.has(key));
+    const payload = {
+      tripId: args.tripId,
+      user: args.friendClerkId,
+      addedAt: Date.now(),
+      first_time: firstUnits.length > 0,
+      first_units: firstUnits,
+      vehicle_key: currentVehicleKeys[0],
+      vehicle_keys: currentVehicleKeys,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+      return;
+    }
+
+    await ctx.db.insert("tripParticipants", payload);
+  },
+});
+
+export const removeTripParticipant = mutation({
+  args: { tripId: v.id("tripLogs"), participantClerkId: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    const me = identity.subject;
+
+    const trip = await ctx.db.get(args.tripId);
+    if (!trip) throw new Error("Trip not found");
+
+    if (trip.user !== me) throw new Error("Only the trip owner can remove participants");
+
+    const existing = await ctx.db
+      .query("tripParticipants")
+      .withIndex("by_tripId_user", (q) => q.eq("tripId", args.tripId).eq("user", args.participantClerkId))
+      .first();
+
+    if (!existing) throw new Error("Not a participant");
+
+    await ctx.db.delete(existing._id);
+  },
+});
+
 export const getUserByClerkId = query({
   args: { clerkId: v.string() },
   handler: async (ctx, args) => {

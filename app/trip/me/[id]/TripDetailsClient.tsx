@@ -22,12 +22,14 @@ import {
   LoaderCircle,
   MapPinned,
   NotebookText,
+  Plus,
   Route,
   TrainFront,
   TramFront,
   Trash2,
   UserRound,
   Waypoints,
+  X,
 } from 'lucide-react';
 
 type StopRecord = {
@@ -350,6 +352,14 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
     () => participatedTrips?.find((participant) => participant._id === trip._id) ?? null,
     [participatedTrips, trip._id],
   );
+  const myFriends = useQuery(
+    api.functions.friends.getMyFriends,
+    isOwner ? undefined : "skip",
+  ) as Array<{ _id: string; clerkId: string; username: string }> | undefined;
+  const addParticipant = useMutation(api.functions.friends.addTripParticipant);
+  const removeParticipant = useMutation(api.functions.friends.removeTripParticipant);
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
   const isFirstTime = isOwner
     ? Boolean(trip.first_units?.length || trip.first_time)
     : Boolean(viewerParticipation?.first_time || viewerParticipation?.first_units?.length);
@@ -796,8 +806,23 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
             {tripParticipants && tripParticipants.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {tripParticipants.map((participant) => (
-                  <span key={participant.userId} className="rounded-full border border-ts-border bg-ts-surface-2 px-3 py-1.5 text-sm text-ts-text-1">
+                  <span key={participant.userId} className="inline-flex items-center gap-1.5 rounded-full border border-ts-border bg-ts-surface-2 px-3 py-1.5 text-sm text-ts-text-1">
                     {participant.username}
+                    {isOwner ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await removeParticipant({ tripId: trip._id, participantClerkId: participant.userId });
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }}
+                        className="ml-0.5 rounded-full p-0.5 text-ts-text-3 hover:bg-rose-500/20 hover:text-rose-300 transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    ) : null}
                   </span>
                 ))}
               </div>
@@ -812,6 +837,66 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
             ) : (
               <div className="text-sm text-ts-text-3">No companions recorded for this trip.</div>
             )}
+            {isOwner ? (
+              <div className="mt-3">
+                {showAddFriend ? (
+                  <div className="rounded-2xl border border-ts-border bg-ts-surface-2 p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-ts-text-3">
+                      Select a friend to add
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {myFriends
+                        ?.filter((f) => !tripParticipants?.some((p) => p.userId === f.clerkId))
+                        .map((friend) => (
+                          <button
+                            key={friend.clerkId}
+                            type="button"
+                            disabled={addingFriendId === friend.clerkId}
+                            onClick={async () => {
+                              setAddingFriendId(friend.clerkId);
+                              try {
+                                await addParticipant({ tripId: trip._id, friendClerkId: friend.clerkId });
+                                setShowAddFriend(false);
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setAddingFriendId(null);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-ts-border bg-ts-surface px-3 py-1.5 text-sm text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent disabled:opacity-50"
+                          >
+                            {addingFriendId === friend.clerkId ? (
+                              <LoaderCircle className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Plus className="h-3 w-3" />
+                            )}
+                            {friend.username}
+                          </button>
+                        ))}
+                      {myFriends && myFriends.filter((f) => !tripParticipants?.some((p) => p.userId === f.clerkId)).length === 0 ? (
+                        <div className="text-sm text-ts-text-3">All your friends are already companions on this trip.</div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddFriend(false)}
+                      className="mt-2 text-xs text-ts-text-3 hover:text-ts-text-1 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddFriend(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-ts-border bg-ts-surface-2 px-3 py-1.5 text-sm text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add friend as companion
+                  </button>
+                )}
+              </div>
+            ) : null}
           </SectionCard>
 
           {trip.notes ? (

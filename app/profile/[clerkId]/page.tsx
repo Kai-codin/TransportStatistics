@@ -67,7 +67,7 @@ export default function UserProfilePage({
   const { results: trips, status, loadMore } = usePaginatedQuery(
     api.functions.trips.getUserTripsPaginated,
     currentUser ? { userId: clerkId } : "skip",
-    { initialNumItems: 10 },
+    { initialNumItems: 50 },
   );
 
   const participatedTrips = useQuery(
@@ -84,7 +84,7 @@ export default function UserProfilePage({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && status === "CanLoadMore") {
-          loadMore(25);
+          loadMore(50);
         }
       },
       { rootMargin: "200px" },
@@ -103,9 +103,12 @@ export default function UserProfilePage({
     combinedTrips
       .slice()
       .sort((a, b) => {
-        const aTimestamp = a.service_date > 1_000_000_000_000 ? a.service_date : a.service_date * 1000;
-        const bTimestamp = b.service_date > 1_000_000_000_000 ? b.service_date : b.service_date * 1000;
-        return bTimestamp - aTimestamp;
+        const aTs = a.service_date > 1_000_000_000_000 ? a.service_date : a.service_date * 1000;
+        const bTs = b.service_date > 1_000_000_000_000 ? b.service_date : b.service_date * 1000;
+        const aKey = formatDateKey(aTs);
+        const bKey = formatDateKey(bTs);
+        if (aKey !== bKey) return bKey.localeCompare(aKey);
+        return (a.scheduled_departure ?? "").localeCompare(b.scheduled_departure ?? "");
       })
       .forEach((trip) => {
       const timestamp = trip.service_date > 1_000_000_000_000

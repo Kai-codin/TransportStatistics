@@ -310,6 +310,66 @@ async function attachRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
   };
 }
 
+function getDateKey(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function paginateByDateBoundary<T extends { service_date: number }>(
+  paginateFn: (opts: { cursor: string | null; numItems: number }) => Promise<{
+    page: T[];
+    continueCursor: string;
+    isDone: boolean;
+  }>,
+  paginationOpts: { cursor: string | null; numItems: number },
+): Promise<{ page: T[]; continueCursor: string; isDone: boolean }> {
+  const minItems = Math.max(paginationOpts.numItems, 50);
+  const result = await paginateFn({
+    cursor: paginationOpts.cursor ?? null,
+    numItems: minItems,
+  });
+
+  if (result.isDone || result.page.length === 0) return result;
+
+  const lastDateKey = getDateKey(normalizeServiceDate(result.page[result.page.length - 1].service_date));
+
+  let trailingCount = 0;
+  for (let i = result.page.length - 1; i >= 0; i--) {
+    if (getDateKey(normalizeServiceDate(result.page[i].service_date)) === lastDateKey) {
+      trailingCount++;
+    } else {
+      break;
+    }
+  }
+
+  if (!result.isDone && trailingCount > 0) {
+    const extra: T[] = [];
+    let cursor: string | null = result.continueCursor;
+    let done = false;
+    let safety = 5;
+
+    while (!done && safety > 0) {
+      safety--;
+      const next = await paginateFn({ cursor: cursor ?? null, numItems: 100 });
+      for (const item of next.page) {
+        if (getDateKey(normalizeServiceDate(item.service_date)) !== lastDateKey) {
+          done = true;
+          break;
+        }
+        extra.push(item);
+      }
+      cursor = next.continueCursor;
+      if (next.isDone) done = true;
+    }
+
+    result.page.push(...extra);
+    result.continueCursor = cursor!;
+    result.isDone = done;
+  }
+
+  return result;
+}
+
 async function saveRouteDetails(
   ctx: MutationCtx,
   tripId: Id<"tripLogs">,
@@ -732,11 +792,15 @@ export const getMyTripsPaginated = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { page: [], continueCursor: "", isDone: true };
 
-    const result = await ctx.db
+    const baseQuery = ctx.db
       .query("tripLogs")
       .withIndex("by_user_date_departure", (q) => q.eq("user", identity.subject))
-      .order("desc")
-      .paginate(args.paginationOpts);  // <-- pass paginationOpts directly
+      .order("desc");
+
+    const result = await paginateByDateBoundary(
+      (opts) => baseQuery.paginate(opts),
+      args.paginationOpts,
+    );
 
     if (!args.includeRoutes) {
       return {
@@ -782,12 +846,16 @@ export const getUserTripsPaginated = query({
     if (!identity) return { page: [], continueCursor: "", isDone: true };
     const me = identity.subject;
 
+    const baseQuery = ctx.db
+      .query("tripLogs")
+      .withIndex("by_user_date_departure", (q) => q.eq("user", args.userId))
+      .order("desc");
+
     if (me === args.userId) {
-      const result = await ctx.db
-        .query("tripLogs")
-        .withIndex("by_user_date_departure", (q) => q.eq("user", args.userId))
-        .order("desc")
-        .paginate(args.paginationOpts);
+      const result = await paginateByDateBoundary(
+        (opts) => baseQuery.paginate(opts),
+        args.paginationOpts,
+      );
       return {
         ...result,
         page: args.includeRoutes
@@ -799,11 +867,10 @@ export const getUserTripsPaginated = query({
     const isFriend = await areFriends(ctx, me, args.userId);
     if (!isFriend) return { page: [], continueCursor: "", isDone: true };
 
-    const result = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user_date_departure", (q) => q.eq("user", args.userId))
-      .order("desc")
-      .paginate(args.paginationOpts);
+    const result = await paginateByDateBoundary(
+      (opts) => baseQuery.paginate(opts),
+      args.paginationOpts,
+    );
 
     return {
       ...result,

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiKeyAuth } from '@/lib/api-key-auth';
 
-const DARK_STYLE_URL = "https://tiles.fluffynet.dev/styles/nocturne/style.json?key=v1.public.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgS2V5IiwiaWF0IjoxNjE2MjM5MDIyfQ.4Adcj3UFYzP5FfJX5j4Z";
-const LIGHT_STYLE_URL = "https://tiles.fluffynet.dev/styles/osm-base/style.json";
+const DARK_STYLE_URL = "https://tiles.fluffynet.dev/styles/kai-dark/style.json";
+const LIGHT_STYLE_URL = "https://tiles.fluffynet.dev/styles/kai-light/style.json";
 const FALLBACK_STYLE_URL = process.env.MAPTILER_KEY 
   ? `https://api.maptiler.com/maps/openstreetmap/style.json?key=${process.env.MAPTILER_KEY}` 
   : null;

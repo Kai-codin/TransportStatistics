@@ -391,7 +391,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
     () => getDelayMs(trip.service_date, trip.scheduled_arrival, trip.actual_arrival),
     [trip.actual_arrival, trip.scheduled_arrival, trip.service_date],
   );
-  const primaryDelayMs = departureDelayMs ?? arrivalDelayMs ?? null;
+  const primaryDelayMs = arrivalDelayMs ?? departureDelayMs ?? null;
   const isDelayed = primaryDelayMs !== null && primaryDelayMs > 60_000;
   const isEarly = primaryDelayMs !== null && primaryDelayMs < 0;
   const delayLabel = primaryDelayMs !== null ? (isDelayed ? 'Delayed' : isEarly ? 'Early' : 'On time') : null;

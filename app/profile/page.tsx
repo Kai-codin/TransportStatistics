@@ -172,7 +172,7 @@ export default function ProfilePage() {
       {/* ── Trip list ── */}
       {status === "LoadingFirstPage" ? (
         <div className="text-center text-slate-500 py-10">Loading...</div>
-      ) : trips.length === 0 ? (
+      ) : trips.length === 0 && (!participatedTrips || participatedTrips.length === 0) ? (
         <div className="text-center py-10 text-slate-400">No trips yet.</div>
       ) : (
         <>

@@ -100,7 +100,7 @@ export default function ProfilePage() {
         const aKey = formatDateKey(aTs);
         const bKey = formatDateKey(bTs);
         if (aKey !== bKey) return bKey.localeCompare(aKey);
-        return (a.scheduled_departure ?? "").localeCompare(b.scheduled_departure ?? "");
+        return (b.scheduled_departure ?? "").localeCompare(a.scheduled_departure ?? "");
       })
       .forEach((trip) => {
       const timestamp = trip.service_date > 1_000_000_000_000

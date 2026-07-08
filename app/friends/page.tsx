@@ -148,13 +148,13 @@ function FriendsTab({
           key={f.clerkId}
           className="flex items-center justify-between rounded-2xl border border-ts-border bg-ts-surface p-4"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full">
             <Link href={`/profile/${f.clerkId}`}>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-ts-accent/10 text-sm font-bold text-ts-accent hover:bg-ts-accent/20 transition-colors">
                 {f.username.charAt(0).toUpperCase()}
               </div>
             </Link>
-            <div>
+            <div className="flex items-center justify-between w-full">
               <Link href={`/profile/${f.clerkId}`} className="font-semibold text-ts-text-1 hover:text-ts-accent transition-colors">
                 {f.username}
               </Link>

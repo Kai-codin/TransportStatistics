@@ -213,8 +213,24 @@ function getTripsAllLimit() {
 }
 
 function getTimeZoneOffsetMs(date: Date, timeZone: string) {
-  const localeDate = new Date(date.toLocaleString("en-US", { timeZone }));
-  return date.getTime() - localeDate.getTime();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(date);
+
+  const getNum = (type: string) => {
+    const part = parts.find((p) => p.type === type);
+    return part ? Number.parseInt(part.value, 10) : 0;
+  };
+
+  const localAsUtcMs = Date.UTC(
+    getNum("year"), getNum("month") - 1, getNum("day"),
+    getNum("hour"), getNum("minute"), getNum("second"),
+  );
+
+  return date.getTime() - localAsUtcMs;
 }
 
 function getDateBounds(dateKey: string, timeZone: string) {
@@ -229,8 +245,8 @@ function getDateBounds(dateKey: string, timeZone: string) {
   const endOffset = getTimeZoneOffsetMs(utcEnd, timeZone);
 
   return {
-    start: utcStart.getTime() - startOffset,
-    end: utcEnd.getTime() - endOffset,
+    start: utcStart.getTime() + startOffset,
+    end: utcEnd.getTime() + endOffset,
   };
 }
 

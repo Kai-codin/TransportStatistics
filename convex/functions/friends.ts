@@ -825,76 +825,14 @@ export const getUserParticipatedTrips = query({
       .order("desc")
       .collect();
 
-    const participatedTrips = await Promise.all(
+    const trips = await Promise.all(
       participations.map((p) => ctx.db.get(p.tripId))
     );
 
-    const ownedTrips = await ctx.db
-      .query("tripLogs")
-      .withIndex("by_user", (q) => q.eq("user", args.userId))
-      .collect();
-
-    const historyEvents = [
-      ...ownedTrips.map((trip) => ({
-        kind: "owned" as const,
-        timestamp: getHistoryTimestamp(trip),
-        trip,
-        participation: null as null | (typeof participations)[number],
-      })),
-      ...participations
-        .map((participation, index) => {
-          const trip = participatedTrips[index];
-          if (!trip) return null;
-          return {
-            kind: "participated" as const,
-            timestamp: participation.addedAt,
-            trip,
-            participation,
-          };
-        })
-        .filter((event): event is NonNullable<typeof event> => event !== null),
-    ].sort((a, b) => {
-      if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-      return String(a.trip._id).localeCompare(String(b.trip._id));
-    });
-
-    const seenVehicleKeys = new Set<string>();
-    const computed = new Map<string, { first_time: boolean; first_units: string[] }>();
-
-    for (const event of historyEvents) {
-      const keys = deriveVehicleKeysForParticipation(event.trip);
-      const firstUnits = keys.filter((key) => !seenVehicleKeys.has(key));
-      for (const key of keys) {
-        seenVehicleKeys.add(key);
-      }
-
-      if (event.kind === "participated") {
-        computed.set(String(event.trip._id), {
-          first_time: firstUnits.length > 0,
-          first_units: firstUnits,
-        });
-      }
-    }
-
     return participations
-      .map((participation, index) => {
-        const trip = participatedTrips[index];
+      .map((participation, i) => {
+        const trip = trips[i];
         if (!trip) return null;
-
-        const computedState = computed.get(String(trip._id));
-        const finalFirstUnits = participation.first_units ?? computedState?.first_units ?? trip.first_units ?? [];
-        const finalFirstTime = participation.first_time ?? computedState?.first_time ?? trip.first_time ?? false;
-
-        if (process.env.NODE_ENV !== "production") {
-          console.log("getUserParticipatedTrips:firstTime", {
-            userId: args.userId,
-            tripId: String(trip._id),
-            storedFirstTime: participation.first_time,
-            computedState,
-            finalFirstTime,
-            finalFirstUnits,
-          });
-        }
 
         return {
           _id: trip._id,
@@ -923,8 +861,8 @@ export const getUserParticipatedTrips = query({
           livery_name: trip.livery_name,
           livery_css: trip.livery_css,
           notes: trip.notes,
-          first_time: finalFirstTime,
-          first_units: finalFirstUnits,
+          first_time: participation.first_time ?? false,
+          first_units: participation.first_units ?? [],
           vehicle_key: participation.vehicle_key ?? trip.vehicle_key,
           vehicle_keys: participation.vehicle_keys ?? trip.vehicle_keys,
           distance_km: trip.distance_km,

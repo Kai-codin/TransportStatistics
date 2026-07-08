@@ -13,9 +13,7 @@ export const getInBBox = query({
     return await ctx.db
       .query("stops")
       // Bound both ends of the latitude range so Convex only scans the viewport slice.
-      .withIndex("by_lat_lon", (q) =>
-        q.gte("lat", args.minLat).lt("lat", args.maxLat)
-      )
+      .withIndex("by_lat_lon", (q) => q.gte("lat", args.minLat).lt("lat", args.maxLat))
       .filter((q) =>
         q.and(
           q.gte(q.field("lon"), args.minLon),
@@ -23,7 +21,7 @@ export const getInBBox = query({
           q.eq(q.field("active"), true)
         )
       )
-      .take(500);
+      .take(500)
   },
 });
 

@@ -271,15 +271,12 @@ export const checkExistingRids = query({
   args: { rids: v.array(v.string()) },
   handler: async (ctx, args) => {
     if (args.rids.length === 0) return [];
-
-    const sorted = [...args.rids].sort();
-    const existing = await ctx.db
-      .query("ridIndex")
-      .withIndex("by_rid", (q) => q.gte("rid", sorted[0]).lte("rid", sorted[sorted.length - 1]))
-      .collect();
-
-    const existingSet = new Set(existing.map((d) => d.rid));
-    return args.rids.filter((rid) => existingSet.has(rid));
+    const results = await Promise.all(
+      args.rids.map((rid) =>
+        ctx.db.query("ridIndex").withIndex("by_rid", (q) => q.eq("rid", rid)).first()
+      )
+    );
+    return args.rids.filter((_, i) => results[i] !== null);
   },
 });
 

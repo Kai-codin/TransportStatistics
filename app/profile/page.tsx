@@ -7,7 +7,6 @@ import { TripRow } from "@/components/TripRow";
 import { useUser } from "@clerk/nextjs";
 import { useMemo, useEffect, useRef } from "react";
 import { MapPinned, Info } from "lucide-react";
-import { ProfileVisibilitySelector } from "@/components/ProfileVisibilitySelector";
 
 type TripGroup = {
   dateLabel: string;
@@ -162,7 +161,6 @@ export default function ProfilePage() {
               View all on map
             </Link>
           )}
-          <ProfileVisibilitySelector />
         </div>
       </div>
 

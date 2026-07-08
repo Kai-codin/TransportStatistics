@@ -19,7 +19,7 @@ export function ProfileVisibilitySelector() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs font-semibold uppercase tracking-wider text-ts-text-3">Profile Visibility</p>
-      <div className="inline-flex rounded-full border border-ts-border p-0.5 bg-ts-surface-2">
+      <div className="inline-flex rounded-full border border-ts-border p-0.5 bg-ts-surface-2 w-fit">
         {options.map((opt) => {
           const active = currentVisibility === opt.value;
           const Icon = opt.icon;

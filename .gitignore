@@ -32,9 +32,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# auto-fetched livery CSS
-/public/liveries.css
-
 # env files (can opt-in for committing if needed)
 .env*
 

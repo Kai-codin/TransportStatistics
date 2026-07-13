@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch-liveries": "node scripts/fetch-liveries.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.2.8",

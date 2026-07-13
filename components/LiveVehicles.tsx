@@ -59,7 +59,7 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
   useEffect(() => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = "https://bustimes.org/liveries.1777635301.css";
+    link.href = "/liveries.css";
     document.head.appendChild(link);
     return () => { document.head.removeChild(link); };
   }, []);

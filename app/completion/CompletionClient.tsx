@@ -153,8 +153,8 @@ function OperatorDetail({ operatorSlug, operatorName, operatorCode }: { operator
 
   const stats = useQuery(
     api.functions.completion.getOperatorCompletionStats,
-    isLoaded && user && operatorName && activeTab === "overview"
-      ? { user: user.id, operator_name: operatorName, timeZone }
+    isLoaded && user && operatorCode && activeTab === "overview"
+      ? { user: user.id, operator_code: operatorCode, timeZone }
       : "skip"
   );
 

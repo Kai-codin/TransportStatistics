@@ -120,11 +120,18 @@ export const getOperatorByAnyCode = query({
 });
 
 export const getOperatorCompletionStats = query({
-  args: { user: v.string(), operator_name: v.string(), timeZone: v.optional(v.string()) },
+  args: { user: v.string(), operator_code: v.string(), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const timeZone = args.timeZone ?? "UTC";
+
+    const operator = await getOperatorByAnyCode(ctx, { code: args.operator_code });
+    if (!operator) {
+      return null;
+    }
+
+    const operatorNames = new Set(operator.operator_names ?? []);
     const operatorTrips = (await getAllUserTrips(ctx, args.user))
-      .filter((trip) => trip.operator === args.operator_name);
+      .filter((trip) => operatorNames.has(trip.operator));
 
     let totalDistanceKm = 0;
     let totalMinutes = 0;
@@ -182,7 +189,7 @@ export const getOperatorCompletionStats = query({
     }
 
     return {
-      operatorName: args.operator_name,
+      operatorName: operator.display_name,
       totalTrips: operatorTrips.length,
       totalDistanceKm: Math.round(totalDistanceKm),
       totalMinutes: Math.round(totalMinutes),

@@ -150,8 +150,7 @@ export default defineSchema({
     clerkId: v.string(),
     username: v.string(),
   })
-  .index("by_clerkId", ["clerkId"])
-  .index("by_username", ["username"]),
+  .index("by_clerkId", ["clerkId"]),
 
   userSettings: defineTable({
     clerkId: v.string(),

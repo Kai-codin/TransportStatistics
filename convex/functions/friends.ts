@@ -23,7 +23,7 @@ export async function areFriends(
   return aToB !== null || bToA !== null;
 }
 
-function deriveVehicleKeysForParticipation(trip: {
+export function deriveVehicleKeysForParticipation(trip: {
   transport_type?: string;
   operator?: string;
   vehicle_keys?: string[] | null;

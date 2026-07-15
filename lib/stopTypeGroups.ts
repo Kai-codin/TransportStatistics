@@ -10,7 +10,7 @@ export const STOP_TYPE_GROUPS: StopTypeGroup[] = [
   { name: "bus", keywords: ["bus", "coach"], color: "#3b82f6" },
   { name: "airport", keywords: ["airport"], color: "#0891b2" },
   { name: "ferry", keywords: ["ferry"], color: "#14b8a6" },
-  { name: "taxi", keywords: ["taxi"], color: "#f59e0b" },
+  { name: "taxi", keywords: ["taxi"], color: "#e87223" },
 ];
 
 export function getGroupForType(typeName: string): StopTypeGroup | undefined {

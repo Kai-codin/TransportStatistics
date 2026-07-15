@@ -255,7 +255,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         rotation: b.heading ?? 0,
         service: b.service?.line_name ?? "N/A",
         destination: b.destination ?? "Unknown",
-        colour: b.vehicle?.colour ?? "#3B82F6",
+        colour: b.vehicle?.colour || b.vehicle?.css || "#fff",
         liveryID: b.vehicle?.livery ?? 0,
         popup_data: {
           label1: `${b.service?.line_name ?? "Bus"} to ${b.destination ?? "Unknown"}`,

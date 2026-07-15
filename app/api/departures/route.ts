@@ -177,15 +177,19 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({})); // Parse JSON safely
         
-        // Handle the specific "outside permitted history" error gracefully
+        const emptyTrainResponse = {
+          metadata: { contains_cancelled_services: false, contains_expected_times: false, contains_platform_numbers: false, contains_delays: false },
+          attributions: ['Train departure data is sourced from <a style="color: var(--color-ts-accent);" href="https://www.realtimetrains.co.uk" target="_blank" rel="noopener noreferrer">realtimetrains.co.uk</a>'],
+          departures: [],
+          debugRes: null,
+        };
+
         if (errorData.errcode === 400 && errorData.error?.includes("outside your permitted history")) {
           log('RTT API error: Requesting date outside permitted history. Returning empty departures.');
-          return NextResponse.json({ error: 'Requesting date outside permitted history.' }, { status: 481 });
+        } else {
+          log(`RTT Data fetch failed: ${response.status} ${response.statusText}. Returning empty departures.`);
         }
-
-        // Handle other actual errors
-        log(`RTT Data fetch failed: ${response.status} ${response.statusText}`);
-        throw new Error(`RTT Fetch failed: ${response.statusText}`);
+        return NextResponse.json(emptyTrainResponse);
       }
       
       const data = await response.json();
@@ -258,12 +262,15 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         fetch(buildBustimesUrl(bustimesBaseUrl, `/api/stops/${code}?format=json`))
       ]);
       
-      if (!timesRes.ok) {
-        log(`Bus times fetch failed: ${timesRes.status}`);
-        throw new Error(`'Failed to fetch bus departure data (${timesRes.statusText}) - possibly invalid stop code or external API issue. | URL: ${buildBustimesUrl(bustimesBaseUrl, `/stops/${code}/times.json?${dateTimeQuery}&limit=${limit}`)}`);
-      }
-      
-      const timesData = await timesRes.json();
+      const timesData = await (async () => {
+        if (!timesRes.ok) {
+          log(`Bus times fetch failed: ${timesRes.status}. Returning empty departures.`);
+          return { times: [] };
+        }
+        return timesRes.json();
+      })();
+
+      const attributions = ['Bus departure data is sourced from <a style="color: var(--color-ts-accent);" href="https://bustimes.org" target="_blank" rel="noopener noreferrer">bustimes.org</a>'];
       
       // Handle metadata safely (if meta call fails, return empty metadata rather than crashing)
       let baseMetadata = { line_names: [], common_name: null, name: null, long_name: null };
@@ -275,16 +282,13 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
             name: metaDataRaw.name || null,
             long_name: metaDataRaw.long_name || null,
         };
-
-        if (!metaDataRaw.line_names) {
-          return NextResponse.json({ error: 'No departures found.', baseMetadata }, { status: 482 });
-        }
       } else {
         log(`Bus metadata fetch failed: ${metaRes.status}`);
       }
 
       if (!timesData.times || timesData.times.length === 0) {
-        return NextResponse.json({ error: 'No bus times found.', baseMetadata }, { status: 480 });
+        const emptyMeta = { ...baseMetadata, ...analyzeDepartures([]) };
+        return NextResponse.json({ metadata: emptyMeta, attributions, departures: [] });
       }
 
       const departures: Departure[] = (timesData.times || [])
@@ -310,7 +314,6 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         .slice(0, limit);
 
       const metadata = { ...baseMetadata, ...analyzeDepartures(departures) };
-      const attributions = ['Bus departure data is sourced from <a style="color: var(--color-ts-accent);" href="https://bustimes.org" target="_blank" rel="noopener noreferrer">bustimes.org</a>'];
       const debugRes = timesData;
 
       // Return object with metadata at the top

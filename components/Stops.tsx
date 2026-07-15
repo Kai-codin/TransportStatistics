@@ -5,6 +5,15 @@ import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useMap } from "./Map";
 import { useDeparturePanel } from "./depature";
+import { getGroupForType } from "../lib/stopTypeGroups";
+
+function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const metersPerDegLat = 111320;
+  const metersPerDegLon = Math.cos(lat1 * Math.PI / 180) * 111320;
+  const dLat = (lat2 - lat1) * metersPerDegLat;
+  const dLon = (lon2 - lon1) * metersPerDegLon;
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
 
 export const Stops = ({
   bounds,
@@ -34,9 +43,8 @@ export const Stops = ({
     if (!stopTypes) return {} as Record<string, string>;
     const map: Record<string, string> = {};
     stopTypes.forEach((type) => {
-      const name = type.name.toLowerCase();
-      map[type._id] =
-        name.includes("rail") || name.includes("train") ? "#b61653" : "#3b82f6";
+      const group = getGroupForType(type.name);
+      map[type._id] = group?.color ?? "#3b82f6";
     });
     return map;
   }, [stopTypes]);
@@ -73,7 +81,8 @@ export const Stops = ({
 
       const typeObj = stopTypes.find((t) => t._id === stop.stopTypeId);
       const name = typeObj?.name.toLowerCase() || "";
-      const mode = ["train", "rail"].some((kw) => name.includes(kw)) ? "train" : "bus";
+      const group = getGroupForType(name);
+      const mode = group?.name === "rail" ? "train" : "bus";
       const codes = [stop.crsCode ? `CRS ${stop.crsCode}` : "", stop.atcoCode].filter(Boolean);
 
       const el = document.createElement("div");
@@ -82,7 +91,19 @@ export const Stops = ({
       };border:2px solid white;cursor:pointer;`;
       el.onclick = () => {
         const id = String(++counterRef.current);
-        openPanel(stop, typeObj, mode, codes, id);
+        const isMetro = group?.name === "metro";
+        let clusterStops;
+        if (isMetro) {
+          clusterStops = lastStopsRef.current
+            .filter((s: any) => {
+              if (s._id === stop._id) return false;
+              const t = stopTypes.find((st: any) => st._id === s.stopTypeId);
+              return getGroupForType(t?.name || "")?.name === "metro";
+            })
+            .filter((s: any) => getDistanceInMeters(stop.lat, stop.lon, s.lat, s.lon) <= 1000)
+            .slice(0, 5);
+        }
+        openPanel(stop, typeObj, mode, codes, id, clusterStops);
       };
 
       const marker = new maplibregl.Marker({ element: el })

@@ -50,3 +50,6 @@ venv/
 *.pdf
 stops/great-britain-latest.osm.pbf
 stops.json
+
+# clerk configuration (can include secrets)
+/.clerk/

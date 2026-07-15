@@ -33,13 +33,29 @@ const PANEL_CSS = `
 
   /* Departure rows */
   .dep-list { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
-  .dep-header { display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; padding: 4px 8px; margin-bottom: 2px; }
+  .dep-header { display: grid; grid-template-columns: minmax(44px, max-content) 1fr repeat(var(--ncols, 1), 48px); gap: 0 8px; padding: 4px 8px; margin-bottom: 2px;}
   .dep-header span { font-size: 9px; color: ${C.text3}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; }
   .dep-header span.right { text-align: right; }
-  .dep-row { cursor:pointer; display: grid; grid-template-columns: 52px 1fr repeat(var(--ncols, 1), 48px); gap: 0 6px; align-items: center; padding: 9px 8px; border-top: 1px solid ${C.borderSoft}; }
-  .dep-row:last-child { border-bottom: 1px solid ${C.borderSoft}; }
+  .dep-row {
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: minmax(44px, max-content) 1fr repeat(var(--ncols, 1), 48px);
+    gap: 0 8px;
+    align-items: center;
+    padding: 9px 8px;
+    border-top: 1px solid var(--border);
+  }
+  .dep-row:last-child { border-bottom: 1px solid var(--border); }
+  .dep-service { min-width: 0; overflow: hidden; }
   .dep-service a { display: inline-block; background: ${C.accentL}; color: ${C.accent}; font-weight: 700; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid ${C.accentB}; text-decoration: none; white-space: nowrap; }
-  .dep-dest { font-size: 12px; color: ${C.text1}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .dep-dest {
+    font-size: 12px;
+    color: var(--text1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
   .dep-time { font-size: 12px; text-align: right; white-space: nowrap; }
   .dep-plat { text-align: right; }
   .dep-plat span { background: ${C.surface3}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${C.border}; font-size: 11px; color: ${C.text2}; display: inline-block; }
@@ -185,7 +201,7 @@ function buildHeaderExtra(metadata: any): string {
   return linePills || cancellationAlert ? `<div style="margin-bottom: 10px;">${linePills}${cancellationAlert}</div>` : "";
 }
 
-function buildDeparturesContent(data: any, state: { offset: number; timeMode?: string; customDateTime?: string; customDate?: string; customTime?: string }, popupId: string, stopId: string): string {
+function buildDeparturesContent(data: any, state: any, popupId: string, stopId: string, stopLookup?: Record<string, { commonName: string; indicator: string }>): string {
   const { departures, metadata } = data;
   const showExpected = !!metadata?.contains_expected_times;
   const showPlatform = !!metadata?.contains_platform_numbers;
@@ -267,6 +283,10 @@ function buildDeparturesContent(data: any, state: { offset: number; timeMode?: s
           badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.carrages} carriages</span>`);
         }
 
+        if (d._atcoCode && stopLookup?.[d._atcoCode]) {
+          badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${stopLookup[d._atcoCode].indicator || stopLookup[d._atcoCode].commonName}</span>`);
+        }
+
         const statusRow = badges.length
           ? `<div class="dep-status-row" style="display:flex;gap:4px;flex-wrap:wrap;">${badges.join("")}</div>`
           : "";
@@ -340,7 +360,7 @@ export function useDeparturePanel() {
   }
 
   async function fetchAndRender(state: any, offsetMin: number, isSilentRefresh: boolean = false) {
-    const { stop, typeName, codes, mode, id } = state;
+    const { stop, typeName, codes, mode, id, clusterStops } = state;
     // Set error to false on start of new fetch
     activeState.current = { ...state, offset: offsetMin, timeMode: state.timeMode ?? "offset", error: false }; 
 
@@ -348,6 +368,8 @@ export function useDeparturePanel() {
       setPanelHTML(buildLoadingPopup(stop.commonName, stop._id, typeName, codes));
       lastDataRef.current = null;
     }
+
+    let stopLookup: Record<string, { commonName: string; indicator: string }> | undefined;
 
     try {
       const targetISO = state.timeMode === "datetime"
@@ -357,13 +379,28 @@ export function useDeparturePanel() {
             return buildCustomDateTimeISO(customDate, customTime);
           })()
         : offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
-      const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.atcoCode;
 
-      const showPass = activeState.current?.showPass ?? false;
-      const params = new URLSearchParams({ code, type: mode });
-      if (targetISO) params.set("datetime", targetISO);
-      if (showPass) params.set("pass", "show");
-      const url = `/api/departures?${params.toString()}`;
+      let url: string;
+      if (clusterStops?.length > 0) {
+        const allCodes = [stop.atcoCode, ...clusterStops.map((s: any) => s.atcoCode)].filter(Boolean);
+        const uniqueCodes = [...new Set(allCodes)].slice(0, 6);
+        const params = new URLSearchParams({ codes: uniqueCodes.join(','), type: 'bus' });
+        if (targetISO) params.set("datetime", targetISO);
+        url = `/api/departures/batch?${params.toString()}`;
+
+        stopLookup = {};
+        stopLookup[stop.atcoCode] = { commonName: stop.commonName, indicator: stop.indicator || "" };
+        clusterStops.forEach((s: any) => {
+          stopLookup![s.atcoCode] = { commonName: s.commonName, indicator: s.indicator || "" };
+        });
+      } else {
+        const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.atcoCode;
+        const showPass = activeState.current?.showPass ?? false;
+        const params = new URLSearchParams({ code, type: mode });
+        if (targetISO) params.set("datetime", targetISO);
+        if (showPass) params.set("pass", "show");
+        url = `/api/departures?${params.toString()}`;
+      }
 
       const res = await fetch(url);
       if (res.status === 482) {
@@ -394,7 +431,7 @@ export function useDeparturePanel() {
       lastUpdatedRef.current = Date.now();
 
       if (data.metadata) data.metadata._showPass = activeState.current?.showPass ?? false;
-        const contentHTML = buildDeparturesContent(data, activeState.current as any, id, stop._id);
+        const contentHTML = buildDeparturesContent(data, activeState.current as any, id, stop._id, stopLookup);
         const headerExtraHTML = buildHeaderExtra(data.metadata);
 
         const contentDiv = document.getElementById("ts-stop-panel-content");
@@ -526,7 +563,7 @@ export function useDeparturePanel() {
     }
   }, []);
 
-  const openPanel = (stop: any, typeObj: any, mode: string, codes: string[], id: string) => {
+  const openPanel = (stop: any, typeObj: any, mode: string, codes: string[], id: string, clusterStops?: any[]) => {
     activeState.current = {
       stop,
       typeName: typeObj?.name || "",
@@ -538,7 +575,8 @@ export function useDeparturePanel() {
       customDate: formatLocalDateInput(new Date()),
       customTime: formatLocalTimeInput(new Date()),
       customDateTime: formatLocalDateTimeInput(new Date()),
-      error: false
+      error: false,
+      clusterStops: clusterStops || [],
     };
     fetchAndRender(activeState.current, 0, false);
   };

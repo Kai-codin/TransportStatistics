@@ -391,30 +391,67 @@ export function useDeparturePanel() {
           })()
         : offsetMin !== 0 ? offsetISO(new Date(), offsetMin) : undefined;
 
-      let url: string;
-      if (clusterStops?.length > 0) {
-        const allCodes = [stop.atcoCode, ...clusterStops.map((s: any) => s.atcoCode)].filter(Boolean);
-        const uniqueCodes = [...new Set(allCodes)].slice(0, 12);
-        const params = new URLSearchParams({ codes: uniqueCodes.join(','), type: 'bus' });
-        if (targetISO) params.set("datetime", targetISO);
-        if (state.region) params.set("region", state.region);
-        url = `/api/departures/batch?${params.toString()}`;
+        let url: string;
+        let res: Response;
 
-        stopLookup = {};
-        stopLookup[stop.atcoCode] = { commonName: stop.commonName, indicator: stop.indicator || "" };
-        clusterStops.forEach((s: any) => {
-          stopLookup![s.atcoCode] = { commonName: s.commonName, indicator: s.indicator || "" };
-        });
-      } else {
-        const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.atcoCode;
         const showPass = activeState.current?.showPass ?? false;
-        const params = new URLSearchParams({ code, type: mode });
-        if (targetISO) params.set("datetime", targetISO);
-        if (showPass) params.set("pass", "show");
-        url = `/api/departures?${params.toString()}`;
-      }
 
-      const res = await fetch(url);
+        const buildSingleUrl = (type: string, code: string) => {
+          const params = new URLSearchParams({ code, type });
+          if (targetISO) params.set("datetime", targetISO);
+          if (showPass) params.set("pass", "show");
+          return `/api/departures?${params.toString()}`;
+        };
+
+        const buildBatchUrl = (codesToUse: string[]) => {
+          const params = new URLSearchParams({ codes: codesToUse.join(","), type: "bus" });
+          if (targetISO) params.set("datetime", targetISO);
+          if (state.region) params.set("region", state.region);
+          return `/api/departures/batch?${params.toString()}`;
+        };
+
+        const hasCluster = clusterStops?.length > 0;
+
+        if (hasCluster) {
+          const allCodes = [stop.atcoCode, ...clusterStops.map((s: any) => s.atcoCode)].filter(Boolean);
+          const uniqueCodes = [...new Set(allCodes)].slice(0, 12);
+          stopLookup = {};
+          stopLookup[stop.atcoCode] = { commonName: stop.commonName, indicator: stop.indicator || "" };
+          clusterStops.forEach((s: any) => {
+            stopLookup![s.atcoCode] = { commonName: s.commonName, indicator: s.indicator || "" };
+          });
+        }
+
+        if (stop.crsCode) {
+          // CRS code present: RTT first, regardless of cluster/mode, before
+          // falling back to bustimes/TFL (batch, including any cluster stops).
+          res = await fetch(buildSingleUrl("train", stop.crsCode));
+
+          let rttHasDepartures = false;
+          if (res.ok) {
+            const peek = await res.clone().json().catch(() => null);
+            rttHasDepartures = !!peek?.departures?.length;
+          }
+
+          if (!rttHasDepartures) {
+            const fallbackCodes = hasCluster
+              ? [...new Set([stop.atcoCode, ...(clusterStops || []).map((s: any) => s.atcoCode)].filter(Boolean))].slice(0, 12)
+              : [stop.atcoCode].filter(Boolean);
+            if (fallbackCodes.length > 0) {
+              res = await fetch(buildBatchUrl(fallbackCodes));
+            }
+          }
+        } else if (hasCluster) {
+          const allCodes = [stop.atcoCode, ...clusterStops.map((s: any) => s.atcoCode)].filter(Boolean);
+          const uniqueCodes = [...new Set(allCodes)].slice(0, 12);
+          res = await fetch(buildBatchUrl(uniqueCodes));
+        } else {
+          const code = mode === "train" ? stop.crsCode || stop.tiplocCode : stop.atcoCode;
+          res = await fetch(mode === "train" ? buildSingleUrl("train", code) : buildBatchUrl([code]));
+        }
+
+        url = res.url;
+
       if (res.status === 482) {
         const data = await res.json();
         if (activeState.current) {

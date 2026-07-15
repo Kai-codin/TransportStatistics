@@ -15,6 +15,16 @@ function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: num
   return Math.sqrt(dLat * dLat + dLon * dLon);
 }
 
+const LONDON_BBOX = { minLat: 51.28, maxLat: 51.72, minLon: -0.51, maxLon: 0.33 };
+function isInLondon(bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number }): boolean {
+  return (
+    bounds.minLat >= LONDON_BBOX.minLat &&
+    bounds.maxLat <= LONDON_BBOX.maxLat &&
+    bounds.minLon >= LONDON_BBOX.minLon &&
+    bounds.maxLon <= LONDON_BBOX.maxLon
+  );
+}
+
 export const Stops = ({
   bounds,
   tooZoomedOut,
@@ -92,18 +102,22 @@ export const Stops = ({
       el.onclick = () => {
         const id = String(++counterRef.current);
         const isMetro = group?.name === "metro";
+        const isRail = group?.name === "rail";
+        const london = isInLondon(bounds as any);
         let clusterStops;
-        if (isMetro) {
+        if (isMetro || (london && isRail)) {
+          const relevantTypes = isMetro && london ? ["metro", "rail"] : isMetro ? ["metro"] : ["rail", "metro"];
           clusterStops = lastStopsRef.current
             .filter((s: any) => {
               if (s._id === stop._id) return false;
               const t = stopTypes.find((st: any) => st._id === s.stopTypeId);
-              return getGroupForType(t?.name || "")?.name === "metro";
+              const tg = getGroupForType(t?.name || "");
+              return tg && relevantTypes.includes(tg.name);
             })
             .filter((s: any) => getDistanceInMeters(stop.lat, stop.lon, s.lat, s.lon) <= 1000)
-            .slice(0, 5);
+            .slice(0, 11);
         }
-        openPanel(stop, typeObj, mode, codes, id, clusterStops);
+        openPanel(stop, typeObj, mode, codes, id, clusterStops, london ? "london" : undefined);
       };
 
       const marker = new maplibregl.Marker({ element: el })

@@ -133,6 +133,11 @@ function fmt(iso: string | null | undefined): string {
     minute: "2-digit",
   });
 }
+function platformNumber(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const m = name.match(/\d+/);
+  return m ? m[0] : null;
+}
 function offsetISO(base: Date, minutes: number): string {
   return new Date(base.getTime() + minutes * 60_000).toISOString();
 }
@@ -233,7 +238,7 @@ function buildDeparturesContent(data: any, state: any, popupId: string, stopId: 
     ...(showPlatform ? [`<span class="right">Plat.</span>`] : []),
   ].join("");
 
-  const rows = departures.length === 0
+      const rows = departures.length === 0
     ? `<div style="padding:24px 8px;text-align:center;color:${C.text3};font-size:12px;">No departures found.</div>`
     : departures.map((d: any) => {
         const sched = fmt(d.scheduled_departure);
@@ -255,7 +260,7 @@ function buildDeparturesContent(data: any, state: any, popupId: string, stopId: 
           <div onclick="window.location.href='${d.log_link}'" class="dep-dest" title="${d.destination || ""}">${d.destination || "Unknown"}</div>
           <div onclick="window.location.href='${d.log_link}'" class="dep-time" style="${schedStyle}">${sched}</div>
           ${showExpected ? `<div onclick="window.location.href='${d.log_link}'" class="dep-time" style="${expStyle}">${isCancelled ? "–" : d.expected_departure ? exp : sched}</div>` : ""}
-          ${showPlatform ? `<div onclick="window.location.href='${d.log_link}'"   class="dep-plat"><span>${d.platform || "–"}</span></div>` : ""}
+          ${showPlatform ? `<div onclick="window.location.href='${d.log_link}'"   class="dep-plat"><span>${platformNumber(d.tfl_platform_name) || d.platform || "–"}</span></div>` : ""}
         </div>`;
 
         const badges: string[] = [];
@@ -283,8 +288,12 @@ function buildDeparturesContent(data: any, state: any, popupId: string, stopId: 
           badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.vehicle_info.carrages} carriages</span>`);
         }
 
-        if (d._atcoCode && stopLookup?.[d._atcoCode]) {
+        if (!d.tfl_current_location && d._atcoCode && stopLookup?.[d._atcoCode]) {
           badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${stopLookup[d._atcoCode].indicator || stopLookup[d._atcoCode].commonName}</span>`);
+        }
+
+        if (d.tfl_current_location) {
+          badges.push(`<span class="dep-status-badge" style="background:${C.surface2};color:${C.text2};border:1px solid ${C.borderSoft};">${d.tfl_current_location}</span>`);
         }
 
         const statusRow = badges.length
@@ -338,6 +347,7 @@ export function useDeparturePanel() {
   const activeState = useRef<{ id: string; error?: boolean; [key: string]: any } | null>(null);
   const lastUpdatedRef = useRef<number>(0);
   const lastDataRef = useRef<string | null>(null);
+  const loadingRef = useRef(false);
 
   function setPanelHTML(html: string) {
     let root = document.getElementById("ts-stop-panel-root");
@@ -360,9 +370,10 @@ export function useDeparturePanel() {
   }
 
   async function fetchAndRender(state: any, offsetMin: number, isSilentRefresh: boolean = false) {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     const { stop, typeName, codes, mode, id, clusterStops } = state;
-    // Set error to false on start of new fetch
-    activeState.current = { ...state, offset: offsetMin, timeMode: state.timeMode ?? "offset", error: false }; 
+    activeState.current = { ...state, offset: offsetMin, timeMode: state.timeMode ?? "offset", error: false };
 
     if (!isSilentRefresh) {
       setPanelHTML(buildLoadingPopup(stop.commonName, stop._id, typeName, codes));
@@ -383,9 +394,10 @@ export function useDeparturePanel() {
       let url: string;
       if (clusterStops?.length > 0) {
         const allCodes = [stop.atcoCode, ...clusterStops.map((s: any) => s.atcoCode)].filter(Boolean);
-        const uniqueCodes = [...new Set(allCodes)].slice(0, 6);
+        const uniqueCodes = [...new Set(allCodes)].slice(0, 12);
         const params = new URLSearchParams({ codes: uniqueCodes.join(','), type: 'bus' });
         if (targetISO) params.set("datetime", targetISO);
+        if (state.region) params.set("region", state.region);
         url = `/api/departures/batch?${params.toString()}`;
 
         stopLookup = {};
@@ -522,7 +534,8 @@ export function useDeparturePanel() {
           }
         }, 5 * 1000); 
       }
-      
+    } finally {
+      loadingRef.current = false;
     }
   }
 
@@ -563,7 +576,7 @@ export function useDeparturePanel() {
     }
   }, []);
 
-  const openPanel = (stop: any, typeObj: any, mode: string, codes: string[], id: string, clusterStops?: any[]) => {
+  const openPanel = (stop: any, typeObj: any, mode: string, codes: string[], id: string, clusterStops?: any[], region?: string) => {
     activeState.current = {
       stop,
       typeName: typeObj?.name || "",
@@ -577,6 +590,7 @@ export function useDeparturePanel() {
       customDateTime: formatLocalDateTimeInput(new Date()),
       error: false,
       clusterStops: clusterStops || [],
+      region: region || null,
     };
     fetchAndRender(activeState.current, 0, false);
   };

@@ -308,7 +308,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
           cancellation_reason: null,
           delay: item.delay || null,
           mode: 'bus',
-          log_link: `/log?service_id=${item.trip_id}&date=${item.aimed_departure_time?.split('T')[0]}`,
+          log_link: `/log?service_id=${item.trip_id}&date=${item.aimed_departure_time?.split('T')[0]}&stop_code=${code}`,
           debug: debug ? item : undefined,
         }))
         .slice(0, limit);

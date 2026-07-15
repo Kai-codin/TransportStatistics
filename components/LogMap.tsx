@@ -6,6 +6,11 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { getMapStyleUrl } from './mapStyleUrl';
 import { useTheme } from '@/components/ThemeProvider';
 
+const NAV_STYLES = `
+.maplibregl-ctrl-top-right { top: 10px; right: 10px; }
+.maplibregl-ctrl-group button { width: 32px; height: 32px; }
+`;
+
 type Geometry = {
   type: 'LineString';
   coordinates: [number, number][];
@@ -76,6 +81,20 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
 
     map.on('load', () => {
       mapInstance.current = map;
+
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), 'top-right');
+      map.addControl(
+        new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+          showUserLocation: true,
+        }),
+        'top-right',
+      );
+
+      const styleEl = document.createElement('style');
+      styleEl.textContent = NAV_STYLES;
+      mapContainer.current?.appendChild(styleEl);
 
       map.addSource('full-route', {
         type: 'geojson',

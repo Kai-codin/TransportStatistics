@@ -10,6 +10,13 @@ export default defineSchema({
   })
     .index("by_code", ["code"]),
 
+
+  tflStops: defineTable({
+    actoCode: v.string(),
+    name: v.string()
+  })
+    .index("by_actoCode", ["actoCode"]),
+
   // Main stops data
   stops: defineTable({
     name: v.string(),

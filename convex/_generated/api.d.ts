@@ -22,6 +22,7 @@ import type * as functions_publicRelations from "../functions/publicRelations.js
 import type * as functions_seed from "../functions/seed.js";
 import type * as functions_stats from "../functions/stats.js";
 import type * as functions_stops from "../functions/stops.js";
+import type * as functions_tflStops from "../functions/tflStops.js";
 import type * as functions_trains from "../functions/trains.js";
 import type * as functions_trips from "../functions/trips.js";
 import type * as functions_userSettings from "../functions/userSettings.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   "functions/seed": typeof functions_seed;
   "functions/stats": typeof functions_stats;
   "functions/stops": typeof functions_stops;
+  "functions/tflStops": typeof functions_tflStops;
   "functions/trains": typeof functions_trains;
   "functions/trips": typeof functions_trips;
   "functions/userSettings": typeof functions_userSettings;

@@ -337,6 +337,18 @@ function getStartActualTime(stop?: RouteStop) { return toTimeInputValue(stop?.ac
 function getEndScheduledTime(stop?: RouteStop) { return toTimeInputValue(stop?.scheduled_arrival || stop?.scheduled_departure); }
 function getEndActualTime(stop?: RouteStop) { return toTimeInputValue(stop?.actual_arrival || stop?.actual_departure); }
 
+function findNearestStop(route: RouteStop[], lat: number, lon: number): RouteStop | undefined {
+  let nearest: RouteStop | undefined;
+  let minDist = Infinity;
+  for (const stop of route) {
+    const loc = stop.stop.location;
+    if (!loc || loc.length < 2) continue;
+    const d = Math.hypot(loc[1] - lat, loc[0] - lon);
+    if (d < minDist) { minDist = d; nearest = stop; }
+  }
+  return nearest;
+}
+
 function mapVehicleModeToTransportType(mode: VehicleMode): StoredTransportType {
   if (mode === 'Train') return 'Rail';
   if (mode === 'Tram') return 'Tram';
@@ -572,8 +584,18 @@ export default function LogPage() {
         if (cancelled) return;
         setFullRoute(route); setFullGeometry(resolvedGeometry);
         setUnits(initialUnits); setSelectedUnitIndex(0);
-        setSelectedStopId(firstStop?.id ?? null);
-        setFromStopId(route.length > 1 ? firstStop?.id ?? null : null);
+        const logParams = new URLSearchParams(searchKey);
+        const stopCodeParam = logParams.get('stop_code');
+        const latParam = logParams.get('lat');
+        const lonParam = logParams.get('lon');
+        let startStop = firstStop;
+        if (stopCodeParam) {
+          startStop = route.find((s) => s.stop.stop_code === stopCodeParam) || firstStop;
+        } else if (latParam && lonParam) {
+          startStop = findNearestStop(route, parseFloat(latParam), parseFloat(lonParam)) || firstStop;
+        }
+        setSelectedStopId(startStop?.id ?? null);
+        setFromStopId(route.length > 1 ? startStop?.id ?? null : null);
         setToStopId(route.length > 1 ? lastStop?.id ?? null : null);
         setNotes('');
         setServiceForm({

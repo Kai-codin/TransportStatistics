@@ -241,7 +241,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
               ? `https://www.realtimetrains.co.uk/service/gb-nr:${details.uid}/${departureDate}/detailed`
               : "#",
             label2: getDelayText(t.delay),
-            log_link: `/log?service_rid=${t.rid}`,
+            log_link: `/log?service_rid=${t.rid}&lat=${t.location?.lat ?? ''}&lon=${t.location?.lon ?? ''}`,
           },
         };
       }),
@@ -257,13 +257,13 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         destination: b.destination ?? "Unknown",
         colour: b.vehicle?.colour || b.vehicle?.css || "#fff",
         liveryID: b.vehicle?.livery ?? 0,
-        popup_data: {
-          label1: `${b.service?.line_name ?? "Bus"} to ${b.destination ?? "Unknown"}`,
-          link1: `https://bustimes.org/trips/${b.trip_id}`,
-          label2: b.vehicle?.name ?? "Unknown Bus",
-          link2: `https://bustimes.org${b.vehicle?.url ?? ""}`,
-          log_link: `/log?service_id=${b.trip_id}&date=${b.date ?? ""}`,
-        },
+          popup_data: {
+            label1: `${b.service?.line_name ?? "Bus"} to ${b.destination ?? "Unknown"}`,
+            link1: `https://bustimes.org/trips/${b.trip_id}`,
+            label2: b.vehicle?.name ?? "Unknown Bus",
+            link2: `https://bustimes.org${b.vehicle?.url ?? ""}`,
+            log_link: `/log?service_id=${b.trip_id}&date=${b.date ?? ""}&lat=${b.coordinates?.[1] ?? ''}&lon=${b.coordinates?.[0] ?? ''}`,
+          },
       })),
     };
 

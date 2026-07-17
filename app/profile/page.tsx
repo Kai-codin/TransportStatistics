@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { TripRow } from "@/components/TripRow";
+import { CompactTripRow } from "@/components/CompactTripRow";
 import { useUser } from "@clerk/nextjs";
-import { useMemo, useEffect, useRef } from "react";
-import { MapPinned, Info } from "lucide-react";
+import { useMemo, useEffect, useRef, useState } from "react";
+import { MapPinned, Info, LayoutList, Rows3 } from "lucide-react";
 
 type TripGroup = {
   dateLabel: string;
@@ -46,6 +47,9 @@ type TripRecord = {
   distance_km?: number;
 };
 
+const LAYOUT_STORAGE_KEY = "ts_trip_layout";
+type TripLayout = "comfortable" | "compact";
+
 function formatDateKey(timestamp: number) {
   const date = new Date(timestamp);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -67,6 +71,24 @@ export default function ProfilePage() {
   );
 
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // ── Layout preference (comfortable / compact), persisted locally ──
+  const [layout, setLayout] = useState<TripLayout>("comfortable");
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (stored === "compact" || stored === "comfortable") {
+      setLayout(stored);
+    }
+  }, []);
+
+  const toggleLayout = () => {
+    setLayout((prev) => {
+      const next = prev === "comfortable" ? "compact" : "comfortable";
+      window.localStorage.setItem(LAYOUT_STORAGE_KEY, next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -150,7 +172,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Map button + Visibility */}
+        {/* Map button + Layout toggle */}
         <div className="flex flex-wrap items-center gap-3">
           {trips && trips.length > 0 && (
             <Link
@@ -161,6 +183,26 @@ export default function ProfilePage() {
               View all on map
             </Link>
           )}
+
+          {/* Layout toggle */}
+          <button
+            type="button"
+            onClick={toggleLayout}
+            className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-ts-text-1 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent ml-auto"
+            title={layout === "comfortable" ? "Switch to compact view" : "Switch to comfortable view"}
+          >
+            {layout === "comfortable" ? (
+              <>
+                <Rows3 className="h-4 w-4 shrink-0" />
+                Compact view
+              </>
+            ) : (
+              <>
+                <LayoutList className="h-4 w-4 shrink-0" />
+                Comfortable view
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -211,9 +253,13 @@ export default function ProfilePage() {
 
               {/* Trip cards */}
               <div className="flex flex-col gap-2 mt-2">
-                {tripList.map((trip) => (
-                  <TripRow key={trip._id} trip={trip} />
-                ))}
+                {tripList.map((trip) =>
+                  layout === "compact" ? (
+                    <CompactTripRow key={trip._id} trip={trip} />
+                  ) : (
+                    <TripRow key={trip._id} trip={trip} />
+                  )
+                )}
               </div>
             </div>
           ))}

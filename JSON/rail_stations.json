@@ -42946,5 +42946,29 @@
     "hidden": false,
     "lat": 53.2283002,
     "lon": -2.602197
+  },
+  {
+    "name": "London St. Pancras International",
+    "commonName": "London St. Pancras International",
+    "atcoCode": null,
+    "crsCode": "STP",
+    "tipLocCode": null,
+    "stopTypeId": "j571jaygf4wgh564f2h4ekq069868yh2",
+    "active": true,
+    "hidden": false,
+    "lat": 51.532719,
+    "lon": -0.127013
+  },
+  {
+    "name": "Cambridge South",
+    "commonName": "Cambridge South",
+    "atcoCode": "CMS",
+    "crsCode": "CMS",
+    "tipLocCode": null,
+    "stopTypeId": "j571jaygf4wgh564f2h4ekq069868yh2",
+    "active": true,
+    "hidden": false,
+    "lat": 52.1740325, 
+    "lon": 0.1312738
   }
 ]

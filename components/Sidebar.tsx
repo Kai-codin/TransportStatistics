@@ -11,7 +11,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { 
   FileText, Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
   Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea, Settings,
-  FolderUp,
+  FolderUp, ArrowLeft
 } from "lucide-react";
 
 const navLinks = [
@@ -23,7 +23,8 @@ const navLinks = [
   { name: "Liveries", href: "/liveries", icon: Palette },
   { name: "Update", href: "/update", icon: RefreshCw },
   { name: "Request Edit", href: "/request-edit", icon: Edit },
-  { name: "Import TT", href: "/import/tt", icon: FolderUp },
+  { name: "V1", href: "https://v1.transportstatistics.com", icon: ArrowLeft  },
+  //{ name: "Import TT", href: "/import/tt", icon: FolderUp },
 ];
 
 const bustimesSourceFeatures = [

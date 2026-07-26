@@ -463,6 +463,7 @@ export default function LogPage() {
   const [dragOverUnitIndex, setDragOverUnitIndex] = useState<number | null>(null);
 
   const editTripId = searchKey ? new URLSearchParams(searchKey).get('trip_id') : null;
+  const isCustomTrip = searchKey ? new URLSearchParams(searchKey).get('custom') === 'true' : false;
   const editTrip = useQuery(
     api.functions.trips.getMyTripById,
     editTripId ? { tripId: editTripId as Id<'tripLogs'> } : 'skip',
@@ -568,6 +569,43 @@ export default function LogPage() {
         return;
       }
 
+      if (isCustomTrip) {
+        setLoading(true); setLoadError(''); setSaveError(''); setSaveSuccess('');
+        const params = new URLSearchParams(searchKey);
+        const stopName = params.get('stop_name') || 'Start';
+        const stopCode = params.get('stop_code') || '';
+        const stopLat = parseFloat(params.get('stop_lat') || '0');
+        const stopLon = parseFloat(params.get('stop_lon') || '0');
+        const customDate = params.get('custom_date') || '';
+        const customTime = params.get('custom_time') || '';
+
+        const startStop: RouteStop = {
+          id: 0,
+          stop: { name: stopName, stop_code: stopCode, location: stopLat && stopLon ? [stopLon, stopLat] : null },
+          scheduled_departure: null,
+          scheduled_arrival: null,
+        };
+
+        if (cancelled) return;
+        setFullRoute([startStop]);
+        setFullGeometry(null);
+        setFromStopId(0);
+        setToStopId(null);
+        setSelectedStopId(0);
+        setSourceLabel(`Custom trip from ${stopName}`);
+        setVehicleMode('Bus');
+        setUnits([]);
+        setSelectedUnitIndex(0);
+        setNotes('');
+        setServiceForm({
+          ...EMPTY_SERVICE_FORM,
+          service_date: customDate,
+          scheduled_departure: customTime,
+        });
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true); setLoadError(''); setSaveError(''); setSaveSuccess('');
         const res = resolveRequest(new URLSearchParams(searchKey));
@@ -623,7 +661,35 @@ export default function LogPage() {
     }
     void load();
     return () => { cancelled = true; };
-  }, [editTrip, editTripId, searchKey]);
+  }, [editTrip, editTripId, searchKey, isCustomTrip]);
+
+  function handleMapClick(coords: { lng: number; lat: number }) {
+    if (!isCustomTrip) return;
+    const finishStop: RouteStop = {
+      id: 999999,
+      stop: { name: 'Custom destination', stop_code: '', location: [coords.lng, coords.lat] },
+      scheduled_departure: null,
+      scheduled_arrival: null,
+    };
+    setFullRoute((prev) => {
+      if (prev.length <= 1) return [...prev, finishStop];
+      return [...prev.slice(0, 1), finishStop];
+    });
+    setToStopId(999999);
+    setSelectedStopId(999999);
+  }
+
+  useEffect(() => {
+    if (!isCustomTrip || fullRoute.length < 2) return;
+    const startStop = fullRoute[0];
+    const finishStop = fullRoute[1];
+    const startLoc = startStop?.stop?.location;
+    const finishLoc = finishStop?.stop?.location;
+    if (startLoc && finishLoc) {
+      setFullGeometry({ type: 'LineString', coordinates: [startLoc, finishLoc] });
+    }
+    syncFormFromRoute(fullRoute, 0, 999999);
+  }, [isCustomTrip, fullRoute]);
 
   function updateServiceField<K extends keyof ServiceFormState>(field: K, value: ServiceFormState[K]) {
     setServiceForm((c) => ({ ...c, [field]: value }));
@@ -841,9 +907,10 @@ export default function LogPage() {
               fullRoute={fullRoute}
               fullGeometry={fullGeometry}
               highlightedGeometry={riddenRoute?.geometry ?? fullGeometry}
-              onStopClick={(id) => { setSelectedStopId(id); setStopSheetOpen(true); }}
+              onStopClick={isCustomTrip ? () => {} : (id) => { setSelectedStopId(id); setStopSheetOpen(true); }}
               fromStopId={fromStopId}
               toStopId={toStopId}
+              onMapClick={isCustomTrip ? handleMapClick : null}
             />
 
             {/* Mobile Floating Overlay */}
@@ -852,10 +919,10 @@ export default function LogPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-ts-text-1">
-                      {riddenRoute ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}` : 'Select stops'}
+                      {riddenRoute ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}` : isCustomTrip ? 'Click map to set destination' : 'Select stops'}
                     </p>
                     <p className="text-[10px] uppercase tracking-wider text-ts-text-3">
-                      {riddenRoute ? `${riddenRoute.stops.length} stops` : 'Tap map to start'}
+                      {riddenRoute ? `${riddenRoute.stops.length} stops` : isCustomTrip ? '' : 'Tap map to start'}
                     </p>
                   </div>
                   <button
@@ -877,7 +944,7 @@ export default function LogPage() {
             </div>
 
             {/* Bottom sheet */}
-            {selectedStop && stopSheetOpen && (
+            {selectedStop && stopSheetOpen && !isCustomTrip && (
               <div className="absolute inset-x-0 bottom-0 z-0 rounded-t-3xl border-t border-ts-border bg-ts-bg/98 px-4 pb-12 pt-3 sm:pb-6">
                 <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ts-border" />
                 <div className="flex items-start justify-between">

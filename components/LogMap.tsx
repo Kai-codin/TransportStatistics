@@ -27,6 +27,8 @@ type RouteStop = {
   scheduled_departure?: string | null;
 };
 
+type MapClickCoords = { lng: number; lat: number };
+
 type LogMapProps = {
   fullRoute: RouteStop[];
   fullGeometry: Geometry;
@@ -34,6 +36,7 @@ type LogMapProps = {
   onStopClick: (id: number) => void;
   fromStopId: number | null;
   toStopId: number | null;
+  onMapClick?: ((coords: MapClickCoords) => void) | null;
 };
 
 export type LogMapHandle = {
@@ -55,18 +58,23 @@ const emptyLineFeature = {
 };
 
 export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
-  { fullRoute, fullGeometry, highlightedGeometry, onStopClick, fromStopId, toStopId },
+  { fullRoute, fullGeometry, highlightedGeometry, onStopClick, fromStopId, toStopId, onMapClick },
   ref,
 ) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const onStopClickRef = useRef(onStopClick);
+  const onMapClickRef = useRef(onMapClick);
   const [mapLoaded, setMapLoaded] = useState(false);
   const { theme } = useTheme();
 
   useEffect(() => {
     onStopClickRef.current = onStopClick;
   }, [onStopClick]);
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   useEffect(() => {
     if (!mapContainer.current || mapInstance.current) return;
@@ -177,6 +185,12 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
         map.getCanvas().style.cursor = '';
       });
 
+      map.on('click', (event) => {
+        if (onMapClickRef.current) {
+          onMapClickRef.current({ lng: event.lngLat.lng, lat: event.lngLat.lat });
+        }
+      });
+
       setMapLoaded(true);
     });
 
@@ -265,7 +279,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
   }), []);
 
   return (
-  <div className="relative h-full w-full overflow-hidden bg-ts-surface">
+  <div className={`relative h-full w-full overflow-hidden bg-ts-surface ${onMapClick ? '[&_.maplibregl-canvas]:cursor-crosshair' : ''}`}>
     <div ref={mapContainer} className="h-full w-full" />
       {!mapLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-ts-surface text-sm text-ts-text-2">

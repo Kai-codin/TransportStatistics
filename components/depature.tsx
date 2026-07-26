@@ -327,11 +327,14 @@ function buildDeparturesContent(data: any, state: any, popupId: string, stopId: 
           <button id="ts-dt-apply" class="dep-datetime-button">Apply</button>
         </div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px;gap:6px;">
-      <span style="font-size:10px;color:${C.text3};">Show passing</span>
-      <button data-pass-toggle="1" style="position:relative;width:32px;height:18px;border-radius:9px;border:1px solid ${showPass ? C.accent : C.border};background:${showPass ? C.accentB : C.surface2};cursor:pointer;padding:0;transition:background 0.2s;">
-        <span style="position:absolute;top:2px;left:${showPass ? "14px" : "2px"};width:12px;height:12px;border-radius:50%;background:${showPass ? C.accent : C.text3};transition:left 0.2s;display:block;"></span>
-      </button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px;">
+      <button data-custom-trip="1" style="background:${C.accentL};color:${C.accent};border:1px solid ${C.accentB};border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:background 0.15s;">Custom trip</button>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:10px;color:${C.text3};">Show passing</span>
+        <button data-pass-toggle="1" style="position:relative;width:32px;height:18px;border-radius:9px;border:1px solid ${showPass ? C.accent : C.border};background:${showPass ? C.accentB : C.surface2};cursor:pointer;padding:0;transition:background 0.2s;">
+          <span style="position:absolute;top:2px;left:${showPass ? "14px" : "2px"};width:12px;height:12px;border-radius:50%;background:${showPass ? C.accent : C.text3};transition:left 0.2s;display:block;"></span>
+        </button>
+      </div>
     </div>
     <div class="dep-header" style="--ncols:${ncols};">${headerCols}</div>
     <div class="dep-list" id="ts-dep-list">${rows}</div>
@@ -552,6 +555,23 @@ export function useDeparturePanel() {
 
       attachOffsetListeners();
       attachDateTimeListeners();
+
+      document.querySelector("button[data-custom-trip]")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!activeState.current?.stop) return;
+        const s = activeState.current.stop;
+        const now = new Date();
+        const params = new URLSearchParams({
+          custom: "true",
+          stop_name: s.commonName || s.name || "",
+          stop_code: s.atcoCode || s.crsCode || "",
+          stop_lat: String(s.lat ?? ""),
+          stop_lon: String(s.lon ?? ""),
+          custom_date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+          custom_time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+        });
+        window.location.href = `/log?${params.toString()}`;
+      });
 
       document.querySelector("button[data-pass-toggle]")?.addEventListener("click", (e) => {
         e.stopPropagation();

@@ -31,7 +31,7 @@ export default function LiveryPage() {
         {liveries.map((livery) => (
           <div 
             key={livery.name}
-            className="group relative flex flex-col overflow-hidden rounded-xl border border-ts-border bg-ts-surface transition-all hover:border-ts-accent/50 hover:shadow-lg"
+            className=""
           >
             {/* The "Flag" / CSS Swatch */}
             <div className="p-2">

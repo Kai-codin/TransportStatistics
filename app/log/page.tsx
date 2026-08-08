@@ -7,6 +7,7 @@ import { useConvexAuth } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { LogMap } from '@/components/LogMap';
 import { SignInButton, useUser } from '@clerk/nextjs';
+import { getSnappedRoute, type SnapMode } from '@/lib/routing-snap';
 import {
   AlertCircle,
   Bus,
@@ -16,6 +17,7 @@ import {
   LoaderCircle,
   Map,
   NotebookText,
+  Pencil,
   Plus,
   Route,
   Save,
@@ -316,6 +318,63 @@ function dedupeCoordinates(coordinates: [number, number][]) {
   });
 }
 
+function snapPointToPolyline(
+  point: [number, number],
+  polyline: [number, number][],
+): { snapped: [number, number]; insertAt: number; segmentIndex: number } | null {
+  if (!polyline || polyline.length < 2 || !point || point.length !== 2) return null;
+  if (isNaN(point[0]) || isNaN(point[1])) return null;
+
+  let bestSnapped: [number, number] = [polyline[0][0], polyline[0][1]];
+  let bestDist = Infinity;
+  let bestInsertAt = 1;
+  let bestSegIdx = 0;
+
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const a = polyline[i];
+    const b = polyline[i + 1];
+
+    if (!a || !b || a.length !== 2 || b.length !== 2) continue;
+    if (isNaN(a[0]) || isNaN(a[1]) || isNaN(b[0]) || isNaN(b[1])) continue;
+
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lenSq = dx * dx + dy * dy;
+
+    if (lenSq < 1e-24) {
+      const dist = Math.hypot(point[0] - a[0], point[1] - a[1]);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestSnapped = [a[0], a[1]];
+        bestInsertAt = i + 1;
+        bestSegIdx = i;
+      }
+      continue;
+    }
+
+    let t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const projX = a[0] + t * dx;
+    const projY = a[1] + t * dy;
+
+    if (isNaN(projX) || isNaN(projY)) continue;
+
+    const dist = Math.hypot(point[0] - projX, point[1] - projY);
+
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestSnapped = [projX, projY];
+      bestInsertAt = i + 1;
+      bestSegIdx = i;
+    }
+  }
+
+  if (isNaN(bestSnapped[0]) || isNaN(bestSnapped[1])) return null;
+
+  return { snapped: bestSnapped, insertAt: bestInsertAt, segmentIndex: bestSegIdx };
+}
+
 function buildFullGeometry(fullRoute: RouteStop[], geometry?: RouteGeometry | null) {
   if (geometry?.coordinates?.length) return geometry;
   const coordinates: [number, number][] = [];
@@ -369,47 +428,83 @@ function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toS
     : fullRoute.slice(fromIndex, toIndex + 1);
 
   let coordinates: [number, number][];
+
   if (polylinePath && polylinePath.length > 1) {
     const fromStop = wrapsAround ? fullRoute[fromIndex] : stops[0];
     const toStop = wrapsAround ? fullRoute[toIndex] : stops[stops.length - 1];
-    const fromLoc = fromStop?.stop?.location;
-    const toLoc = toStop?.stop?.location;
 
-    let polyFromIdx = 0;
-    let polyToIdx = polylinePath.length - 1;
+    const findClosestIndex = (target: [number, number] | null | undefined) => {
+      if (!target || target.length !== 2) return null;
 
-    if (fromLoc && fromLoc.length === 2) {
       let minDist = Infinity;
-      polylinePath.forEach((p, i) => {
-        const d = Math.hypot(p[0] - fromLoc[0], p[1] - fromLoc[1]);
-        if (d < minDist) { minDist = d; polyFromIdx = i; }
-      });
+      let idx = 0;
+
+      for (let i = 0; i < polylinePath.length; i++) {
+        const p = polylinePath[i];
+        const d = Math.hypot(p[0] - target[0], p[1] - target[1]);
+        if (d < minDist) {
+          minDist = d;
+          idx = i;
+        }
+      }
+
+      // 🔑 CRITICAL: reject if too far (not snapped)
+      if (minDist > 0.01) return null;
+
+      return idx;
+    };
+
+    let fromIdx = findClosestIndex(fromStop?.stop?.location);
+    let toIdx = findClosestIndex(toStop?.stop?.location);
+
+    // 🔁 fallback ONLY to OTHER SNAPPED STOPS (not raw coords)
+    if (fromIdx === null) {
+      for (const s of stops) {
+        if (s.id >= 0) {
+          const idx = findClosestIndex(s.stop?.location);
+          if (idx !== null) {
+            fromIdx = idx;
+            break;
+          }
+        }
+      }
     }
 
-    if (toLoc && toLoc.length === 2) {
-      let minDist = Infinity;
-      polylinePath.forEach((p, i) => {
-        const d = Math.hypot(p[0] - toLoc[0], p[1] - toLoc[1]);
-        if (d < minDist) { minDist = d; polyToIdx = i; }
-      });
+    if (toIdx === null) {
+      for (let i = stops.length - 1; i >= 0; i--) {
+        const s = stops[i];
+        if (s.id >= 0) {
+          const idx = findClosestIndex(s.stop?.location);
+          if (idx !== null) {
+            toIdx = idx;
+            break;
+          }
+        }
+      }
     }
 
-    if (polyFromIdx > polyToIdx && !wrapsAround) {
-      const tmp = polyFromIdx;
-      polyFromIdx = polyToIdx;
-      polyToIdx = tmp;
-    }
-
-    if (wrapsAround && polyFromIdx > polyToIdx) {
-      coordinates = dedupeCoordinates([...polylinePath.slice(polyFromIdx), ...polylinePath.slice(0, polyToIdx + 1)]);
+    // 🚫 If still null → DO NOT fake it
+    if (fromIdx === null || toIdx === null) {
+      coordinates = dedupeCoordinates(polylinePath);
     } else {
-      coordinates = dedupeCoordinates(polylinePath.slice(polyFromIdx, polyToIdx + 1));
+      if (wrapsAround && fromIdx > toIdx) {
+        coordinates = dedupeCoordinates([
+          ...polylinePath.slice(fromIdx),
+          ...polylinePath.slice(0, toIdx + 1),
+        ]);
+      } else {
+        const start = Math.min(fromIdx, toIdx);
+        const end = Math.max(fromIdx, toIdx);
+        coordinates = dedupeCoordinates(polylinePath.slice(start, end + 1));
+      }
     }
+
   } else {
+    // fallback ONLY when no polyline exists
     coordinates = dedupeCoordinates(
-      stops.flatMap((stop, index) => {
-        if (index > 0 && Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
-        if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) return [stop.stop.location];
+      stops.flatMap((stop) => {
+        if (Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
+        if (Array.isArray(stop.stop.location)) return [stop.stop.location];
         return [];
       }),
     );
@@ -447,6 +542,12 @@ function mapVehicleModeToTransportType(mode: VehicleMode): StoredTransportType {
   if (mode === 'Tram') return 'Tram';
   if (mode === 'Bus') return 'Bus';
   return 'Other';
+}
+
+function vehicleModeToSnapMode(mode: VehicleMode): SnapMode {
+  if (mode === 'Train') return 'rail';
+  if (mode === 'Tram') return 'metro';
+  return 'road';
 }
 
 function serializeJson(value: unknown) {
@@ -494,7 +595,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-3xl border border-ts-border bg-ts-surface p-4 ${className}`}>
+    <div className={`${className}`}>
       {children}
     </div>
   );
@@ -550,6 +651,13 @@ export default function LogPage() {
   const [toStopId, setToStopId] = useState<number | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<number | null>(null);
   const [stopSheetOpen, setStopSheetOpen] = useState(false);
+  const [addStopAfterId, setAddStopAfterId] = useState<number | null>(null);
+  const [newStopName, setNewStopName] = useState('');
+  const [newStopTime, setNewStopTime] = useState('');
+  const [newStopArrivalTime, setNewStopArrivalTime] = useState('');
+  const [customStopCounter, setCustomStopCounter] = useState(0);
+  const [customStopLocation, setCustomStopLocation] = useState<[number, number] | null>(null);
+  const [editingStopId, setEditingStopId] = useState<number | null>(null);
 
   useEffect(() => { setStopSheetOpen(false); }, [routeMode]);
   const [units, setUnits] = useState<TripUnit[]>([]);
@@ -578,7 +686,7 @@ export default function LogPage() {
   const isEditingTrip = Boolean(editTripId);
 
   const selectedStop = fullRoute.find((s) => s.id === selectedStopId) ?? null;
-  const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId, polylinePath);
+  const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId, polylinePath ?? fullGeometry?.coordinates ?? null);
   const selectedUnit = units[selectedUnitIndex] ?? null;
 
   useEffect(() => {
@@ -775,19 +883,22 @@ export default function LogPage() {
   }, [editTrip, editTripId, searchKey, isCustomTrip]);
 
   function handleMapClick(coords: { lng: number; lat: number }) {
-    if (!isCustomTrip) return;
-    const finishStop: RouteStop = {
-      id: 999999,
-      stop: { name: 'Custom destination', stop_code: '', location: [coords.lng, coords.lat] },
-      scheduled_departure: null,
-      scheduled_arrival: null,
-    };
-    setFullRoute((prev) => {
-      if (prev.length <= 1) return [...prev, finishStop];
-      return [...prev.slice(0, 1), finishStop];
-    });
-    setToStopId(999999);
-    setSelectedStopId(999999);
+    if (isCustomTrip) {
+      const finishStop: RouteStop = {
+        id: 999999,
+        stop: { name: 'Custom destination', stop_code: '', location: [coords.lng, coords.lat] },
+        scheduled_departure: null,
+        scheduled_arrival: null,
+      };
+      setFullRoute((prev) => {
+        if (prev.length <= 1) return [...prev, finishStop];
+        return [...prev.slice(0, 1), finishStop];
+      });
+      setToStopId(999999);
+      setSelectedStopId(999999);
+    } else if (addStopAfterId !== null) {
+      setCustomStopLocation([coords.lng, coords.lat]);
+    }
   }
 
   useEffect(() => {
@@ -859,6 +970,237 @@ export default function LogPage() {
       setSelectedUnitIndex(next.length ? Math.min(selectedUnitIndex, next.length - 1) : 0);
       return next;
     });
+  }
+
+  function startAddStop(afterId: number | null) {
+    setAddStopAfterId(afterId);
+    setNewStopName('');
+    setNewStopTime('');
+    setNewStopArrivalTime('');
+    setCustomStopLocation(null);
+    setStopSheetOpen(false);
+  }
+
+  function cancelAddStop() {
+    setAddStopAfterId(null);
+    setNewStopName('');
+    setNewStopTime('');
+    setNewStopArrivalTime('');
+    setCustomStopLocation(null);
+  }
+
+  async function commitCustomStop() {
+    if (!newStopName.trim()) return;
+    const newId = -1 - customStopCounter;
+
+    let stopLocation: [number, number] | null = customStopLocation;
+
+    if (customStopLocation && customStopLocation.length === 2) {
+      if (polylinePath && polylinePath.length > 1) {
+        const snapResult = snapPointToPolyline(customStopLocation, polylinePath);
+        if (snapResult) {
+          stopLocation = snapResult.snapped;
+
+          const { snapped, insertAt } = snapResult;
+          const newPoly = [
+            ...polylinePath.slice(0, insertAt),
+            snapped,
+            ...polylinePath.slice(insertAt),
+          ];
+          setPolylinePath(dedupeCoordinates(newPoly));
+
+          if (fullGeometry?.coordinates?.length) {
+            const geomSnap = snapPointToPolyline(snapped, fullGeometry.coordinates);
+            if (geomSnap) {
+              const newGeomCoords = [
+                ...fullGeometry.coordinates.slice(0, geomSnap.insertAt),
+                snapped,
+                ...fullGeometry.coordinates.slice(geomSnap.insertAt),
+              ];
+              setFullGeometry({ type: 'LineString', coordinates: dedupeCoordinates(newGeomCoords) });
+            } else {
+              const prevRoute = fullRoute;
+              const insertionIdx = addStopAfterId !== null
+                ? fullRoute.findIndex((s) => s.id === addStopAfterId)
+                : -1;
+              const insertedAt = insertionIdx !== -1 ? insertionIdx + 1 : fullRoute.length;
+              const priorRealStops = prevRoute.slice(0, insertedAt).filter((s) => s.id >= 0);
+              const stopIndexFraction = priorRealStops.length / Math.max(1, prevRoute.filter((s) => s.id >= 0).length);
+              const coords = fullGeometry.coordinates;
+              const geomInsertAt = insertedAt >= prevRoute.length
+                ? coords.length
+                : Math.round(stopIndexFraction * coords.length);
+              const newGeomCoords = [
+                ...coords.slice(0, geomInsertAt),
+                snapped,
+                ...coords.slice(geomInsertAt),
+              ];
+              setFullGeometry({ type: 'LineString', coordinates: dedupeCoordinates(newGeomCoords) });
+            }
+          }
+        }
+      } else if (fullGeometry?.coordinates?.length) {
+        const snapResult = snapPointToPolyline(customStopLocation, fullGeometry.coordinates);
+        if (snapResult) {
+          stopLocation = snapResult.snapped;
+
+          const { snapped, insertAt } = snapResult;
+          const newGeomCoords = [
+            ...fullGeometry.coordinates.slice(0, insertAt),
+            snapped,
+            ...fullGeometry.coordinates.slice(insertAt),
+          ];
+          setFullGeometry({ type: 'LineString', coordinates: dedupeCoordinates(newGeomCoords) });
+        }
+      }
+    }
+
+    const newStop: RouteStop = {
+      id: newId,
+      stop: {
+        name: newStopName.trim(),
+        stop_code: '',
+        location: stopLocation,
+      },
+      scheduled_departure: newStopTime || null,
+      scheduled_arrival: newStopArrivalTime || null,
+    };
+
+    const insertionIdx = addStopAfterId !== null
+      ? fullRoute.findIndex((s) => s.id === addStopAfterId)
+      : -1;
+    const newFullRoute = insertionIdx !== -1
+      ? [...fullRoute.slice(0, insertionIdx + 1), newStop, ...fullRoute.slice(insertionIdx + 1)]
+      : [...fullRoute, newStop];
+
+    setFullRoute(newFullRoute);
+    setCustomStopCounter((c) => c + 1);
+    cancelAddStop();
+  }
+
+  function removeCustomStop(id: number) {
+    const stopToRemove = fullRoute.find((s) => s.id === id);
+    const removedLoc = stopToRemove?.stop?.location;
+
+    setFullRoute((prev) => {
+      const filtered = prev.filter((s) => s.id !== id);
+      if (id === fromStopId) setFromStopId(filtered.length > 0 ? filtered[0].id : null);
+      if (id === toStopId) setToStopId(filtered.length > 0 ? filtered[filtered.length - 1].id : null);
+      if (id === selectedStopId) setSelectedStopId(null);
+      if (addStopAfterId === id) setAddStopAfterId(null);
+      return filtered;
+    });
+
+    // Clean up geometry for custom stops with location
+    if (removedLoc && removedLoc.length === 2) {
+      setFullGeometry((geom) => {
+        if (!geom?.coordinates) return geom;
+        let closestIdx = 0;
+        let minDist = Infinity;
+        geom.coordinates.forEach((coord, i) => {
+          const d = Math.hypot(coord[0] - removedLoc[0], coord[1] - removedLoc[1]);
+          if (d < minDist) { minDist = d; closestIdx = i; }
+        });
+        // Only remove if it's a close match (within ~100m in lng/lat degrees ≈ ~0.001)
+        if (minDist < 0.005) {
+          const newCoords = [...geom.coordinates];
+          newCoords.splice(closestIdx, 1);
+          return { type: 'LineString', coordinates: newCoords.length > 0 ? newCoords : geom.coordinates };
+        }
+        return geom;
+      });
+      setPolylinePath((path) => {
+        if (!path) return path;
+        let closestIdx = 0;
+        let minDist = Infinity;
+        path.forEach((coord, i) => {
+          const d = Math.hypot(coord[0] - removedLoc[0], coord[1] - removedLoc[1]);
+          if (d < minDist) { minDist = d; closestIdx = i; }
+        });
+        if (minDist < 0.005) {
+          const newPath = [...path];
+          newPath.splice(closestIdx, 1);
+          return newPath.length > 0 ? newPath : path;
+        }
+        return path;
+      });
+    }
+  }
+
+  function handleStopDragEnd(stopId: number, newLocation: [number, number]) {
+    if (!newLocation || newLocation.length !== 2) return;
+    if (isNaN(newLocation[0]) || isNaN(newLocation[1])) return;
+
+    setFullRoute((prevRoute) => {
+      const targetStop = prevRoute.find((s) => s.id === stopId);
+      if (!targetStop) return prevRoute;
+      const oldLocation = targetStop.stop?.location;
+
+      let snapped: [number, number] = [newLocation[0], newLocation[1]];
+
+      if (polylinePath && polylinePath.length > 1) {
+        const snapResult = snapPointToPolyline(newLocation, polylinePath);
+        if (snapResult) {
+          snapped = snapResult.snapped;
+        }
+      }
+
+      const withoutOld = (coords: [number, number][]) => {
+        if (!oldLocation || oldLocation.length !== 2) return coords;
+        let closestIdx = 0;
+        let minDist = Infinity;
+        for (let i = 0; i < coords.length; i++) {
+          const d = Math.hypot(coords[i][0] - oldLocation[0], coords[i][1] - oldLocation[1]);
+          if (d < minDist) { minDist = d; closestIdx = i; }
+        }
+        if (minDist < 0.01) {
+          const next = [...coords];
+          next.splice(closestIdx, 1);
+          return next;
+        }
+        return coords;
+      };
+
+      const insertSnapped = (coords: [number, number][]) => {
+        if (coords.length < 2) return dedupeCoordinates([...coords, snapped]);
+        const reSnap = snapPointToPolyline(snapped, coords);
+        if (reSnap) {
+          return dedupeCoordinates([
+            ...coords.slice(0, reSnap.insertAt),
+            snapped,
+            ...coords.slice(reSnap.insertAt),
+          ]);
+        }
+        return dedupeCoordinates([...coords, snapped]);
+      };
+
+      if (polylinePath && polylinePath.length > 1) {
+        setPolylinePath((path) => {
+          if (!path) return path;
+          return insertSnapped(withoutOld(path));
+        });
+      }
+
+      setFullGeometry((geom) => {
+        if (!geom?.coordinates?.length) return geom;
+        const newCoords = insertSnapped(withoutOld(geom.coordinates));
+        return { type: 'LineString', coordinates: newCoords };
+      });
+
+      return prevRoute.map((s) =>
+        s.id === stopId
+          ? { ...s, stop: { ...s.stop, location: snapped } }
+          : s,
+      );
+    });
+  }
+
+  function renameCustomStop(stopId: number, newName: string) {
+    setFullRoute((prev) =>
+      prev.map((s) =>
+        s.id === stopId ? { ...s, stop: { ...s.stop, name: newName } } : s,
+      ),
+    );
   }
 
   function setStartStop(stopId: number) {
@@ -955,25 +1297,36 @@ export default function LogPage() {
     const isLast = index === fullRoute.length - 1;
     const circular = isRouteCircular(fullRoute);
     return (
-      <div className="flex gap-2 pt-2">
-        {(!isLast || circular) && (
+      <div className="flex flex-col gap-2 pt-2">
+        <div className="flex gap-2">
+          {(!isLast || circular) && (
+            <button
+              type="button"
+              onClick={() => { setStartStop(stop.id); onDone?.(); }}
+              disabled={stop.id === toStopId}
+              className="flex-1 rounded-2xl border border-ts-border py-3 text-sm font-semibold text-ts-text-1 transition active:scale-95 hover:border-ts-accent hover:text-ts-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Start here
+            </button>
+          )}
+          {(!isFirst || circular) && (
+            <button
+              type="button"
+              onClick={() => { setEndStop(stop.id); onDone?.(); }}
+              disabled={stop.id === fromStopId}
+              className="flex-1 rounded-2xl border border-ts-border py-3 text-sm font-semibold text-ts-text-1 transition active:scale-95 hover:border-ts-accent hover:text-ts-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              End here
+            </button>
+          )}
+        </div>
+        {stop.id < 0 && (
           <button
             type="button"
-            onClick={() => { setStartStop(stop.id); onDone?.(); }}
-            disabled={stop.id === toStopId}
-            className="flex-1 rounded-2xl border border-ts-border py-3 text-sm font-semibold text-ts-text-1 transition active:scale-95 hover:border-ts-accent hover:text-ts-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => { removeCustomStop(stop.id); onDone?.(); }}
+            className="rounded-2xl border border-red-500/30 py-2.5 text-sm font-semibold text-red-400 transition active:scale-95 hover:bg-red-500/10"
           >
-            Start here
-          </button>
-        )}
-        {(!isFirst || circular) && (
-          <button
-            type="button"
-            onClick={() => { setEndStop(stop.id); onDone?.(); }}
-            disabled={stop.id === fromStopId}
-            className="flex-1 rounded-2xl border border-ts-border py-3 text-sm font-semibold text-ts-text-1 transition active:scale-95 hover:border-ts-accent hover:text-ts-accent disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            End here
+            Remove custom stop
           </button>
         )}
       </div>
@@ -997,13 +1350,22 @@ export default function LogPage() {
                   {riddenRoute ? `${riddenRoute.stops.length} stops` : 'Tap a stop on the map or list below'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={resetToFullRoute}
-                className="shrink-0 rounded-full border border-ts-border px-3 py-1.5 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95"
-              >
-                Full route
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => startAddStop(fullRoute.length > 0 ? fullRoute[fullRoute.length - 1].id : null)}
+                  className="shrink-0 rounded-full border border-ts-border px-3 py-1.5 text-xs font-semibold text-ts-text-2 transition hover:border-amber-400 hover:text-amber-400 active:scale-95"
+                >
+                  + Add stop
+                </button>
+                <button
+                  type="button"
+                  onClick={resetToFullRoute}
+                  className="shrink-0 rounded-full border border-ts-border px-3 py-1.5 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95"
+                >
+                  Full route
+                </button>
+              </div>
             </div>
             <div className="mt-3">
               <SegmentedControl
@@ -1012,6 +1374,60 @@ export default function LogPage() {
                 onChange={(v) => setRouteMode(v as RouteMode)}
               />
             </div>
+            {addStopAfterId !== null && !isCustomTrip && (
+              <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3">
+                <p className="mb-2 text-xs font-semibold text-amber-400">Add custom stop</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    autoFocus
+                    value={newStopName}
+                    onChange={(e) => setNewStopName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && newStopName.trim()) commitCustomStop(); if (e.key === 'Escape') cancelAddStop(); }}
+                    placeholder="Stop name"
+                    className="col-span-2 h-10 rounded-xl border border-ts-border bg-ts-surface-2 px-3 text-sm text-ts-text-1 outline-none transition focus:border-amber-400 placeholder:text-ts-text-3"
+                  />
+                  <input
+                    type="time"
+                    value={newStopArrivalTime}
+                    onChange={(e) => setNewStopArrivalTime(e.target.value)}
+                    placeholder="Arrival"
+                    className="h-10 rounded-xl border border-ts-border bg-ts-surface-2 px-3 text-sm text-ts-text-1 outline-none transition focus:border-amber-400 placeholder:text-ts-text-3"
+                  />
+                  <input
+                    type="time"
+                    value={newStopTime}
+                    onChange={(e) => setNewStopTime(e.target.value)}
+                    placeholder="Departure"
+                    className="h-10 rounded-xl border border-ts-border bg-ts-surface-2 px-3 text-sm text-ts-text-1 outline-none transition focus:border-amber-400 placeholder:text-ts-text-3"
+                  />
+                </div>
+                {customStopLocation && (
+                  <p className="mt-1.5 text-[10px] text-ts-text-3">
+                    Location set from map: {customStopLocation[1].toFixed(5)}, {customStopLocation[0].toFixed(5)}
+                  </p>
+                )}
+                {!customStopLocation && (
+                  <p className="mt-1.5 text-[10px] text-ts-text-3">Click on the map to set location (optional)</p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={commitCustomStop}
+                    disabled={!newStopName.trim()}
+                    className="flex-1 rounded-xl bg-amber-500/15 border border-amber-500/30 py-2 text-xs font-bold text-amber-400 transition hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Add to route
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelAddStop}
+                    className="flex-1 rounded-xl border border-ts-border py-2 text-xs font-semibold text-ts-text-3 transition hover:text-ts-text-1"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -1025,7 +1441,8 @@ export default function LogPage() {
             onStopClick={isCustomTrip ? () => {} : (id) => { setSelectedStopId(id); setStopSheetOpen(true); }}
             fromStopId={fromStopId}
             toStopId={toStopId}
-            onMapClick={isCustomTrip ? handleMapClick : null}
+            onMapClick={isCustomTrip || addStopAfterId !== null ? handleMapClick : null}
+            onStopDragEnd={isCustomTrip ? null : handleStopDragEnd}
           />
 
             {/* Mobile Floating Overlay */}
@@ -1083,6 +1500,13 @@ export default function LogPage() {
                   ))}
                 </div>
                 {renderStopActions({ stop: selectedStop, index: fullRoute.findIndex((s) => s.id === selectedStop.id), onDone: () => setStopSheetOpen(false) })}
+                <button
+                  type="button"
+                  onClick={() => { startAddStop(selectedStop.id); }}
+                  className="mt-2 w-full rounded-2xl border border-dashed border-amber-500/30 py-3 text-sm font-semibold text-amber-400 transition active:scale-95 hover:bg-amber-500/10"
+                >
+                  + Add stop after here
+                </button>
               </div>
             )}
           </div>
@@ -1095,54 +1519,117 @@ export default function LogPage() {
               const inRidden = riddenRoute?.stops.some((s) => s.id === stop.id) ?? false;
 
               return (
-                <div key={stop.id} className="flex gap-0 items-stretch">
-                  {/* Timeline */}
-                  <div className="flex flex-col items-center w-8 shrink-0 pt-5 pb-0">
-                    <div className={`h-3 w-3 rounded-full border-2 shrink-0 z-0 ${
-                      isStart ? 'border-ts-accent bg-ts-accent' :
-                      isEnd ? 'border-sky-400 bg-sky-400' :
-                      inRidden ? 'border-ts-accent/60 bg-ts-accent/20' :
-                      'border-ts-border bg-ts-surface-2'
-                    }`} />
-                    {index < fullRoute.length - 1 && (
-                      <div className={`w-0.5 flex-1 mt-1 ${inRidden && !isEnd ? 'bg-ts-accent/40' : 'bg-ts-border'}`} style={{ minHeight: 12 }} />
-                    )}
+                <div key={stop.id}>
+                  <div className="flex gap-0 items-stretch">
+                    {/* Timeline */}
+                    <div className="flex flex-col items-center w-8 shrink-0 pt-5 pb-0">
+                      <div className={`h-3 w-3 rounded-full border-2 shrink-0 z-0 ${
+                        stop.id < 0 ? 'border-amber-400 bg-amber-400/40' :
+                        isStart ? 'border-ts-accent bg-ts-accent' :
+                        isEnd ? 'border-sky-400 bg-sky-400' :
+                        inRidden ? 'border-ts-accent/60 bg-ts-accent/20' :
+                        'border-ts-border bg-ts-surface-2'
+                      }`} />
+                      {index < fullRoute.length - 1 && (
+                        <div className={`w-0.5 flex-1 mt-1 ${inRidden && !isEnd ? 'bg-ts-accent/40' : 'bg-ts-border'}`} style={{ minHeight: 12 }} />
+                      )}
+                    </div>
+
+                    {/* Card */}
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedStopId(stop.id); setStopSheetOpen(isSelected ? !stopSheetOpen : true); }}
+                      className={`flex-1 mb-2 rounded-3xl border p-3.5 text-left transition active:scale-[0.99] ${
+                        stop.id < 0
+                          ? 'border-amber-500/40 bg-amber-500/5'
+                          : isSelected && stopSheetOpen
+                          ? 'border-ts-accent bg-ts-accent/10'
+                          : inRidden
+                          ? 'border-ts-border-soft bg-ts-surface-2'
+                          : 'border-ts-border bg-ts-surface'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {stop.id < 0 && <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400">Custom</span>}
+                        {isStart && <span className="rounded-full bg-ts-accent/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-ts-accent">Start</span>}
+                        {isEnd && <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-sky-400">End</span>}
+                        {stop.stop.stop_code && <span className="text-[10px] text-ts-text-3">{stop.stop.stop_code}</span>}
+                      </div>
+                      {editingStopId === stop.id ? (
+                        <input
+                          autoFocus
+                          defaultValue={stop.stop.name || ''}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              renameCustomStop(stop.id, (e.target as HTMLInputElement).value.trim() || stop.stop.name || 'Stop');
+                              setEditingStopId(null);
+                            }
+                            if (e.key === 'Escape') setEditingStopId(null);
+                          }}
+                          onBlur={(e) => {
+                            renameCustomStop(stop.id, e.target.value.trim() || stop.stop.name || 'Stop');
+                            setEditingStopId(null);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-1 w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-sm font-bold text-ts-text-1 outline-none"
+                        />
+                      ) : (
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <p className="text-sm font-bold text-ts-text-1">{stop.stop.name || 'Stop'}</p>
+                          {stop.id < 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setEditingStopId(stop.id); }}
+                              className="rounded p-0.5 text-ts-text-3 hover:text-amber-400 transition"
+                              title="Rename stop"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {(stop.scheduled_departure || stop.scheduled_arrival || stop.actual_departure || stop.actual_arrival) && (
+                        <div className="mt-1.5 flex gap-4 text-xs text-ts-text-3">
+                          {(stop.scheduled_departure || stop.scheduled_arrival) && (
+                            <span>S <span className="font-mono text-ts-text-2">{formatDisplayTime(stop.scheduled_departure || stop.scheduled_arrival)}</span></span>
+                          )}
+                          {(stop.actual_departure || stop.actual_arrival) && (
+                            <span>A <span className="font-mono text-ts-text-2">{formatDisplayTime(stop.actual_departure || stop.actual_arrival)}</span></span>
+                          )}
+                        </div>
+                      )}
+                      {isSelected && stopSheetOpen && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {renderStopActions({ stop, index })}
+                        </div>
+                      )}
+                      {stop.id < 0 && (
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomStop(stop.id)}
+                            className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition hover:bg-red-500/15 active:scale-95"
+                          >
+                            Remove stop
+                          </button>
+                        </div>
+                      )}
+                    </button>
                   </div>
 
-                  {/* Card */}
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedStopId(stop.id); setStopSheetOpen(isSelected ? !stopSheetOpen : true); }}
-                    className={`flex-1 mb-2 rounded-3xl border p-3.5 text-left transition active:scale-[0.99] ${
-                      isSelected && stopSheetOpen
-                        ? 'border-ts-accent bg-ts-accent/10'
-                        : inRidden
-                        ? 'border-ts-border-soft bg-ts-surface-2'
-                        : 'border-ts-border bg-ts-surface'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {isStart && <span className="rounded-full bg-ts-accent/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-ts-accent">Start</span>}
-                      {isEnd && <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-sky-400">End</span>}
-                      {stop.stop.stop_code && <span className="text-[10px] text-ts-text-3">{stop.stop.stop_code}</span>}
+                  {/* Add-stop button */}
+                  {!isCustomTrip && (
+                    <div className="ml-8 pl-0 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => startAddStop(stop.id)}
+                        className="flex items-center gap-1.5 rounded-full border border-dashed border-ts-border px-2.5 py-1 text-[11px] font-semibold text-ts-text-3 transition hover:border-amber-400 hover:text-amber-400 active:scale-95"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add stop after
+                      </button>
                     </div>
-                    <p className="mt-1 text-sm font-bold text-ts-text-1">{stop.stop.name || 'Stop'}</p>
-                    {(stop.scheduled_departure || stop.scheduled_arrival || stop.actual_departure || stop.actual_arrival) && (
-                      <div className="mt-1.5 flex gap-4 text-xs text-ts-text-3">
-                        {(stop.scheduled_departure || stop.scheduled_arrival) && (
-                          <span>S <span className="font-mono text-ts-text-2">{formatDisplayTime(stop.scheduled_departure || stop.scheduled_arrival)}</span></span>
-                        )}
-                        {(stop.actual_departure || stop.actual_arrival) && (
-                          <span>A <span className="font-mono text-ts-text-2">{formatDisplayTime(stop.actual_departure || stop.actual_arrival)}</span></span>
-                        )}
-                      </div>
-                    )}
-                    {isSelected && stopSheetOpen && (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        {renderStopActions({ stop, index })}
-                      </div>
-                    )}
-                  </button>
+                  )}
                 </div>
               );
             })}
@@ -1536,26 +2023,38 @@ export default function LogPage() {
                 </Field>
 
                 <Field label="At stop">
-                  <select
-                    value={event.stop_id ?? ''}
+                  <input
+                    type="text"
+                    list={`coupling-stops-${index}`}
+                    value={event.stop_name ?? ''}
                     onChange={(e) => {
-                      const id = e.target.value ? Number(e.target.value) : null;
-                      const stop = fullRoute.find((s) => s.id === id);
-                      updateCouplingEvent(index, {
-                        stop_id: id,
-                        stop_name: stop?.stop?.name ?? '',
-                        stop_code: stop?.stop?.stop_code ?? '',
+                      const value = e.target.value.trim();
+                      const matchedStop = fullRoute.find((s) => {
+                        const name = s.stop.name || s.stop.stop_code || `Stop ${s.id}`;
+                        return name.toLowerCase() === value.toLowerCase();
                       });
+                      if (matchedStop) {
+                        updateCouplingEvent(index, {
+                          stop_id: matchedStop.id,
+                          stop_name: matchedStop.stop.name ?? '',
+                          stop_code: matchedStop.stop.stop_code ?? '',
+                        });
+                      } else {
+                        updateCouplingEvent(index, {
+                          stop_id: null,
+                          stop_name: value,
+                          stop_code: '',
+                        });
+                      }
                     }}
+                    placeholder="Start typing a stop name..."
                     className={inputCls()}
-                  >
-                    <option value="">Select stop...</option>
+                  />
+                  <datalist id={`coupling-stops-${index}`}>
                     {fullRoute.map((stop) => (
-                      <option key={stop.id} value={stop.id}>
-                        {stop.stop.name || stop.stop.stop_code || `Stop ${stop.id}`}
-                      </option>
+                      <option key={stop.id} value={stop.stop.name || stop.stop.stop_code || `Stop ${stop.id}`} />
                     ))}
-                  </select>
+                  </datalist>
                 </Field>
               </div>
 

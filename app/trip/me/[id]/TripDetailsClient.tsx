@@ -19,6 +19,8 @@ import {
   Bus,
   CalendarDays,
   Copy,
+  Link2,
+  Link2Off,
   LoaderCircle,
   MapPinned,
   NotebookText,
@@ -89,6 +91,14 @@ type UnitInfo = {
   livery_left?: string;
 };
 
+type CouplingEvent = {
+  type: 'couple' | 'uncouple';
+  unit: UnitInfo;
+  stop_name?: string;
+  stop_code?: string;
+  stop_id?: number | null;
+};
+
 type TripDetailsData = {
   trip: {
     _id: Id<'tripLogs'>;
@@ -118,6 +128,7 @@ type TripDetailsData = {
     notes?: string;
     first_time?: boolean;
     first_units?: string[];
+    coupling_events?: CouplingEvent[];
     on_trip_with: string[];
   };
   originStop: StopRecord | null;
@@ -266,7 +277,7 @@ function getTransportIcon(type: string) {
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-2xl border border-ts-border bg-ts-surface p-4 md:p-5">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ts-text-3">{label}</div>
+      <div className="text-[10px] font-semibold  tracking-[0.18em] text-ts-text-3">{label}</div>
       <div className="mt-2 text-xl font-bold text-ts-text-1 tabular-nums">{value}</div>
       {sub ? <div className="mt-1 text-xs text-ts-text-3">{sub}</div> : null}
     </div>
@@ -311,10 +322,10 @@ function SectionCard({
   className?: string;
 }) {
   return (
-    <section className={`rounded-3xl border border-ts-border bg-ts-surface ${className}`}>
+    <section className={`${className}`}>
       <div className="flex items-center gap-2 border-b border-ts-border px-4 py-3 md:px-5">
         <div className="text-ts-text-2">{icon}</div>
-        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-ts-text-1">{title}</h2>
+        <h2 className="text-sm font-semibold  tracking-[0.14em] text-ts-text-1">{title}</h2>
       </div>
       <div className="p-4 md:p-5">{children}</div>
     </section>
@@ -399,15 +410,33 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
   const durationMs = useMemo(() => {
     const actualDeparture = parseTimeMs(trip.service_date, trip.actual_departure);
     const actualArrival = parseTimeMs(trip.service_date, trip.actual_arrival);
-    if (actualDeparture !== null && actualArrival !== null) return actualArrival - actualDeparture;
+
+    if (actualDeparture != null && actualArrival != null) {
+      if (actualArrival < actualDeparture) {
+        return actualArrival + 24 * 60 * 60 * 1000 - actualDeparture;
+      }
+      return actualArrival - actualDeparture;
+    }
 
     const scheduledDeparture = parseTimeMs(trip.service_date, trip.scheduled_departure);
     const scheduledArrival = parseTimeMs(trip.service_date, trip.scheduled_arrival);
-    if (scheduledDeparture !== null && scheduledArrival !== null) return scheduledArrival - scheduledDeparture;
+
+    if (scheduledDeparture != null && scheduledArrival != null) {
+      if (scheduledArrival < scheduledDeparture) {
+        return scheduledArrival + 24 * 60 * 60 * 1000 - scheduledDeparture;
+      }
+      return scheduledArrival - scheduledDeparture;
+    }
 
     return null;
-  }, [trip.actual_arrival, trip.actual_departure, trip.scheduled_arrival, trip.scheduled_departure, trip.service_date]);
-
+  }, [
+    trip.actual_arrival,
+    trip.actual_departure,
+    trip.scheduled_arrival,
+    trip.scheduled_departure,
+    trip.service_date
+  ]);
+  
   const distanceKm = useMemo(() => {
     const riddenPath = riddenCoordinates.length > 1 ? riddenCoordinates : fullCoordinates;
     if (riddenPath.length > 1) {
@@ -589,7 +618,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
-      <div className="mb-5 flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         {isOwner ? (
           <Link
             href="/profile"
@@ -618,63 +647,44 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
         </div>
       </div>
 
-      <section className={`mb-6 overflow-hidden rounded-3xl border ${accentClasses} bg-ts-surface shadow-sm`}>
+      <section className={``}>
         <div className="border-b border-white/10 px-5 py-4 md:px-6 md:py-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-semibold text-ts-text-1">
-              {trip.service_number}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ts-text-2">
-              {operatorName}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ts-text-2 inline-flex items-center gap-1.5">
-              {getTransportIcon(trip.transport_type)}
-              {trip.transport_type}
-            </span>
-            {!isOwner && tripOwner ? (
-              <Link
-                href={`/profile/${trip.user}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-300 hover:border-sky-400/50 hover:bg-sky-500/20 transition-colors"
-              >
-                <UserRound className="h-3 w-3" />
-                Trip by {tripOwner.username}
-              </Link>
-            ) : null}
-            {!isOwner && isParticipating ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                <MapPinned className="h-3 w-3" />
-                You were on this trip
-              </span>
-            ) : null}
-            {isFirstTime ? (
-              <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">
-                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 12 12" fill="currentColor">
-                  <path d="M6 1l1.2 3.6H11l-3 2.2 1.1 3.6L6 8.2l-3.1 2.2L4 7 1 4.8h3.8z"/>
-                </svg>
-                First Time
-              </div>
-            ) : null}
-            {primaryDelayMs !== null ? (
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                  isDelayed
-                    ? 'border-rose-400/25 bg-rose-400/10 text-rose-300'
-                    : isEarly
-                      ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300'
-                      : 'border-sky-400/25 bg-sky-400/10 text-sky-300'
-                }`}
-              >
-                {delayLabel} {formatDuration(primaryDelayMs)}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0">
-              <div className="text-sm font-medium uppercase tracking-[0.16em] text-ts-text-3">
-                {formatTimeValue(trip.scheduled_departure)} → {formatTimeValue(trip.scheduled_arrival)}
+              <h1 className="mt-2 text-2xl font-bold text-ts-text-1 md:text-2xl">{trip.service_number} | {routeTitle}</h1>
+              <div className="text-sm font-medium text-ts-text-3">
+                {operatorName} | {formatTimeValue(trip.scheduled_departure)} → {formatTimeValue(trip.scheduled_arrival)}
               </div>
-              <h1 className="mt-2 text-2xl font-bold text-ts-text-1 md:text-2xl">{routeTitle}</h1>
+              <br/>
+              <div className="flex flex-wrap items-center gap-2">
+                {isFirstTime ? (
+                  <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/5 px-3 py-1 text-xs font-semibold  tracking-[0.14em] text-amber-500">
+                    <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 12 12" fill="currentColor">
+                      <path d="M6 1l1.2 3.6H11l-3 2.2 1.1 3.6L6 8.2l-3.1 2.2L4 7 1 4.8h3.8z"/>
+                    </svg>
+                    First Time
+                  </div>
+                ) : null}
+                {primaryDelayMs !== null ? (
+                  <span
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold  tracking-[0.14em] ${
+                      isDelayed
+                        ? 'border-rose-400/25 bg-rose-400/10 text-rose-400'
+                        : isEarly
+                          ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-500'
+                          : 'border-sky-400/25 bg-sky-400/10 text-sky-400'
+                    }`}
+                  >
+                    {delayLabel} {formatDuration(primaryDelayMs)}
+                  </span>
+                ) : null}
+                {!isOwner && isParticipating ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                    <MapPinned className="h-3 w-3" />
+                    You were on this trip
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -705,7 +715,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
             {fullCoordinates.length > 1 || riddenCoordinates.length > 1 ? (
               <div className="space-y-3">
                 <div className="h-[500px] overflow-hidden rounded-2xl border border-ts-border bg-ts-bg">
-                  <div ref={mapContainerRef} className="h-full w-full" />
+                  <div ref={mapContainerRef} className="h-full w-full rounded-2xl" />
                 </div>
               </div>
             ) : (
@@ -724,7 +734,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
                   const time = getStopTime(stop);
 
                   return (
-                    <div key={`${label}-${index}`} className="flex gap-3 rounded-2xl border border-ts-border bg-ts-surface-2 px-4 py-3">
+                    <div key={`${label}-${index}`} className="flex gap-3 rounded-2xl px-4 mb-[1px]">
                       <div className="flex flex-col items-center pt-0.5">
                         <div className={`h-3 w-3 rounded-full ${isEdge ? 'bg-ts-accent' : 'bg-white/40'}`} />
                         {index < routeStops.length - 1 ? <div className="mt-1 h-full min-h-8 w-px bg-white/10" /> : null}
@@ -734,7 +744,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-ts-text-1">{label}</span>
                           {isEdge ? (
-                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ts-text-3">
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold  tracking-[0.14em] text-ts-text-3">
                               {index === 0 ? 'Origin' : 'Destination'}
                             </span>
                           ) : null}
@@ -749,12 +759,12 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border border-ts-border bg-ts-surface-2 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-ts-text-3">Origin</div>
+                <div className="">
+                  <div className="text-xs  tracking-[0.14em] text-ts-text-3">Origin</div>
                   <div className="mt-1 font-semibold text-ts-text-1">{trip.origin_name}</div>
                 </div>
-                <div className="rounded-2xl border border-ts-border bg-ts-surface-2 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-ts-text-3">Destination</div>
+                <div className="">
+                  <div className="text-xs  tracking-[0.14em] text-ts-text-3">Destination</div>
                   <div className="mt-1 font-semibold text-ts-text-1">{trip.destination_name}</div>
                 </div>
               </div>
@@ -770,8 +780,21 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
                   const liveryCss = unit.livery_left ?? trip.livery_css ?? null;
                   const unitLabel = [unit.unit_number, unit.unit_reg].filter(Boolean).join(' · ') || 'Unknown unit';
 
+                  const couplingForThisUnit = Array.isArray(trip.coupling_events)
+                    ? trip.coupling_events.filter((event) => {
+                        const eventUnitLabel = [event.unit?.unit_number, event.unit?.unit_reg]
+                          .filter(Boolean)
+                          .join(' - ');
+                        return (
+                          eventUnitLabel === unitLabel ||
+                          event.unit?.unit_number === unit.unit_number ||
+                          event.unit?.unit_reg === unit.unit_reg
+                        );
+                      })
+                    : [];
+
                   return (
-                    <div key={`${unitLabel}-${index}`} className="rounded-2xl border border-ts-border bg-ts-surface-2 p-4">
+                    <div key={`${unitLabel}-${index}`} className="">
                       <div className="flex items-start gap-3">
                         <div
                           className="h-12 w-16 shrink-0 rounded-xl border border-ts-border-soft"
@@ -781,7 +804,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="font-mono text-sm font-semibold text-ts-text-1">{unitLabel}</div>
                             {unit.unit_type ? (
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-ts-text-3">
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px]  tracking-[0.14em] text-ts-text-3">
                                 {unit.unit_type}
                               </span>
                             ) : null}
@@ -789,6 +812,28 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
                           <div className="mt-1 text-sm text-ts-text-3">
                             {unit.livery ?? 'Vehicle data from trip payload'}
                           </div>
+                          {couplingForThisUnit.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {couplingForThisUnit.map((event, evIdx) => (
+                                <span
+                                  key={evIdx}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 mt-[-15px] py-1 text-[11px] font-semibold ${
+                                    event.type === 'couple'
+                                      ? 'text-emerald-500'
+                                      : 'text-red-400'
+                                  }`}
+                                >
+                                  {event.type === 'couple' ? (
+                                    <Link2 className="h-3 w-3" />
+                                  ) : (
+                                    <Link2Off className="h-3 w-3" />
+                                  )}
+                                  {event.type === 'couple' ? 'Coupled' : 'Uncoupled'}
+                                  {event.stop_name ? ` at ${event.stop_name}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -841,7 +886,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
               <div className="mt-3">
                 {showAddFriend ? (
                   <div className="rounded-2xl border border-ts-border bg-ts-surface-2 p-3">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-ts-text-3">
+                    <div className="mb-2 text-xs font-semibold  tracking-[0.14em] text-ts-text-3">
                       Select a friend to add
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -901,7 +946,7 @@ export function TripDetailsClient({ data, isOwner = true }: Props) {
 
           {trip.notes ? (
             <SectionCard title="Notes" icon={<NotebookText className="h-4 w-4" />}>
-              <div className="whitespace-pre-wrap rounded-2xl border border-ts-border bg-ts-surface-2 p-4 text-sm leading-6 text-ts-text-2">
+              <div className="whitespace-pre-wrap  text-sm leading-6 text-ts-text-2">
                 {trip.notes}
               </div>
             </SectionCard>

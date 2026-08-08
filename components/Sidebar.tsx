@@ -11,7 +11,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { 
   FileText, Home, User, Users, CheckCircle, Palette, RefreshCw, Edit, Scale,
   Shield, Sun, LogOut, Menu, X, ChevronLeft, ChevronRight, ChartArea, Settings,
-  FolderUp, ArrowLeft
+  FolderUp, ArrowLeft, Moon
 } from "lucide-react";
 
 const navLinks = [
@@ -183,9 +183,8 @@ export default function Sidebar() {
   const settingsPageRootRef = useRef<Root | null>(null);
 
   const themeOptions = [
-    { key: "bright" as const, label: "Bright", icon: Sun },
-    { key: "light" as const, label: "Light", icon: Palette },
-    { key: "dark" as const, label: "Dark", icon: Sun },
+    { key: "bright" as const, label: "Light", icon: Sun },
+    { key: "dark" as const, label: "Dark", icon: Moon },
   ];
 
   async function handleExport(format: "csv" | "json") {
@@ -614,7 +613,7 @@ export default function Sidebar() {
             <div className={`px-2 pb-1 text-[9.5px] font-bold uppercase tracking-[0.09em] text-ts-text-3 ${isCollapsed ? "text-center" : ""}`}>
               {!isCollapsed ? "Theme" : ""}
             </div>
-            <div className={`grid gap-1 ${isCollapsed ? "grid-cols-1" : "grid-cols-3"}`}>
+            <div className={`grid gap-1 ${isCollapsed ? "grid-cols-1" : "grid-cols-2"}`}>
               {themeOptions.map(({ key, label, icon: Icon }) => {
                 const active = theme === key;
                 return (

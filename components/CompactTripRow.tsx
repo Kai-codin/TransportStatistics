@@ -135,7 +135,8 @@ export const CompactTripRow = ({ trip }: CompactTripRowProps) => {
                       ) : (
                         <Link2Off className="h-2 w-2" />
                       )}
-                      {unitLabel}
+                      {unitLabel} {event.type === 'couple' ? 'coupled' : 'uncoupled'}
+                      {event.stop_name ? ` at ${event.stop_name}` : ''}
                     </span>
                   );
                 })}

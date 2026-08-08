@@ -38,6 +38,7 @@ type LogMapProps = {
   fromStopId: number | null;
   toStopId: number | null;
   onMapClick?: ((coords: MapClickCoords) => void) | null;
+  onStopDragEnd?: ((stopId: number, location: [number, number]) => void) | null;
 };
 
 export type LogMapHandle = {
@@ -58,16 +59,28 @@ const emptyLineFeature = {
   properties: {},
 };
 
+const DRAG_PX_THRESHOLD = 4;
+
 export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
-  { visible = true, fullRoute, fullGeometry, highlightedGeometry, onStopClick, fromStopId, toStopId, onMapClick },
+  { visible = true, fullRoute, fullGeometry, highlightedGeometry, onStopClick, fromStopId, toStopId, onMapClick, onStopDragEnd },
   ref,
 ) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const onStopClickRef = useRef(onStopClick);
   const onMapClickRef = useRef(onMapClick);
+  const onStopDragEndRef = useRef(onStopDragEnd);
   const [mapLoaded, setMapLoaded] = useState(false);
   const { theme } = useTheme();
+
+  const dragState = useRef<{
+    stopId: number;
+    startX: number;
+    startY: number;
+    isDragging: boolean;
+  } | null>(null);
+
+  const dragSourceAdded = useRef(false);
 
   useEffect(() => {
     onStopClickRef.current = onStopClick;
@@ -76,6 +89,10 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
   useEffect(() => {
     onMapClickRef.current = onMapClick;
   }, [onMapClick]);
+
+  useEffect(() => {
+    onStopDragEndRef.current = onStopDragEnd;
+  }, [onStopDragEnd]);
 
   useEffect(() => {
     if (!mapContainer.current || mapInstance.current) return;
@@ -183,7 +200,9 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
         map.getCanvas().style.cursor = 'pointer';
       });
       map.on('mouseleave', 'stops-layer', () => {
-        map.getCanvas().style.cursor = '';
+        if (!dragState.current?.isDragging) {
+          map.getCanvas().style.cursor = '';
+        }
       });
 
       map.on('click', (event) => {
@@ -191,6 +210,112 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
           onMapClickRef.current({ lng: event.lngLat.lng, lat: event.lngLat.lat });
         }
       });
+
+      // ---- Drag support for custom stops ----
+
+      map.on('mousedown', 'stops-layer', (event) => {
+        const feature = event.features?.[0];
+        const id = feature?.properties?.id;
+        if (typeof id !== 'number' || id >= 0) return; // only custom stops
+        if (!onStopDragEndRef.current) return;
+
+        event.preventDefault();
+        map.dragPan.disable();
+
+        dragState.current = {
+          stopId: id,
+          startX: event.point.x,
+          startY: event.point.y,
+          isDragging: false,
+        };
+        map.getCanvas().style.cursor = 'grabbing';
+      });
+
+      map.on('mousemove', (event) => {
+        const ds = dragState.current;
+        if (!ds) return;
+
+        const dx = event.point.x - ds.startX;
+        const dy = event.point.y - ds.startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (!ds.isDragging && dist < DRAG_PX_THRESHOLD) return;
+
+        if (!ds.isDragging) {
+          ds.isDragging = true;
+        }
+
+        if (!dragSourceAdded.current) {
+          map.addSource('drag-indicator', {
+            type: 'geojson',
+            data: emptyLineFeature,
+          });
+          map.addLayer({
+            id: 'drag-indicator-layer',
+            type: 'circle',
+            source: 'drag-indicator',
+            paint: {
+              'circle-radius': 10,
+              'circle-color': '#f59e0b',
+              'circle-opacity': 0.6,
+              'circle-stroke-width': 3,
+              'circle-stroke-color': '#f59e0b',
+            },
+          });
+          dragSourceAdded.current = true;
+        }
+
+        const lngLat = map.unproject(event.point);
+        const dragSource = map.getSource('drag-indicator') as maplibregl.GeoJSONSource | undefined;
+        if (dragSource) {
+          dragSource.setData({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [lngLat.lng, lngLat.lat] },
+            properties: {},
+          });
+        }
+      });
+
+      const cleanupDrag = () => {
+        const ds = dragState.current;
+        if (!ds) return;
+
+        map.dragPan.enable();
+
+        if (ds.isDragging) {
+          map.getCanvas().style.cursor = '';
+        }
+
+        if (dragSourceAdded.current) {
+          const dragLayer = map.getLayer('drag-indicator-layer');
+          if (dragLayer) map.removeLayer('drag-indicator-layer');
+          const dragSrc = map.getSource('drag-indicator');
+          if (dragSrc) map.removeSource('drag-indicator');
+          dragSourceAdded.current = false;
+        }
+
+        dragState.current = null;
+      };
+
+      map.on('mouseup', (event) => {
+        const ds = dragState.current;
+        if (!ds) return;
+
+        if (ds.isDragging) {
+          const lngLat = map.unproject(event.point);
+          onStopDragEndRef.current?.(ds.stopId, [lngLat.lng, lngLat.lat]);
+        }
+
+        cleanupDrag();
+      });
+
+      map.on('mouseleave', () => {
+        if (dragState.current?.isDragging) {
+          cleanupDrag();
+        }
+      });
+
+      // ----
 
       setMapLoaded(true);
     });

@@ -86,14 +86,14 @@ export const TripRow = ({ trip }: TripRowProps) => {
 
   return (
     <Link href={`/trip/me/${trip._id}`}>
-      <div className="flex flex-col sm:flex-row bg-ts-surface border border-ts-border rounded-lg overflow-hidden hover:border-ts-border-soft transition-colors">
+      <div className="flex flex-col sm:flex-row bg-ts-surface rounded-lg overflow-hidden hover:border-ts-border-soft transition-colors">
 
         {/* ── Mobile: top accent bar ── only visible below sm */}
         <div className={`h-[3px] w-full sm:hidden ${getAccentColor(trip.transport_type)}`} />
 
         {/* ── Vehicle Details ── */}
         {/* Desktop: left column (w-48) | Mobile: full-width horizontal strip */}
-        <div className="sm:w-48 sm:shrink-0 flex sm:flex-col sm:bg-ts-surface-2 sm:border-r sm:border-ts-border/50">
+        <div className="sm:w-48 sm:shrink-0 flex sm:flex-col sm:bg-ts-surface sm:border-r sm:border-ts-border/50">
 
           {/* Inner layout: row on mobile, column on desktop */}
           <div className="flex-1 flex flex-row sm:flex-col items-center sm:items-start justify-start sm:justify-center px-3 py-2 sm:py-3 gap-3 sm:gap-2.5">
@@ -196,8 +196,8 @@ export const TripRow = ({ trip }: TripRowProps) => {
                     key={idx}
                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold ${
                       event.type === 'couple'
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        ? 'text-emerald-400'
+                        : 'text-red-400'
                     }`}
                   >
                     {event.type === 'couple' ? (

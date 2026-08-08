@@ -165,7 +165,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       }
       // Fetch with detailed=true to ensure we get the full metadata
       // const fetchUrl = `https://data.rtt.io/rtt/location?code=gb-nr%3A${encodeURIComponent(code)}&detailed=true`;
-      const fetchUrl = `https://data.rtt.io/gb-nr/location?code=${encodeURIComponent(code)}&detailed=true${dateTimeQuery}`;
+      const fetchUrl = `https://data.rtt.io/gb-nr/location?code=${encodeURIComponent(code)}&detailed=true${dateTimeQuery}&allowFullAllocationListing=true&timeTolerance=true`;
       log(`Calling RTT API: ${fetchUrl}`);
 
       const response = await fetch(fetchUrl, {

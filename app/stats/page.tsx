@@ -298,7 +298,7 @@ export default function StatsPage() {
       </div>
 
       {selectedYear && (
-        <section className="rounded-[20px] border border-ts-border bg-ts-surface p-6 shadow-sm">
+        <section className="">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ts-text-1">
               Travel Contributions
@@ -413,7 +413,7 @@ export default function StatsPage() {
       )}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <section className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
+        <section className="">
           <h2 className="mb-4 text-sm font-semibold text-ts-text-1">
             Most ridden operators
           </h2>
@@ -429,7 +429,7 @@ export default function StatsPage() {
           </div>
         </section>
 
-        <section className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
+        <section className="">
           <h2 className="mb-4 text-sm font-semibold text-ts-text-1">
             Trips by transport type
           </h2>
@@ -449,7 +449,7 @@ export default function StatsPage() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Left: Most Ridden Unit Types */}
-        <section className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
+        <section className="">
           <div className="mb-4">
             <h2 className="text-sm font-semibold text-ts-text-1">
               Most Ridden Unit Types
@@ -476,7 +476,7 @@ export default function StatsPage() {
         </section>
 
         {/* Right: Most Ridden Liveries */}
-        <section className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
+        <section className="">
           <div className="mb-4">
             <h2 className="text-sm font-semibold text-ts-text-1">
               Most Ridden Liveries
@@ -514,7 +514,7 @@ export default function StatsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Left: Most Ridden Routes */}
         {stats.topRoutes.length > 0 && (
-          <section className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
+          <section className="">
             <h2 className="mb-4 text-sm font-semibold text-ts-text-1">
               Most ridden routes
             </h2>
@@ -535,7 +535,7 @@ export default function StatsPage() {
         )}
 
         {/* Right: Most Used Stops */}
-        <section className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
+        <section className="">
           <h2 className="mb-4 text-sm font-semibold text-ts-text-1">
             Most used stops
           </h2>

@@ -61,7 +61,7 @@ export default function ProfilePage() {
   const { results: trips, status, loadMore } = usePaginatedQuery(
     api.functions.trips.getMyTripsPaginated,
     user ? {} : "skip",
-    { initialNumItems: 100 },
+    { initialNumItems: 200 },
   );
 
   const counts = useQuery(api.functions.trips.getMyTripCount, user ? {} : "skip");

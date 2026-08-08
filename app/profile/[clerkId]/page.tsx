@@ -67,7 +67,7 @@ export default function UserProfilePage({
   const { results: trips, status, loadMore } = usePaginatedQuery(
     api.functions.trips.getUserTripsPaginated,
     currentUser ? { userId: clerkId } : "skip",
-    { initialNumItems: 500 },
+    { initialNumItems: 200 },
   );
 
   const sentinelRef = useRef<HTMLDivElement>(null);

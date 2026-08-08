@@ -768,23 +768,20 @@ export const getMyTripsPaginated = query({
 
     const allTrips = await getAllUserTrips(ctx, identity.subject);
 
-    const cursor = args.paginationOpts.cursor ? Number(args.paginationOpts.cursor) : 0;
+    const cursor = args.paginationOpts.cursor ? parseInt(args.paginationOpts.cursor, 10) : 0;
     const numItems = Math.max(args.paginationOpts.numItems, 20);
     const end = Math.min(cursor + numItems, allTrips.length);
 
     const page = allTrips.slice(cursor, end);
     const continueCursor = end < allTrips.length ? String(end) : "";
-    const isDone = end >= allTrips.length;
 
-    const result = {
+    return {
       page: args.includeRoutes
         ? await Promise.all(page.map((trip) => attachRouteDetails(ctx, trip)))
         : page.map(toTripSummary),
       continueCursor,
-      isDone,
+      isDone: end >= allTrips.length,
     };
-
-    return result;
   },
 });
 
@@ -825,20 +822,19 @@ export const getUserTripsPaginated = query({
 
     const allTrips = await getAllUserTrips(ctx, args.userId);
 
-    const cursor = args.paginationOpts.cursor ? Number(args.paginationOpts.cursor) : 0;
+    const cursor = args.paginationOpts.cursor ? parseInt(args.paginationOpts.cursor, 10) : 0;
     const numItems = Math.max(args.paginationOpts.numItems, 20);
     const end = Math.min(cursor + numItems, allTrips.length);
 
     const page = allTrips.slice(cursor, end);
     const continueCursor = end < allTrips.length ? String(end) : "";
-    const isDone = end >= allTrips.length;
 
     return {
       page: args.includeRoutes
         ? await Promise.all(page.map((trip) => attachRouteDetails(ctx, trip)))
         : page.map(toTripSummary),
       continueCursor,
-      isDone,
+      isDone: end >= allTrips.length,
     };
   },
 });

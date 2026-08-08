@@ -60,11 +60,11 @@ export default function ProfilePage() {
 
   const { results: trips, status, loadMore } = usePaginatedQuery(
     api.functions.trips.getMyTripsPaginated,
-    user ? {} : "skip",
+    user ? { user: user.id } : "skip",
     { initialNumItems: 200 },
   );
 
-  const counts = useQuery(api.functions.trips.getMyTripCount, user ? {} : "skip");
+  const counts = useQuery(api.functions.trips.getMyTripCount, user ? { user: user.id } : "skip");
 
   const sentinelRef = useRef<HTMLDivElement>(null);
 

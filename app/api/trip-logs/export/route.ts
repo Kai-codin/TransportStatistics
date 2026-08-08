@@ -58,6 +58,7 @@ export async function GET(request: Request) {
 
     while (true) {
       const page: any = await convex.query(api.functions.trips.getMyTripsPaginated, {
+        user: userId,
         paginationOpts: { cursor, numItems: 500 },
         includeRoutes: true,
       });

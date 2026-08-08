@@ -759,14 +759,12 @@ export const getTripDetailsById = query({
 
 export const getMyTripsPaginated = query({
   args: {
+    user: v.string(),
     paginationOpts: paginationOptsValidator,
     includeRoutes: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { page: [], continueCursor: "", isDone: true };
-
-    const allTrips = await getAllUserTrips(ctx, identity.subject);
+    const allTrips = await getAllUserTrips(ctx, args.user);
 
     const cursor = args.paginationOpts.cursor ? parseInt(args.paginationOpts.cursor, 10) : 0;
     const numItems = Math.max(args.paginationOpts.numItems, 20);
@@ -786,11 +784,9 @@ export const getMyTripsPaginated = query({
 });
 
 export const getMyTripCount = query({
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { trips: 0, days: 0 };
-
-    const trips = await getAllUserTrips(ctx, identity.subject);
+  args: { user: v.string() },
+  handler: async (ctx, args) => {
+    const trips = await getAllUserTrips(ctx, args.user);
 
     const days = new Set(
       trips.map((t) => {

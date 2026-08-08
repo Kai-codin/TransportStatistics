@@ -112,6 +112,68 @@ export const searchForUnits = query({
   },
 });
 
+export const getUnitsByNumbers = query({
+  args: { unitNumbers: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const units = await Promise.all(
+      args.unitNumbers.map((num) =>
+        ctx.db
+          .query("units")
+          .withIndex("unit_number", (q) => q.eq("unit_number", num))
+          .first()
+      )
+    );
+
+    console.log(`[getUnitsByNumbers] input: ${args.unitNumbers}, found: ${units.filter(u => u).length} units`);
+
+    const liveryIds = [...new Set(
+      units
+        .filter((u): u is NonNullable<typeof u> => u !== null)
+        .map((u) => u.livery_id)
+    )];
+
+    const typeIds = [...new Set(
+      units
+        .filter((u): u is NonNullable<typeof u> => u !== null)
+        .map((u) => u.type_id)
+    )];
+
+    console.log(`[getUnitsByNumbers] livery_ids to lookup:`, liveryIds);
+    console.log(`[getUnitsByNumbers] type_ids to lookup:`, typeIds);
+
+    const [liveries, types] = await Promise.all([
+      Promise.all(liveryIds.map((id) => ctx.db.get(id as Id<"liveries">))),
+      Promise.all(typeIds.map((id) => ctx.db.get(id as Id<"types">))),
+    ]);
+
+    const liveryMap = new Map(
+      liveries.filter((l): l is NonNullable<typeof l> => l !== null).map((l) => [l._id, l])
+    );
+    const typeMap = new Map(
+      types.filter((t): t is NonNullable<typeof t> => t !== null).map((t) => [t._id, t])
+    );
+
+    console.log(`[getUnitsByNumbers] found liveries: ${liveryMap.size}, types: ${typeMap.size}`);
+
+    return units.map((unit, i) => {
+      if (!unit) {
+        console.log(`[getUnitsByNumbers] no unit found for "${args.unitNumbers[i]}"`);
+        return null;
+      }
+      const livery = liveryMap.get(unit.livery_id as Id<"liveries">);
+      const type = typeMap.get(unit.type_id as Id<"types">);
+      console.log(`[getUnitsByNumbers] unit ${unit.unit_number}: livery=${livery?.livery_name ?? "NOT FOUND"}, type=${type?.type_name ?? "NOT FOUND"}`);
+      return {
+        unit_number: unit.unit_number,
+        unit_reg: unit.unit_reg,
+        livery_name: livery?.livery_name ?? null,
+        livery_css: livery?.css_class ?? null,
+        type_name: type?.type_name ?? null,
+      };
+    });
+  },
+});
+
 async function getLatesttrainDetailsByIndex(
   ctx: QueryCtx,
   indexName: "by_uid" | "by_rid",

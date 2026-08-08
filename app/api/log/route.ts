@@ -152,7 +152,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const uid = searchParams.get('uid') ?? serviceUid ?? serviceId ?? tripId ?? journeyId;
   const date = searchParams.get('date') ?? searchParams.get('service_date'); 
   const type = searchParams.get('type') || (serviceRid ? 'train' : (serviceId || tripId ? 'bus' : 'train'));
-  const debug = searchParams.get('debug') === 'false';
+  const debug = searchParams.get('debug') === 'true';
   const showPass = searchParams.get('show_pass') === 'true';
 
   if (serviceRid) {
@@ -437,12 +437,12 @@ async function handleTrainRequest(
 
     // 2. Merge Stop and Track
     const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData, uid, date);
-    const allocationData = await fetchAllocationFromRTT(uid, date);
+    const allocationData = await fetchAllocationFromRTT(uid, date, rttData);
 
     console.log(`Train ${uid} on ${date} has ${full_route.length} stops after merging.`);
     console.log(`Allocation data: ${JSON.stringify(allocationData)}`);
 
-    const responsePayload = {
+    const responsePayload: Record<string, any> = {
       service_number: meta?.trainReportingIdentity ?? "Unknown",
       operator: meta?.operator?.name ?? "Unknown",
       operator_slug: meta?.operator?.code?.toLowerCase() ?? "unknown",
@@ -457,9 +457,28 @@ async function handleTrainRequest(
       actual_arrival: destination?.temporalData?.arrival?.realtimeActual || destination?.temporalData?.arrival?.realtimeForecast,
       full_route_geometry: fullRouteGeometry,
       full_locations: full_route,
-      full_route: full_route, 
+      full_route: full_route,
       unit: allocationData,
     };
+
+    if (debug) {
+      let unitLookupResult = null;
+      const unitNumbers = Object.values(allocationData).map((a: any) => a.unit_number).filter(Boolean);
+      if (unitNumbers.length > 0) {
+        try {
+          unitLookupResult = await fetchQuery(api.functions.trains.getUnitsByNumbers, { unitNumbers });
+        } catch (e) {}
+      }
+
+      responsePayload._debug = {
+        rtt_allocation_data: rttData?.allocationData ?? null,
+        rtt_service_keys: rttData ? Object.keys(rttData) : [],
+        parsed_allocation: allocationData,
+        unit_lookup: unitLookupResult,
+        uid,
+        date,
+      };
+    }
 
     return NextResponse.json(responsePayload);
   } catch (error: any) {

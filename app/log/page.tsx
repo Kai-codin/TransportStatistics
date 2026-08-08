@@ -7,7 +7,6 @@ import { useConvexAuth } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { LogMap } from '@/components/LogMap';
 import { SignInButton, useUser } from '@clerk/nextjs';
-import { getSnappedRoute, type SnapMode } from '@/lib/routing-snap';
 import {
   AlertCircle,
   Bus,

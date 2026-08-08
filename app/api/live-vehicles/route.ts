@@ -246,25 +246,42 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         };
       }),
 
-      buses: busData.map((b: any) => ({
-        id: b.trip_id,
-        location: {
-          lat: b.coordinates?.[1] ?? 0,
-          lon: b.coordinates?.[0] ?? 0,
-        },
-        rotation: b.heading ?? 0,
-        service: b.service?.line_name ?? "N/A",
-        destination: b.destination ?? "Unknown",
-        colour: b.vehicle?.colour || b.vehicle?.css || "#fff",
-        liveryID: b.vehicle?.livery ?? 0,
+      buses: busData.map((b: any) => {
+        const lat = b.coordinates?.[1] ?? '';
+        const lon = b.coordinates?.[0] ?? '';
+
+        const id = b.trip_id || b.journey_id;
+        const date = b.date ?? b.datetime?.split("T")[0] ?? today;
+        const link1 = b.trip_id
+          ? `https://bustimes.org/trips/${b.trip_id}`
+          : `https://bustimes.org/journeys/${b.journey_id}`;
+
+        const log_link = b.trip_id
+          ? `/log?service_id=${b.trip_id}&date=${date}&lat=${lat}&lon=${lon}`
+          : `/log?journey_id=${b.journey_id}&date=${date}&lat=${lat}&lon=${lon}`;
+
+        return {
+          id,
+          location: {
+            lat: lat || 0,
+            lon: lon || 0,
+          },
+          rotation: b.heading ?? 0,
+          service: b.service?.line_name ?? "N/A",
+          destination: b.destination ?? "Unknown",
+          colour: b.vehicle?.colour || b.vehicle?.css || "#fff",
+          liveryID: b.vehicle?.livery ?? 0,
+          trip_id: b.trip_id ?? null,
+          journey_id: b.journey_id ?? null,
           popup_data: {
             label1: `${b.service?.line_name ?? "Bus"} to ${b.destination ?? "Unknown"}`,
-            link1: `https://bustimes.org/trips/${b.trip_id}`,
+            link1,
             label2: b.vehicle?.name ?? "Unknown Bus",
             link2: `https://bustimes.org${b.vehicle?.url ?? ""}`,
-            log_link: `/log?service_id=${b.trip_id}&date=${b.date ?? ""}&lat=${b.coordinates?.[1] ?? ''}&lon=${b.coordinates?.[0] ?? ''}`,
+            log_link,
           },
-      })),
+        };
+      }),
     };
 
     await redisClient.set(cacheKey, JSON.stringify(response), "EX", 30);

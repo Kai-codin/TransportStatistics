@@ -88,6 +88,7 @@ type ApiLogResponse = {
   actual_arrival?: string | null;
   full_route?: RouteStop[];
   full_route_geometry?: RouteGeometry | null;
+  polyline_path?: [number, number][] | null;
   unit?: Partial<TripUnit> | Record<string, Partial<TripUnit>> | null;
   error?: string;
   details?: string;
@@ -307,21 +308,56 @@ function buildFullGeometry(fullRoute: RouteStop[], geometry?: RouteGeometry | nu
   return deduped.length > 0 ? { type: 'LineString' as const, coordinates: deduped } : null;
 }
 
-function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toStopId: number | null): RiddenRoute | null {
+function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toStopId: number | null, polylinePath?: [number, number][] | null): RiddenRoute | null {
   if (fromStopId === null || toStopId === null || fromStopId === toStopId) return null;
   const fromIndex = fullRoute.findIndex((s) => s.id === fromStopId);
   const toIndex = fullRoute.findIndex((s) => s.id === toStopId);
   if (fromIndex === -1 || toIndex === -1 || fromIndex > toIndex) return null;
   const stops = fullRoute.slice(fromIndex, toIndex + 1);
-  const coordinates = dedupeCoordinates(
-    stops.flatMap((stop, index) => {
-      // With backward convention, stops[0] is the start stop. 
-      // Its track is [prev -> start], which is OUTSIDE selection.
-      if (index > 0 && Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
-      if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) return [stop.stop.location];
-      return [];
-    }),
-  );
+
+  let coordinates: [number, number][];
+  if (polylinePath && polylinePath.length > 1) {
+    const fromStop = fullRoute[fromIndex];
+    const toStop = fullRoute[toIndex];
+    const fromLoc = fromStop?.stop?.location;
+    const toLoc = toStop?.stop?.location;
+
+    let polyFromIdx = 0;
+    let polyToIdx = polylinePath.length - 1;
+
+    if (fromLoc && fromLoc.length === 2) {
+      let minDist = Infinity;
+      polylinePath.forEach((p, i) => {
+        const d = Math.hypot(p[0] - fromLoc[0], p[1] - fromLoc[1]);
+        if (d < minDist) { minDist = d; polyFromIdx = i; }
+      });
+    }
+
+    if (toLoc && toLoc.length === 2) {
+      let minDist = Infinity;
+      polylinePath.forEach((p, i) => {
+        const d = Math.hypot(p[0] - toLoc[0], p[1] - toLoc[1]);
+        if (d < minDist) { minDist = d; polyToIdx = i; }
+      });
+    }
+
+    if (polyFromIdx > polyToIdx) {
+      const tmp = polyFromIdx;
+      polyFromIdx = polyToIdx;
+      polyToIdx = tmp;
+    }
+
+    coordinates = dedupeCoordinates(polylinePath.slice(polyFromIdx, polyToIdx + 1));
+  } else {
+    coordinates = dedupeCoordinates(
+      stops.flatMap((stop, index) => {
+        if (index > 0 && Array.isArray(stop.track) && stop.track.length > 0) return stop.track;
+        if (Array.isArray(stop.stop.location) && stop.stop.location.length === 2) return [stop.stop.location];
+        return [];
+      }),
+    );
+  }
+
   return {
     from_stop_id: fromStopId,
     to_stop_id: toStopId,
@@ -377,7 +413,11 @@ function resolveRequest(searchParams: URLSearchParams): RequestResolution {
   if (serviceRid) {
     return { url: `/api/log?service_rid=${encodeURIComponent(serviceRid)}`, vehicleMode: 'Train', date: '', label: `Train RID ${serviceRid}` };
   }
-  throw new Error('Missing query parameters. Use `service_uid`, `service_id` with `date`, or `service_rid`.');
+  const journeyID = searchParams.get('journey_id');
+  if (journeyID) {
+    return { url: `/api/log?journey_id=${encodeURIComponent(journeyID)}`, vehicleMode: 'Bus', date: '', label: `Bus Journey ${journeyID}` };
+  }
+  throw new Error('Oops we couldn\'t find that service, please send this links and any vehicle details to Kai.');
 }
 
 // ─── UI helpers ─────────────────────────────────────────────────────────────
@@ -448,6 +488,7 @@ export default function LogPage() {
   const [notes, setNotes] = useState('');
   const [fullRoute, setFullRoute] = useState<RouteStop[]>([]);
   const [fullGeometry, setFullGeometry] = useState<RouteGeometry | null>(null);
+  const [polylinePath, setPolylinePath] = useState<[number, number][] | null>(null);
   const [fromStopId, setFromStopId] = useState<number | null>(null);
   const [toStopId, setToStopId] = useState<number | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<number | null>(null);
@@ -471,7 +512,7 @@ export default function LogPage() {
   const isEditingTrip = Boolean(editTripId);
 
   const selectedStop = fullRoute.find((s) => s.id === selectedStopId) ?? null;
-  const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId);
+  const riddenRoute = buildRiddenRoute(fullRoute, fromStopId, toStopId, polylinePath);
   const selectedUnit = units[selectedUnitIndex] ?? null;
 
   useEffect(() => {
@@ -621,6 +662,7 @@ export default function LogPage() {
         const firstStop = route[0]; const lastStop = route[route.length - 1];
         if (cancelled) return;
         setFullRoute(route); setFullGeometry(resolvedGeometry);
+        setPolylinePath(Array.isArray(payload.polyline_path) ? payload.polyline_path : null);
         setUnits(initialUnits); setSelectedUnitIndex(0);
         const logParams = new URLSearchParams(searchKey);
         const stopCodeParam = logParams.get('stop_code');
@@ -655,7 +697,7 @@ export default function LogPage() {
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : 'Unable to load this service.');
-          setFullRoute([]); setFullGeometry(null); setUnits([]); setServiceForm(EMPTY_SERVICE_FORM);
+          setFullRoute([]); setFullGeometry(null); setPolylinePath(null); setUnits([]); setServiceForm(EMPTY_SERVICE_FORM);
         }
       } finally { if (!cancelled) setLoading(false); }
     }
@@ -696,7 +738,7 @@ export default function LogPage() {
   }
 
   function syncFormFromRoute(route: RouteStop[], nextFrom: number | null, nextTo: number | null) {
-    const rr = buildRiddenRoute(route, nextFrom, nextTo);
+    const rr = buildRiddenRoute(route, nextFrom, nextTo, polylinePath);
     if (!rr) return;
     const first = rr.stops[0]; const last = rr.stops[rr.stops.length - 1];
     setServiceForm((c) => ({

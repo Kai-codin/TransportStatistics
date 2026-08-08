@@ -78,6 +78,37 @@ function dateToTimestamp(date: string) {
   return Number.isNaN(parsed.getTime()) ? Date.now() : parsed.getTime();
 }
 
+function decodeTimeAwarePolyline(str: string): [number, number][] {
+  let index = 0;
+  const values: number[] = [];
+
+  while (index < str.length) {
+    let result = 0;
+    let shift = 0;
+    let b: number;
+
+    do {
+      b = str.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    values.push(result & 1 ? ~(result >> 1) : result >> 1);
+  }
+
+  let lng = 0;
+  let lat = 0;
+  const coordinates: [number, number][] = [];
+
+  for (let i = 0; i + 2 < values.length; i += 3) {
+    lng += values[i];
+    lat += values[i + 1];
+    coordinates.push([lng / 1e5, lat / 1e5]);
+  }
+
+  return coordinates;
+}
+
 // --- Auth Cache for RTT ---
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
@@ -117,7 +148,8 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const serviceId = searchParams.get('service_id');
   const serviceUid = searchParams.get('service_uid');
   const tripId = searchParams.get('trip_id');
-  const uid = searchParams.get('uid') ?? serviceUid ?? serviceId ?? tripId;
+  const journeyId = searchParams.get('journey_id');
+  const uid = searchParams.get('uid') ?? serviceUid ?? serviceId ?? tripId ?? journeyId;
   const date = searchParams.get('date') ?? searchParams.get('service_date'); 
   const type = searchParams.get('type') || (serviceRid ? 'train' : (serviceId || tripId ? 'bus' : 'train'));
   const debug = searchParams.get('debug') === 'false';
@@ -130,6 +162,18 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       log(`RID resolution error: ${err.message}`);
       return NextResponse.json({
         error: 'Failed to resolve service RID.',
+        message: err.message,
+      }, { status: 500 });
+    }
+  }
+
+  if (journeyId) {
+    try {
+      return await handleJourneyRequest(journeyId, date, debug, bustimesBaseUrl);
+    } catch (err: any) {
+      log(`Journey request error: ${err.message}`);
+      return NextResponse.json({
+        error: 'Failed to load journey.',
         message: err.message,
       }, { status: 500 });
     }
@@ -559,4 +603,193 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
     log(`Bus Handler Error: ${error.message}`);
     return NextResponse.json({ error: 'Internal Bus API Error', details: error.message }, { status: 500 });
   }
+}
+
+async function handleJourneyRequest(
+  journeyId: string,
+  date: string | null,
+  debug: boolean,
+  bustimesBaseUrl: string,
+) {
+  log(`Processing bus journey: ${journeyId}`);
+
+  const journeyRes = await fetch(
+    buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/${journeyId}/details/`),
+  );
+
+  if (!journeyRes.ok) {
+    return NextResponse.json({ error: 'Journey not found on bustimes.org' }, { status: 404 });
+  }
+
+  const journeyData = await journeyRes.json();
+  const trip = journeyData?.trip;
+  const tripId = trip?.id ?? journeyData?.trip_id;
+  let times: any[] = trip?.times ?? [];
+
+  let geomTimes: any[] = [];
+  if (tripId) {
+    const tripGeomRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/trips/${tripId}/`));
+    if (tripGeomRes.ok) {
+      const geomData = await tripGeomRes.json();
+      geomTimes = geomData?.times ?? [];
+    }
+  }
+
+  if (times.length === 0) {
+    const serviceId = trip?.service?.id ?? journeyData?.service?.id;
+    if (serviceId) {
+      const svcRes = await fetch(
+        buildBustimesUrl(bustimesBaseUrl, `/services/${serviceId}.json`),
+      );
+      if (svcRes.ok) {
+        const svcData = await svcRes.json();
+        const features = svcData?.stops?.features;
+        if (Array.isArray(features) && features.length > 0) {
+          times = features.map((feature: any, index: number) => ({
+            stop: {
+              atco_code: feature.properties?.url?.replace("/stops/", "") ?? `svc-${index}`,
+              name: feature.properties?.name ?? "Unknown",
+              location: feature.geometry?.coordinates ?? null,
+              bearing: feature.properties?.bearing ?? null,
+              icon: null,
+            },
+            aimed_arrival_time: null,
+            aimed_departure_time: null,
+            expected_arrival_time: null,
+            expected_departure_time: null,
+            track: null,
+            timing_status: "scheduled",
+            pick_up: true,
+            set_down: true,
+          }));
+        }
+      }
+    }
+  }
+
+  if (times.length === 0) {
+    return NextResponse.json({ error: 'No stop data in journey' }, { status: 404 });
+  }
+
+  let vehicleDetails: any = null;
+  const vehicleStub = journeyData?.vehicle;
+  if (vehicleStub?.id) {
+    const vRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehicles/${vehicleStub.id}/`));
+    if (vRes.ok) vehicleDetails = await vRes.json();
+  }
+
+  let fullRouteGeometry: { type: string; coordinates: [number, number][] } | null = null;
+  let polylinePath: [number, number][] | null = null;
+
+  if (journeyData?.time_aware_polyline) {
+    const coords = decodeTimeAwarePolyline(journeyData.time_aware_polyline);
+    if (coords.length > 0) {
+      polylinePath = coords;
+      fullRouteGeometry = { type: "LineString", coordinates: coords };
+    }
+  }
+
+  if (!fullRouteGeometry) {
+    const trackCoords = geomTimes
+      .filter((t: any) => t.track && Array.isArray(t.track))
+      .flatMap((t: any) => t.track);
+    if (trackCoords.length > 0) {
+      fullRouteGeometry = { type: "LineString", coordinates: trackCoords as [number, number][] };
+    }
+  }
+
+  if (!fullRouteGeometry) {
+    const journeyTrackCoords = times
+      .filter((t: any) => t.track && Array.isArray(t.track))
+      .flatMap((t: any) => t.track);
+    if (journeyTrackCoords.length > 0) {
+      fullRouteGeometry = { type: "LineString", coordinates: journeyTrackCoords as [number, number][] };
+    }
+  }
+
+  const resolvedDate = date || journeyData?.date || journeyData?.datetime?.split("T")[0] || "";
+
+  const getAimedArrival = (time: any) => time?.aimed_arrival_time ?? null;
+  const getAimedDeparture = (time: any) => time?.aimed_departure_time ?? null;
+  const getActualArrival = (time: any) =>
+    time?.actual_arrival_time ?? time?.expected_arrival_time ?? null;
+  const getActualDeparture = (time: any) =>
+    time?.actual_departure_time ?? time?.expected_departure_time ?? null;
+
+  const full_route = times.map((time: any, index: number) => {
+    const isFirst = index === 0;
+    const track = !isFirst && time.track?.length > 0 ? time.track : null;
+    const uniqueId = `journey-${journeyId}-${time.stop.atco_code ?? index}`;
+
+    return {
+      id: hashStringToNumber(uniqueId),
+      stop: {
+        stop_code: time.stop.atco_code,
+        name: time.stop.name,
+        location: time.stop.location,
+        bearing: time.stop.bearing ?? null,
+        icon: time.stop.icon ?? null,
+      },
+      scheduled_arrival: getAimedArrival(time),
+      scheduled_departure: getAimedDeparture(time),
+      actual_arrival: getActualArrival(time),
+      actual_departure: getActualDeparture(time),
+      track,
+      timing_status: time.timing_status || "scheduled",
+      pick_up: time.pick_up ?? true,
+      set_down: time.set_down ?? true,
+    };
+  });
+
+  const firstStop = times[0];
+  const lastStop = times[times.length - 1];
+  const vehicleUnit = vehicleDetails
+    ? {
+        "0": {
+          unit_number: vehicleDetails.fleet_code || vehicleDetails.fleet_number || null,
+          unit_reg: vehicleDetails.reg || null,
+          unit_type: vehicleDetails.vehicle_type?.name || "Bus",
+          livery: vehicleDetails.livery?.name || null,
+          livery_left: vehicleDetails.livery?.left || null,
+        },
+      }
+    : journeyData?.vehicle
+    ? {
+        "0": {
+          unit_number: journeyData.vehicle.fleet_code || null,
+          unit_reg: journeyData.vehicle.reg || null,
+          unit_type: "Bus",
+          livery: null,
+          livery_left: null,
+        },
+      }
+    : null;
+
+  return NextResponse.json({
+    service_number: trip?.service?.line_name ?? journeyData?.route_name ?? "Unknown",
+    operator: trip?.operator?.name ?? "Unknown Operator",
+    operator_slug: trip?.operator?.slug ?? "unknown",
+    service_date: dateToTimestamp(resolvedDate),
+    bustimes_service_id: trip?.service?.id ?? journeyData?.service?.id,
+    bustimes_service_slug: trip?.service?.slug ?? journeyData?.service?.slug,
+    origin_name: firstStop?.stop?.name ?? "Unknown Origin",
+    origin_stop_code: firstStop?.stop?.atco_code ?? null,
+    destination_name: journeyData?.destination ?? lastStop?.stop?.name ?? "Unknown",
+    destination_stop_code: lastStop?.stop?.atco_code ?? null,
+    scheduled_departure: getAimedDeparture(firstStop),
+    actual_departure: getActualDeparture(firstStop),
+    scheduled_arrival: getAimedArrival(lastStop),
+    actual_arrival: getActualArrival(lastStop),
+    full_route_geometry: fullRouteGeometry,
+    polyline_path: polylinePath,
+    full_locations: full_route,
+    full_route: full_route,
+    unit: vehicleUnit,
+    debug: debug
+      ? {
+          journey_raw: journeyData,
+          vehicle_raw: vehicleDetails,
+        }
+      : undefined,
+  });
 }

@@ -67,6 +67,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
   const { searchParams } = new URL(request.url);
   const rid = searchParams.get("rid");
   const trip_id = searchParams.get("trip_id");
+  const journey_id = searchParams.get("journey_id");
 
   try {
     if (rid) {
@@ -123,6 +124,33 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
       return NextResponse.json({
         type: "bus",
         id: trip_id,
+        path: fullPath,
+        snapped: isSnapped
+      });
+    } else if (journey_id) {
+      const jRes = await fetch(buildBustimesUrl(bustimesBaseUrl, `/api/vehiclejourneys/${journey_id}/details/`));
+      if (!jRes.ok) throw new Error("Bus journey not found");
+      const jData = await jRes.json();
+
+      let fullPath: any[] = [];
+      const times = jData?.trip?.times;
+      if (Array.isArray(times)) {
+        times.forEach((t: any) => {
+          if (Array.isArray(t.track)) {
+            fullPath.push(...t.track);
+          }
+        });
+      }
+
+      const isSnapped = fullPath.length > 0;
+
+      if (!isSnapped && Array.isArray(times)) {
+        fullPath = times.map((t: any) => t.stop.location).filter(Boolean);
+      }
+
+      return NextResponse.json({
+        type: "bus",
+        id: journey_id,
         path: fullPath,
         snapped: isSnapped
       });

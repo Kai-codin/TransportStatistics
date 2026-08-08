@@ -105,7 +105,14 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
   const handleVehicleClick = async (item: any, type: "train" | "bus", popup: maplibregl.Popup) => {
     if (!item.id || !map) return;
     try {
-      const queryParam = type === "train" ? `rid=${item.id}` : `trip_id=${item.id}`;
+      let queryParam: string;
+      if (type === "train") {
+        queryParam = `rid=${item.id}`;
+      } else {
+        queryParam = item.trip_id
+          ? `trip_id=${item.trip_id}`
+          : `journey_id=${item.journey_id}`;
+      }
       const res = await fetch(`/api/route-info?${queryParam}`);
       if (!res.ok) throw new Error("Failed to fetch route info");
       const data = await res.json();

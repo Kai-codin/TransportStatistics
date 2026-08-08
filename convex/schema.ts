@@ -210,6 +210,7 @@ export default defineSchema({
     first_units: v.optional(v.array(v.string())),
     vehicle_key: v.optional(v.string()),
     vehicle_keys: v.optional(v.array(v.string())),
+    coupling_events: v.optional(v.any()),
   })
     .index("by_user", ["user"])
     .index("by_user_and_operator", ["user", "operator"])

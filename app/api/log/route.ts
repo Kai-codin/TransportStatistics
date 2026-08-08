@@ -6,7 +6,7 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { withApiKeyAuth } from '@/lib/api-key-auth';
 import { buildBustimesUrl, getBustimesBaseUrl } from '@/lib/bustimes-source';
-import { getTrainAllocation } from "@/lib/realtime-trains";
+import { fetchAllocationFromRTT } from "@/lib/realtime-trains";
 
 const consoleDebug = false;
 
@@ -408,9 +408,9 @@ async function handleTrainRequest(
       : Promise.resolve(null);
 
     const [rttRes, routeRes] = await Promise.all([rttPromise, routePromise]);
-    const rttData = await rttRes.json();
-    const routeData = routeRes?.ok ? await routeRes.json() : null;
-    const fullRouteGeometry = toLineStringGeometry(routeData);
+        const rttData = await rttRes.json();
+        const routeData = routeRes?.ok ? await routeRes.json() : null;
+        const fullRouteGeometry = toLineStringGeometry(routeData);
 
     const service = rttData.service;
     if (!service) return NextResponse.json({ error: 'Missing service object' }, { status: 500 });
@@ -437,7 +437,7 @@ async function handleTrainRequest(
 
     // 2. Merge Stop and Track
     const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData, uid, date);
-    const allocationData = await getTrainAllocation(uid, date);
+    const allocationData = await fetchAllocationFromRTT(uid, date);
 
     console.log(`Train ${uid} on ${date} has ${full_route.length} stops after merging.`);
     console.log(`Allocation data: ${JSON.stringify(allocationData)}`);

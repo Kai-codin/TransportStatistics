@@ -193,6 +193,7 @@ const tripLogArgs = {
   ridden_route: v.any(),
   units: v.array(unitArgs),
   notes: v.optional(v.string()),
+  coupling_events: v.optional(v.any()),
 };
 
 const tripLogUpdateArgs = {
@@ -291,6 +292,7 @@ function toTripSummary(trip: Doc<"tripLogs">) {
     first_units: trip.first_units,
     vehicle_key: trip.vehicle_key,
     vehicle_keys: trip.vehicle_keys,
+    coupling_events: trip.coupling_events,
     distance_km: trip.distance_km,
     full_route: undefined,
     ridden_route: undefined,
@@ -408,6 +410,22 @@ function getVehicleKeyForTransport(unit?: TripUnitLike, transportType?: string) 
 
 function normalizeReg(value?: string) {
   return value?.replace(/\s+/g, "").toUpperCase();
+}
+
+function extractCouplingUnits(events: unknown): Array<{ unit_number?: string; unit_reg?: string }> {
+  if (!Array.isArray(events)) return [];
+  const units: Array<{ unit_number?: string; unit_reg?: string }> = [];
+  for (const event of events) {
+    if (!event || typeof event !== "object") continue;
+    const e = event as Record<string, unknown>;
+    const type = e.type;
+    if (type !== "couple" && type !== "uncouple") continue;
+    const unit = e.unit as { unit_number?: string; unit_reg?: string } | undefined;
+    if (unit?.unit_number || unit?.unit_reg) {
+      units.push({ unit_number: unit.unit_number, unit_reg: unit.unit_reg });
+    }
+  }
+  return units;
 }
 
 function haversineKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, number]) {
@@ -914,7 +932,7 @@ export const logTrip = mutation({
       args.transport_type
     );
 
-    const { full_route, ridden_route, ...tripFields } = args;
+    const { full_route, ridden_route, coupling_events, ...tripFields } = args;
     const distance_km = calculateDistanceKm(full_route, ridden_route);
 
     // ensureUserRecord and hasExistingTripWithVehicle are independent — run in parallel
@@ -924,7 +942,9 @@ export const logTrip = mutation({
     ]);
 
     const first_time = !existingTripExists;
-    const vehicle_keys = deriveVehicleKeys(args.units, args.transport_type, args.operator);
+    const couplingUnits = extractCouplingUnits(coupling_events);
+    const allUnitsForKeys = [...args.units, ...couplingUnits];
+    const vehicle_keys = deriveVehicleKeys(allUnitsForKeys, args.transport_type, args.operator);
     const first_units = first_time ? vehicle_keys : [];
 
     const tripId = await ctx.db.insert("tripLogs", {
@@ -942,6 +962,7 @@ export const logTrip = mutation({
       vehicle_keys,
       first_time,
       first_units,
+      coupling_events,
     });
 
     await saveRouteDetails(ctx, tripId, identity.subject, { full_route, ridden_route });
@@ -969,7 +990,7 @@ export const updateTrip = mutation({
       args.transport_type
     );
 
-    const { full_route, ridden_route } = args;
+    const { full_route, ridden_route, coupling_events } = args;
     const distance_km = calculateDistanceKm(full_route, ridden_route);
 
     // Vehicle check and route detail lookup are independent — run in parallel
@@ -985,7 +1006,9 @@ export const updateTrip = mutation({
     ]);
 
     const first_time = !existingTripExists;
-    const vehicle_keys = deriveVehicleKeys(args.units, args.transport_type, args.operator);
+    const couplingUnits = extractCouplingUnits(coupling_events);
+    const allUnitsForKeys = [...args.units, ...couplingUnits];
+    const vehicle_keys = deriveVehicleKeys(allUnitsForKeys, args.transport_type, args.operator);
     const first_units = first_time ? vehicle_keys : [];
 
     await ctx.db.patch(args.tripId, {
@@ -1016,9 +1039,8 @@ export const updateTrip = mutation({
       vehicle_keys,
       first_time,
       first_units,
+      coupling_events,
     });
-
-    return args.tripId;
   },
 });
 

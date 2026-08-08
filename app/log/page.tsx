@@ -11,6 +11,8 @@ import {
   AlertCircle,
   Bus,
   CheckCircle2,
+  Link2,
+  Link2Off,
   LoaderCircle,
   Map,
   NotebookText,
@@ -23,7 +25,7 @@ import {
   GripVertical,
 } from 'lucide-react';
 
-type TabKey = 'Route' | 'Vehicle' | 'Service' | 'Notes';
+type TabKey = 'Route' | 'Vehicle' | 'Coupling' | 'Service' | 'Notes';
 type RouteMode = 'Map' | 'List';
 type VehicleMode = 'Bus' | 'Train' | 'Tram' | 'Other';
 type StoredTransportType = 'Rail' | 'Bus' | 'Tram' | 'Other';
@@ -69,6 +71,14 @@ type TripUnit = {
   unit_type: string;
   livery: string;
   livery_left: string;
+};
+
+type CouplingEvent = {
+  type: 'couple' | 'uncouple';
+  unit: TripUnit;
+  stop_name: string;
+  stop_code: string;
+  stop_id: number | null;
 };
 
 type ApiLogResponse = {
@@ -155,6 +165,7 @@ type EditableTripRecord = {
   livery_name?: string;
   livery_css?: string;
   notes?: string;
+  coupling_events?: CouplingEvent[] | null;
 };
 
 type RequestResolution = {
@@ -164,7 +175,7 @@ type RequestResolution = {
   label: string;
 };
 
-const TABS: TabKey[] = ['Route', 'Vehicle', 'Service', 'Notes'];
+const TABS: TabKey[] = ['Route', 'Vehicle', 'Coupling', 'Service', 'Notes'];
 const ROUTE_MODES: RouteMode[] = ['Map', 'List'];
 const VEHICLE_MODES: VehicleMode[] = ['Bus', 'Train', 'Tram', 'Other'];
 
@@ -186,6 +197,14 @@ const EMPTY_SERVICE_FORM: ServiceFormState = {
 };
 
 const EMPTY_UNIT: TripUnit = {
+  unit_number: '',
+  unit_reg: '',
+  unit_type: '',
+  livery: '',
+  livery_left: '',
+};
+
+const EMPTY_COUPLING_UNIT: TripUnit = {
   unit_number: '',
   unit_reg: '',
   unit_type: '',
@@ -542,6 +561,13 @@ export default function LogPage() {
   const unitSearchRef = useRef<HTMLDivElement>(null);
   const [draggedUnitIndex, setDraggedUnitIndex] = useState<number | null>(null);
   const [dragOverUnitIndex, setDragOverUnitIndex] = useState<number | null>(null);
+  const [couplingEvents, setCouplingEvents] = useState<CouplingEvent[]>([]);
+  const [couplingSearchIndex, setCouplingSearchIndex] = useState<number | null>(null);
+  const [couplingSearchResults, setCouplingSearchResults] = useState<SearchResult[]>([]);
+  const [couplingSearchLoading, setCouplingSearchLoading] = useState(false);
+  const [couplingSearchOpen, setCouplingSearchOpen] = useState(false);
+  const couplingSearchRef = useRef<HTMLDivElement>(null);
+  const couplingSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editTripId = searchKey ? new URLSearchParams(searchKey).get('trip_id') : null;
   const isCustomTrip = searchKey ? new URLSearchParams(searchKey).get('custom') === 'true' : false;
@@ -626,6 +652,7 @@ export default function LogPage() {
         setFromStopId(activeRoute.length > 1 ? activeRoute[0]?.id ?? null : null);
         setToStopId(activeRoute.length > 1 ? activeRoute[activeRoute.length - 1]?.id ?? null : null);
         setNotes(safeString(editTrip.notes));
+        setCouplingEvents(Array.isArray(editTrip.coupling_events) ? editTrip.coupling_events as CouplingEvent[] : []);
         setServiceForm({
           service_number: safeString(editTrip.service_number),
           operator: safeString(editTrip.operator),
@@ -678,6 +705,7 @@ export default function LogPage() {
         setUnits([]);
         setSelectedUnitIndex(0);
         setNotes('');
+        setCouplingEvents([]);
         setServiceForm({
           ...EMPTY_SERVICE_FORM,
           service_date: customDate,
@@ -718,6 +746,7 @@ export default function LogPage() {
         setFromStopId(route.length > 1 ? startStop?.id ?? null : null);
         setToStopId(route.length > 1 ? lastStop?.id ?? null : null);
         setNotes('');
+        setCouplingEvents([]);
         setServiceForm({
           service_number: safeString(payload.service_number),
           operator: safeString(payload.operator),
@@ -903,6 +932,7 @@ export default function LogPage() {
         ridden_route: riddenRoute,
         units: cleanedUnits,
         notes: notes.trim() || undefined,
+        coupling_events: couplingEvents.length > 0 ? couplingEvents : undefined,
       };
 
       if (isEditingTrip && editTripId) {
@@ -1301,6 +1331,322 @@ export default function LogPage() {
     );
   }
 
+  // ─── Coupling tab ──────────────────────────────────────────────────────────
+
+  function addCouplingEvent() {
+    const nearestStop = selectedStop ?? fullRoute[0];
+    setCouplingEvents((c) => [
+      ...c,
+      {
+        type: 'couple',
+        unit: { ...EMPTY_COUPLING_UNIT },
+        stop_name: nearestStop?.stop?.name ?? '',
+        stop_code: nearestStop?.stop?.stop_code ?? '',
+        stop_id: nearestStop?.id ?? null,
+      },
+    ]);
+  }
+
+  function updateCouplingEvent(index: number, patch: Partial<CouplingEvent>) {
+    setCouplingEvents((c) => c.map((e, i) => (i === index ? { ...e, ...patch } : e)));
+  }
+
+  function updateCouplingUnitField(index: number, field: keyof TripUnit, value: string) {
+    setCouplingEvents((c) =>
+      c.map((e, i) =>
+        i === index ? { ...e, unit: { ...e.unit, [field]: value } } : e,
+      ),
+    );
+  }
+
+  function removeCouplingEvent(index: number) {
+    setCouplingEvents((c) => c.filter((_, i) => i !== index));
+  }
+
+  function fillCouplingUnitFromSearch(index: number, result: SearchResult) {
+    setCouplingEvents((c) =>
+      c.map((e, i) =>
+        i === index
+          ? {
+              ...e,
+              unit: {
+                unit_number: result.unit_number,
+                unit_reg: result.unit_reg,
+                unit_type: result.type.type_name,
+                livery: result.livery.livery_name,
+                livery_left: result.livery.livery_css,
+              },
+            }
+          : e,
+      ),
+    );
+  }
+
+  function renderCouplingTab() {
+    return (
+      <div className="flex flex-col gap-3">
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-ts-text-1">Mid-route formation changes</p>
+              <p className="mt-0.5 text-xs text-ts-text-3">
+                Log units that coupled or uncoupled during the journey
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={addCouplingEvent}
+              disabled={fullRoute.length === 0}
+              className="shrink-0 rounded-full border border-ts-border px-3 py-2 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Plus className="mr-1 inline h-3 w-3" />
+              Add event
+            </button>
+          </div>
+        </Card>
+
+        {couplingEvents.length === 0 && (
+          <Card className="py-12 text-center text-sm text-ts-text-3">
+            No formation changes logged for this trip.
+          </Card>
+        )}
+
+        {couplingEvents.map((event, index) => {
+          const isCouple = event.type === 'couple';
+
+          return (
+            <Card key={index}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {isCouple ? (
+                    <Link2 className="h-4 w-4 text-emerald-400" />
+                  ) : (
+                    <Link2Off className="h-4 w-4 text-red-400" />
+                  )}
+                  <span className={`text-sm font-bold ${isCouple ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {isCouple ? 'Coupled' : 'Uncoupled'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeCouplingEvent(index)}
+                  className="rounded-full border border-red-500/30 bg-red-500/10 p-1.5 text-red-300 transition hover:bg-red-500/15 active:scale-95"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Search for unit */}
+              <div className="mb-4">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">Search vehicle</p>
+                <div ref={couplingSearchIndex === index ? couplingSearchRef : undefined} className="relative">
+                  <div className="relative">
+                    <input
+                      key={`coupling-search-${index}`}
+                      onChange={(e) => {
+                        setCouplingSearchIndex(index);
+                        const q = e.target.value.trim();
+                        if (q.length < 2) {
+                          setCouplingSearchResults([]);
+                          setCouplingSearchOpen(false);
+                          setCouplingSearchLoading(false);
+                          if (couplingSearchTimeoutRef.current) clearTimeout(couplingSearchTimeoutRef.current);
+                          return;
+                        }
+                        if (couplingSearchTimeoutRef.current) clearTimeout(couplingSearchTimeoutRef.current);
+                        couplingSearchTimeoutRef.current = setTimeout(async () => {
+                          setCouplingSearchLoading(true);
+                          try {
+                            const type = vehicleMode === 'Train' ? 'train' : vehicleMode === 'Bus' ? 'bus' : '';
+                            const params = new URLSearchParams({ q });
+                            if (type) params.set('type', type);
+                            const res = await fetch(`/api/search?${params}`);
+                            const data: SearchResult[] = await res.json();
+                            setCouplingSearchResults(data);
+                            setCouplingSearchOpen(data.length > 0);
+                          } catch { setCouplingSearchResults([]); }
+                          finally { setCouplingSearchLoading(false); }
+                        }, 350);
+                      }}
+                      onFocus={() => {
+                        setCouplingSearchIndex(index);
+                        if (couplingSearchResults.length > 0) setCouplingSearchOpen(true);
+                      }}
+                      placeholder={vehicleMode === 'Bus' ? 'Reg or fleet number…' : 'Unit or reg…'}
+                      className={`${inputCls()} pr-10`}
+                    />
+                    {couplingSearchLoading && couplingSearchIndex === index && <LoaderCircle className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ts-accent" />}
+                  </div>
+                  {couplingSearchOpen && couplingSearchIndex === index && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-3xl border border-ts-border bg-ts-surface shadow-xl">
+                      {couplingSearchResults.map((r) => (
+                        <button
+                          key={`coupling-${r.source}-${r.id}`}
+                          type="button"
+                          onClick={() => {
+                            fillCouplingUnitFromSearch(index, r);
+                            setCouplingSearchOpen(false);
+                            setCouplingSearchResults([]);
+                            setCouplingSearchIndex(null);
+                          }}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-ts-surface-2 first:rounded-t-3xl last:rounded-b-3xl"
+                        >
+                          <div className="h-9 w-14 shrink-0 rounded-xl border border-ts-border-soft" style={{ background: r.livery.livery_css || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }} />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-sm font-bold text-ts-text-1">{[r.unit_number, r.unit_reg].filter(Boolean).join(' · ')}</span>
+                              {r.withdrawn && <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-300">Withdrawn</span>}
+                              <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${r.source === 'train' ? 'bg-sky-500/15 text-sky-300' : 'bg-ts-accent/15 text-ts-accent'}`}>{r.source}</span>
+                            </div>
+                            <div className="mt-0.5 truncate text-xs text-ts-text-3">{r.type.type_name}{r.type.type_name && r.operator.operator_name ? ' · ' : ''}{r.operator.operator_name}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <Field label="Action">
+                  <div className="inline-flex rounded-full border border-ts-border bg-ts-surface-2 p-1 gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => updateCouplingEvent(index, { type: 'couple' })}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition active:scale-95 ${
+                        isCouple
+                          ? 'bg-emerald-500/20 text-emerald-400 shadow-md shadow-emerald-500/10'
+                          : 'text-ts-text-3 hover:text-ts-text-1'
+                      }`}
+                    >
+                      Coupled
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCouplingEvent(index, { type: 'uncouple' })}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition active:scale-95 ${
+                        !isCouple
+                          ? 'bg-red-500/20 text-red-400 shadow-md shadow-red-500/10'
+                          : 'text-ts-text-3 hover:text-ts-text-1'
+                      }`}
+                    >
+                      Uncoupled
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label="At stop">
+                  <select
+                    value={event.stop_id ?? ''}
+                    onChange={(e) => {
+                      const id = e.target.value ? Number(e.target.value) : null;
+                      const stop = fullRoute.find((s) => s.id === id);
+                      updateCouplingEvent(index, {
+                        stop_id: id,
+                        stop_name: stop?.stop?.name ?? '',
+                        stop_code: stop?.stop?.stop_code ?? '',
+                      });
+                    }}
+                    className={inputCls()}
+                  >
+                    <option value="">Select stop...</option>
+                    {fullRoute.map((stop) => (
+                      <option key={stop.id} value={stop.id}>
+                        {stop.stop.name || stop.stop.stop_code || `Stop ${stop.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">
+                {isCouple ? 'Unit that coupled' : 'Unit that uncoupled'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Fleet / Unit">
+                  <input
+                    value={event.unit.unit_number}
+                    onChange={(e) => updateCouplingUnitField(index, 'unit_number', e.target.value)}
+                    placeholder="e.g. 43055"
+                    className={inputCls()}
+                  />
+                </Field>
+                <Field label="Registration">
+                  <input
+                    value={event.unit.unit_reg}
+                    onChange={(e) => updateCouplingUnitField(index, 'unit_reg', e.target.value)}
+                    placeholder="e.g. AB12 CDE"
+                    className={inputCls()}
+                  />
+                </Field>
+                <Field label="Vehicle type">
+                  <input
+                    value={event.unit.unit_type}
+                    onChange={(e) => updateCouplingUnitField(index, 'unit_type', e.target.value)}
+                    className={inputCls()}
+                  />
+                </Field>
+                <Field label="Livery">
+                  <input
+                    value={event.unit.livery}
+                    onChange={(e) => updateCouplingUnitField(index, 'livery', e.target.value)}
+                    className={inputCls()}
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-3">
+                <Field label="Livery CSS">
+                  <div className="flex gap-3">
+                    <textarea
+                      value={event.unit.livery_left}
+                      onChange={(e) => updateCouplingUnitField(index, 'livery_left', e.target.value)}
+                      className="min-h-[60px] flex-1 rounded-2xl border border-ts-border bg-ts-surface-2 px-3 py-2 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20"
+                    />
+                    <div>
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-ts-text-3">Preview</div>
+                      <div
+                        className="aspect-[24/16] w-16 rounded-xl border border-ts-border-soft"
+                        style={{ background: event.unit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }}
+                      />
+                    </div>
+                  </div>
+                </Field>
+              </div>
+            </Card>
+          );
+        })}
+
+        {couplingEvents.length > 0 && (
+          <Card>
+            <div className="text-xs text-ts-text-3 space-y-1">
+              <p className="font-semibold text-ts-text-2 text-sm mb-2">Summary</p>
+              {couplingEvents.map((event, i) => {
+                const stopName = event.stop_name || (event.stop_id !== null
+                  ? fullRoute.find((s) => s.id === event.stop_id)?.stop.name ?? 'Unknown'
+                  : 'Unknown');
+                const unitLabel = [event.unit.unit_number, event.unit.unit_reg].filter(Boolean).join(' - ') || 'Unknown unit';
+                return (
+                  <p key={i} className="flex items-center gap-1.5">
+                    {event.type === 'couple' ? (
+                      <Link2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Link2Off className="h-3 w-3 text-red-400 shrink-0" />
+                    )}
+                    <span className="font-mono font-semibold">{unitLabel}</span>
+                    <span>{event.type === 'couple' ? 'coupled to' : 'uncoupled from'} train at</span>
+                    <span className="font-semibold">{stopName}</span>
+                  </p>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
   // ─── Service tab ──────────────────────────────────────────────────────────
 
   function renderServiceTab() {
@@ -1358,6 +1704,7 @@ export default function LogPage() {
   const tabIcons: Record<TabKey, ReactNode> = {
     Route: <Map className="h-[18px] w-[18px]" />,
     Vehicle: <TrainFront className="h-[18px] w-[18px]" />,
+    Coupling: <Link2 className="h-[18px] w-[18px]" />,
     Service: <Route className="h-[18px] w-[18px]" />,
     Notes: <NotebookText className="h-[18px] w-[18px]" />,
   };
@@ -1464,6 +1811,7 @@ export default function LogPage() {
             <>
               {activeTab === 'Route' && renderRouteTab()}
               {activeTab === 'Vehicle' && renderVehicleTab()}
+              {activeTab === 'Coupling' && renderCouplingTab()}
               {activeTab === 'Service' && renderServiceTab()}
               {activeTab === 'Notes' && renderNotesTab()}
             </>

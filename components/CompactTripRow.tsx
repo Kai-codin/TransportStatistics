@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Link2, Link2Off } from 'lucide-react';
 
 type TripUnit = {
   unit_number?: string;
@@ -8,6 +9,14 @@ type TripUnit = {
   unit_type?: string;
   livery?: string;
   livery_left?: string;
+};
+
+type CouplingEvent = {
+  type: 'couple' | 'uncouple';
+  unit: TripUnit;
+  stop_name?: string;
+  stop_code?: string;
+  stop_id?: number;
 };
 
 type TripLike = {
@@ -28,6 +37,7 @@ type TripLike = {
   livery_css?: string;
   first_time?: boolean;
   first_units?: string[];
+  coupling_events?: CouplingEvent[];
 };
 
 interface CompactTripRowProps {
@@ -104,6 +114,33 @@ export const CompactTripRow = ({ trip }: CompactTripRowProps) => {
             <span className="text-[10px] text-ts-text-3 font-medium truncate leading-tight">
               {trip.operator}
             </span>
+            {/* Coupling event indicator */}
+            {Array.isArray(trip.coupling_events) && trip.coupling_events.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                {trip.coupling_events.map((event, idx) => {
+                  const unitLabel = [event.unit?.unit_number, event.unit?.unit_reg]
+                    .filter(Boolean)
+                    .join(' - ') || '?';
+                  return (
+                    <span
+                      key={idx}
+                      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[8px] font-semibold ${
+                        event.type === 'couple'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                      }`}
+                    >
+                      {event.type === 'couple' ? (
+                        <Link2 className="h-2 w-2" />
+                      ) : (
+                        <Link2Off className="h-2 w-2" />
+                      )}
+                      {unitLabel}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Time + unit, stacked to stay narrow */}

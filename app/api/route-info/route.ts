@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Redis } from 'ioredis';
 import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
 import { withApiKeyAuth } from "@/lib/api-key-auth";
-import { getTrainAllocation } from "@/lib/realtime-trains";
+import { fetchAllocationFromRTT } from "@/lib/realtime-trains";
 import { buildBustimesUrl, getBustimesBaseUrl } from "@/lib/bustimes-source";
 
 const REDIS_DISABLED =
@@ -83,7 +83,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
 
       const date = infoData.origin_departure.split('T')[0];
 
-      const allocationData = await getTrainAllocation(infoData.uid, date);
+      const allocationData = await fetchAllocationFromRTT(infoData.uid, date);
       const vehicles = normalizeAllocationUnits(allocationData);
 
       return NextResponse.json({

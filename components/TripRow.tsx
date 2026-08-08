@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Info } from 'lucide-react';
+import { Info, Link2, Link2Off } from 'lucide-react';
 
 type TripUnit = {
   unit_number?: string;
@@ -9,6 +9,14 @@ type TripUnit = {
   unit_type?: string;
   livery?: string;
   livery_left?: string;
+};
+
+type CouplingEvent = {
+  type: 'couple' | 'uncouple';
+  unit: TripUnit;
+  stop_name?: string;
+  stop_code?: string;
+  stop_id?: number;
 };
 
 type TripLike = {
@@ -27,6 +35,7 @@ type TripLike = {
   livery_css?: string;
   first_time?: boolean;
   first_units?: string[];
+  coupling_events?: CouplingEvent[];
 };
 
 interface TripRowProps {
@@ -72,6 +81,8 @@ export const TripRow = ({ trip }: TripRowProps) => {
   const firstUnit = allUnits[0];
   const lastUnit = allUnits.length > 1 ? allUnits[allUnits.length - 1] : null;
   const extraCount = allUnits.length > 2 ? allUnits.length - 2 : 0;
+
+  const couplingEvents = Array.isArray(trip.coupling_events) ? trip.coupling_events : [];
 
   return (
     <Link href={`/trip/me/${trip._id}`}>
@@ -172,6 +183,35 @@ export const TripRow = ({ trip }: TripRowProps) => {
               {trip.destination_name}
             </span>
           </div>
+
+          {/* Coupling events */}
+          {couplingEvents.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {couplingEvents.map((event, idx) => {
+                const unitLabel = [event.unit?.unit_number, event.unit?.unit_reg]
+                  .filter(Boolean)
+                  .join(' - ') || 'Unknown';
+                return (
+                  <span
+                    key={idx}
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold ${
+                      event.type === 'couple'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                    }`}
+                  >
+                    {event.type === 'couple' ? (
+                      <Link2 className="h-2.5 w-2.5" />
+                    ) : (
+                      <Link2Off className="h-2.5 w-2.5" />
+                    )}
+                    {unitLabel} {event.type === 'couple' ? 'coupled' : 'uncoupled'}
+                    {event.stop_name ? ` at ${event.stop_name}` : ''}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </Link>

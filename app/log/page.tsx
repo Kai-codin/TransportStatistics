@@ -543,12 +543,6 @@ function mapVehicleModeToTransportType(mode: VehicleMode): StoredTransportType {
   return 'Other';
 }
 
-function vehicleModeToSnapMode(mode: VehicleMode): SnapMode {
-  if (mode === 'Train') return 'rail';
-  if (mode === 'Tram') return 'metro';
-  return 'road';
-}
-
 function serializeJson(value: unknown) {
   try { return JSON.stringify(value ?? null); } catch { return 'null'; }
 }

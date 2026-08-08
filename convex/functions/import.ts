@@ -468,6 +468,7 @@ export const importTrains = mutation({
         type_id: typeId,
         operator_id: operatorId,
         livery_id: liveryId,
+        withdrawn: false,
         search_text: unit_number,
       });
       existingUnitNumbers.add(unit_number);
@@ -571,6 +572,7 @@ export const importBulkUnits = mutation({
           type_id: typeId,
           operator_id: operatorId, // Saved cleanly as a string reference ID
           livery_id: liveryId,
+          withdrawn: false, // Default to false for new units
           search_text: unit_number,
         });
         existingUnitNumbers.add(unit_number);

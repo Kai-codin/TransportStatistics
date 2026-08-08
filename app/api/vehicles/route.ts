@@ -40,6 +40,7 @@ type DbUnit = {
   unit_reg?: string | null;
   type_id: string;
   livery_id: string;
+  withdrawn?: boolean | null;
 };
 
 type TypeRecord = {
@@ -322,7 +323,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
         previous_bustimes_livery: prevUnit ? { name: prevUnit.livery || "Unknown", css: prevUnit.livery_left || "" } : null,
       },
       branding: currentName,
-      withdrawn: false,
+      withdrawn: unit.withdrawn ?? false,
       ridden: trips.length > 0,
       times_ridden: trips.length,
       _matchingTripIds: matchingTripIds,
@@ -397,7 +398,7 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
     // 1. Determine if active
     const isActuallyActive = variants.some(v => {
       const isBustimesOfficial = bustimesVehicles.some(bv => bv["bt-id"] === v["bt-id"] && !bv.withdrawn);
-      const isCustomOfficial = units.some(u => u._id === v["bt-id"]);
+      const isCustomOfficial = units.some(u => u._id === v["bt-id"] && !u.withdrawn);
       return isBustimesOfficial || isCustomOfficial;
     });
 

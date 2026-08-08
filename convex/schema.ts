@@ -94,7 +94,7 @@ export default defineSchema({
     unit_allocation: v.any(),
     updated_at: v.number(),
   })
-    .index("by_uid_date", ["uid", "date"]),
+    .index("by_uid_date", ["uid", "date"]), 
 
   units: defineTable({
     unit_number: v.optional(v.string()),
@@ -102,6 +102,7 @@ export default defineSchema({
     type_id: v.string(),
     operator_id: v.string(),
     livery_id: v.string(),  
+    withdrawn: v.optional(v.boolean()),
     search_text: v.optional(v.string()),
   })
   .index("by_operator_id", ["operator_id"])

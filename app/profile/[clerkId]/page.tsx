@@ -67,12 +67,7 @@ export default function UserProfilePage({
   const { results: trips, status, loadMore } = usePaginatedQuery(
     api.functions.trips.getUserTripsPaginated,
     currentUser ? { userId: clerkId } : "skip",
-    { initialNumItems: 50 },
-  );
-
-  const participatedTrips = useQuery(
-    api.functions.friends.getUserParticipatedTrips,
-    currentUser ? { userId: clerkId } : "skip",
+    { initialNumItems: 500 },
   );
 
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -95,7 +90,7 @@ export default function UserProfilePage({
   }, [status, loadMore]);
 
   const groupedTrips = useMemo<TripGroup[]>(() => {
-    const combinedTrips = [...(trips ?? []), ...(participatedTrips ?? [])];
+    const combinedTrips = trips ?? [];
     if (combinedTrips.length === 0) return [];
 
     const groups = new Map<string, TripGroup>();
@@ -127,7 +122,7 @@ export default function UserProfilePage({
     });
 
     return [...groups.values()];
-  }, [participatedTrips, trips]);
+  }, [trips]);
 
   if (!currentUser) {
     return (
@@ -196,7 +191,7 @@ export default function UserProfilePage({
 
       {status === "LoadingFirstPage" ? (
         <div className="text-center text-slate-500 py-10">Loading...</div>
-      ) : trips.length === 0 && (!participatedTrips || participatedTrips.length === 0) ? (
+      ) : trips.length === 0 ? (
         <div className="text-center py-10 text-slate-400">No trips yet.</div>
       ) : (
         <>

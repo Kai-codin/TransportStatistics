@@ -30,6 +30,7 @@ type RouteStop = {
 type MapClickCoords = { lng: number; lat: number };
 
 type LogMapProps = {
+  visible?: boolean;
   fullRoute: RouteStop[];
   fullGeometry: Geometry;
   highlightedGeometry: Geometry;
@@ -58,7 +59,7 @@ const emptyLineFeature = {
 };
 
 export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
-  { fullRoute, fullGeometry, highlightedGeometry, onStopClick, fromStopId, toStopId, onMapClick },
+  { visible = true, fullRoute, fullGeometry, highlightedGeometry, onStopClick, fromStopId, toStopId, onMapClick },
   ref,
 ) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -200,6 +201,12 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
     };
   }, [theme]);
 
+  useEffect(() => {
+    if (visible && mapInstance.current) {
+      requestAnimationFrame(() => mapInstance.current?.resize());
+    }
+  }, [visible]);
+
   // Effect 1: update data only (no fitBounds)
   useEffect(() => {
     if (!mapLoaded || !mapInstance.current) return;
@@ -279,7 +286,7 @@ export const LogMap = forwardRef<LogMapHandle, LogMapProps>(function LogMap(
   }), []);
 
   return (
-  <div className={`relative h-full w-full overflow-hidden bg-ts-surface ${onMapClick ? '[&_.maplibregl-canvas]:cursor-crosshair' : ''}`}>
+  <div className={`rounded-lg relative h-full w-full overflow-hidden bg-ts-surface ${onMapClick ? '[&_.maplibregl-canvas]:cursor-crosshair' : ''}`}>
     <div ref={mapContainer} className="h-full w-full" />
       {!mapLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-ts-surface text-sm text-ts-text-2">

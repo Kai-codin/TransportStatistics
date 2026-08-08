@@ -531,6 +531,8 @@ export default function LogPage() {
   const [toStopId, setToStopId] = useState<number | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<number | null>(null);
   const [stopSheetOpen, setStopSheetOpen] = useState(false);
+
+  useEffect(() => { setStopSheetOpen(false); }, [routeMode]);
   const [units, setUnits] = useState<TripUnit[]>([]);
   const [selectedUnitIndex, setSelectedUnitIndex] = useState(0);
   const [unitSearch, setUnitSearch] = useState('');
@@ -984,17 +986,17 @@ export default function LogPage() {
         </div>
 
         {/* Map */}
-        {routeMode === 'Map' ? (
-          <div className="grid relative flex-1 min-h-[450px] overflow-hidden bg-ts-surface sm:rounded-3xl sm:border sm:border-ts-border">
-            <LogMap
-              fullRoute={fullRoute}
-              fullGeometry={fullGeometry}
-              highlightedGeometry={riddenRoute?.geometry ?? fullGeometry}
-              onStopClick={isCustomTrip ? () => {} : (id) => { setSelectedStopId(id); setStopSheetOpen(true); }}
-              fromStopId={fromStopId}
-              toStopId={toStopId}
-              onMapClick={isCustomTrip ? handleMapClick : null}
-            />
+        <div className={`${routeMode === 'Map' ? 'grid' : 'hidden'} relative flex-1 min-h-[450px] overflow-hidden bg-ts-surface sm:rounded-3xl sm:border sm:border-ts-border`}>
+          <LogMap
+            visible={routeMode === 'Map'}
+            fullRoute={fullRoute}
+            fullGeometry={fullGeometry}
+            highlightedGeometry={riddenRoute?.geometry ?? fullGeometry}
+            onStopClick={isCustomTrip ? () => {} : (id) => { setSelectedStopId(id); setStopSheetOpen(true); }}
+            fromStopId={fromStopId}
+            toStopId={toStopId}
+            onMapClick={isCustomTrip ? handleMapClick : null}
+          />
 
             {/* Mobile Floating Overlay */}
             <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-3 px-3 sm:hidden">
@@ -1054,9 +1056,8 @@ export default function LogPage() {
               </div>
             )}
           </div>
-        ) : (
-          /* List */
-          <div className="flex flex-col gap-2 px-4 sm:px-0">
+        {/* List */}
+        <div className={`${routeMode === 'Map' ? 'hidden' : 'flex flex-col'} gap-2 px-4 sm:px-0`}>
             {fullRoute.map((stop, index) => {
               const isSelected = selectedStopId === stop.id;
               const isStart = fromStopId === stop.id;
@@ -1116,7 +1117,6 @@ export default function LogPage() {
               );
             })}
           </div>
-        )}
       </div>
     );
   }

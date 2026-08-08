@@ -68,7 +68,7 @@ async function enrichAllocationWithLiveries(allocation: VehicleAllocation): Prom
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 
-async function getRTTToken(): Promise<string> {
+export async function getRTTToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry - 60000) {
     return cachedToken;
   }
@@ -94,7 +94,6 @@ export async function fetchAllocationFromRTT(
 ): Promise<VehicleAllocation> {
   const cached = await fetchQuery(api.functions.trains.getAllocationByUidDate, { uid, date });
   if (cached?.unit_allocation) {
-    console.log(`[Allocation] Cache hit for ${uid}/${date}:`, JSON.stringify(cached.unit_allocation));
     return cached.unit_allocation as VehicleAllocation;
   }
   console.log(`[Allocation] Cache miss for ${uid}/${date}`);
@@ -104,26 +103,21 @@ export async function fetchAllocationFromRTT(
     if (!data) {
       const token = await getRTTToken();
       const rttUrl = `https://data.rtt.io/gb-nr/service?uniqueIdentity=${uid}:${date}&detailed=true`;
-      console.log(`[Allocation] Fetching from RTT: ${rttUrl}`);
       const res = await fetch(rttUrl, { headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) {
-        console.log(`[Allocation] RTT fetch failed: ${res.status}`);
+        console.error(`[Allocation] RTT fetch failed: ${res.status} for ${uid}/${date}`);
         return {};
       }
       data = await res.json();
     }
 
-    console.log(`[Allocation] RTT allocationData raw:`, JSON.stringify(data?.allocationData));
     let allocation = parseAllocationData(data);
-    console.log(`[Allocation] Parsed allocation:`, JSON.stringify(allocation));
 
     allocation = await enrichAllocationWithLiveries(allocation);
-    console.log(`[Allocation] Enriched allocation:`, JSON.stringify(allocation));
 
     if (Object.keys(allocation).length === 0) return {};
 
     const unitNumbers = Object.values(allocation).map((a) => a.unit_number).filter(Boolean);
-    console.log(`[Allocation] Saving to Convex: uid=${uid} date=${date} units=${unitNumbers}`);
 
     await fetchMutation(api.functions.trains.saveAllocationByUidDate, {
       uid,
@@ -137,23 +131,4 @@ export async function fetchAllocationFromRTT(
     console.error(`Failed to fetch allocation for ${uid}/${date}:`, e);
     return {};
   }
-}
-
-export async function saveAllocationFromRTTResponse(uid: string, date: string, rttData: any): Promise<void> {
-  const existing = await fetchQuery(api.functions.trains.getAllocationByUidDate, { uid, date });
-  if (existing?.unit_allocation) return;
-
-  let allocation = parseAllocationData(rttData);
-  if (Object.keys(allocation).length === 0) return;
-
-  allocation = await enrichAllocationWithLiveries(allocation);
-
-  const unitNumbers = Object.values(allocation).map((a) => a.unit_number).filter(Boolean);
-
-  await fetchMutation(api.functions.trains.saveAllocationByUidDate, {
-    uid,
-    date,
-    unit_numbers: unitNumbers,
-    unit_allocation: allocation,
-  });
 }

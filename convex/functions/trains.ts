@@ -231,7 +231,7 @@ export const saveAllocationByUidDate = mutation({
       ctx.db
         .query("trainDetails")
         .withIndex("by_uid", (q) => q.eq("uid", args.uid))
-        .collect(),
+        .take(30),
     ]);
 
     const payload = {

@@ -6,7 +6,7 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { withApiKeyAuth } from '@/lib/api-key-auth';
 import { buildBustimesUrl, getBustimesBaseUrl } from '@/lib/bustimes-source';
-import { fetchAllocationFromRTT } from "@/lib/realtime-trains";
+import { fetchAllocationFromRTT, getRTTToken } from "@/lib/realtime-trains";
 
 const consoleDebug = false;
 
@@ -107,30 +107,6 @@ function decodeTimeAwarePolyline(str: string): [number, number][] {
   }
 
   return coordinates;
-}
-
-// --- Auth Cache for RTT ---
-let cachedToken: string | null = null;
-let tokenExpiry: number = 0;
-
-async function getRTTToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiry - 60000) {
-    return cachedToken;
-  }
-
-  log('Refreshing RTT access token...');
-  const response = await fetch('https://data.rtt.io/api/get_access_token', {
-    headers: { 'Authorization': `Bearer ${process.env.RTT_REFRESH_TOKEN}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(`AUTH_FAILURE: Failed to refresh RTT token (${response.status})`);
-  }
-
-  const data = await response.json();
-  cachedToken = data.token;
-  tokenExpiry = new Date(data.validUntil).getTime();
-  return cachedToken!;
 }
 
 export const GET = withApiKeyAuth(async (_auth, request: Request) => {
@@ -439,9 +415,6 @@ async function handleTrainRequest(
     const full_route = mergeTrainStopAndTrack(locationsWithCoords, routeData, uid, date);
     const allocationData = await fetchAllocationFromRTT(uid, date, rttData);
 
-    console.log(`Train ${uid} on ${date} has ${full_route.length} stops after merging.`);
-    console.log(`Allocation data: ${JSON.stringify(allocationData)}`);
-
     const responsePayload: Record<string, any> = {
       service_number: meta?.trainReportingIdentity ?? "Unknown",
       operator: meta?.operator?.name ?? "Unknown",
@@ -462,19 +435,10 @@ async function handleTrainRequest(
     };
 
     if (debug) {
-      let unitLookupResult = null;
-      const unitNumbers = Object.values(allocationData).map((a: any) => a.unit_number).filter(Boolean);
-      if (unitNumbers.length > 0) {
-        try {
-          unitLookupResult = await fetchQuery(api.functions.trains.getUnitsByNumbers, { unitNumbers });
-        } catch (e) {}
-      }
-
       responsePayload._debug = {
         rtt_allocation_data: rttData?.allocationData ?? null,
         rtt_service_keys: rttData ? Object.keys(rttData) : [],
         parsed_allocation: allocationData,
-        unit_lookup: unitLookupResult,
         uid,
         date,
       };

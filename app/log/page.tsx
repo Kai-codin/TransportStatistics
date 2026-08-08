@@ -308,17 +308,51 @@ function buildFullGeometry(fullRoute: RouteStop[], geometry?: RouteGeometry | nu
   return deduped.length > 0 ? { type: 'LineString' as const, coordinates: deduped } : null;
 }
 
+function isRouteCircular(fullRoute: RouteStop[]): boolean {
+  if (fullRoute.length < 2) return false;
+  const first = fullRoute[0];
+  const last = fullRoute[fullRoute.length - 1];
+  const firstLoc = first?.stop?.location;
+  const lastLoc = last?.stop?.location;
+  const firstName = first?.stop?.name;
+  const lastName = last?.stop?.name;
+  if (firstName && lastName && firstName === lastName) return true;
+  if (firstLoc && lastLoc && firstLoc.length === 2 && lastLoc.length === 2) {
+    if (firstLoc[0] === lastLoc[0] && firstLoc[1] === lastLoc[1]) return true;
+  }
+  const seen = new Set<number>();
+  for (const s of fullRoute) {
+    if (seen.has(s.id)) return true;
+    seen.add(s.id);
+  }
+  return false;
+}
+
 function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toStopId: number | null, polylinePath?: [number, number][] | null): RiddenRoute | null {
   if (fromStopId === null || toStopId === null || fromStopId === toStopId) return null;
+  const circular = isRouteCircular(fullRoute);
   const fromIndex = fullRoute.findIndex((s) => s.id === fromStopId);
-  const toIndex = fullRoute.findIndex((s) => s.id === toStopId);
-  if (fromIndex === -1 || toIndex === -1 || fromIndex > toIndex) return null;
-  const stops = fullRoute.slice(fromIndex, toIndex + 1);
+  const toIndexFirst = fullRoute.findIndex((s) => s.id === toStopId);
+  if (fromIndex === -1 || toIndexFirst === -1) return null;
+
+  let toIndex = toIndexFirst;
+  if (circular && fromIndex > toIndexFirst) {
+    for (let i = fullRoute.length - 1; i >= 0; i--) {
+      if (fullRoute[i].id === toStopId) { toIndex = i; break; }
+    }
+  }
+
+  if (!circular && fromIndex > toIndex) return null;
+
+  const wrapsAround = circular && fromIndex > toIndex;
+  const stops = wrapsAround
+    ? [...fullRoute.slice(fromIndex), ...fullRoute.slice(0, toIndex + 1)]
+    : fullRoute.slice(fromIndex, toIndex + 1);
 
   let coordinates: [number, number][];
   if (polylinePath && polylinePath.length > 1) {
-    const fromStop = fullRoute[fromIndex];
-    const toStop = fullRoute[toIndex];
+    const fromStop = wrapsAround ? fullRoute[fromIndex] : stops[0];
+    const toStop = wrapsAround ? fullRoute[toIndex] : stops[stops.length - 1];
     const fromLoc = fromStop?.stop?.location;
     const toLoc = toStop?.stop?.location;
 
@@ -341,13 +375,17 @@ function buildRiddenRoute(fullRoute: RouteStop[], fromStopId: number | null, toS
       });
     }
 
-    if (polyFromIdx > polyToIdx) {
+    if (polyFromIdx > polyToIdx && !wrapsAround) {
       const tmp = polyFromIdx;
       polyFromIdx = polyToIdx;
       polyToIdx = tmp;
     }
 
-    coordinates = dedupeCoordinates(polylinePath.slice(polyFromIdx, polyToIdx + 1));
+    if (wrapsAround && polyFromIdx > polyToIdx) {
+      coordinates = dedupeCoordinates([...polylinePath.slice(polyFromIdx), ...polylinePath.slice(0, polyToIdx + 1)]);
+    } else {
+      coordinates = dedupeCoordinates(polylinePath.slice(polyFromIdx, polyToIdx + 1));
+    }
   } else {
     coordinates = dedupeCoordinates(
       stops.flatMap((stop, index) => {
@@ -794,11 +832,12 @@ export default function LogPage() {
 
   function setStartStop(stopId: number) {
     if (stopId === toStopId) return;
+    const circular = isRouteCircular(fullRoute);
     let nextTo = toStopId;
     if (toStopId !== null) {
       const fi = fullRoute.findIndex((s) => s.id === stopId);
       const ti = fullRoute.findIndex((s) => s.id === toStopId);
-      if (fi !== -1 && ti !== -1 && fi > ti) nextTo = null;
+      if (fi !== -1 && ti !== -1 && fi > ti && !circular) nextTo = null;
     }
     setFromStopId(stopId); setToStopId(nextTo); setSelectedStopId(stopId);
     syncFormFromRoute(fullRoute, stopId, nextTo);
@@ -806,11 +845,12 @@ export default function LogPage() {
 
   function setEndStop(stopId: number) {
     if (stopId === fromStopId) return;
+    const circular = isRouteCircular(fullRoute);
     let nextFrom = fromStopId;
     if (fromStopId !== null) {
       const fi = fullRoute.findIndex((s) => s.id === fromStopId);
       const ti = fullRoute.findIndex((s) => s.id === stopId);
-      if (fi !== -1 && ti !== -1 && ti < fi) nextFrom = null;
+      if (fi !== -1 && ti !== -1 && ti < fi && !circular) nextFrom = null;
     }
     setFromStopId(nextFrom); setToStopId(stopId); setSelectedStopId(stopId);
     syncFormFromRoute(fullRoute, nextFrom, stopId);
@@ -881,9 +921,10 @@ export default function LogPage() {
   function renderStopActions({ stop, index, onDone }: { stop: RouteStop; index: number; onDone?: () => void }) {
     const isFirst = index === 0;
     const isLast = index === fullRoute.length - 1;
+    const circular = isRouteCircular(fullRoute);
     return (
       <div className="flex gap-2 pt-2">
-        {!isLast && (
+        {(!isLast || circular) && (
           <button
             type="button"
             onClick={() => { setStartStop(stop.id); onDone?.(); }}
@@ -893,7 +934,7 @@ export default function LogPage() {
             Start here
           </button>
         )}
-        {!isFirst && (
+        {(!isFirst || circular) && (
           <button
             type="button"
             onClick={() => { setEndStop(stop.id); onDone?.(); }}

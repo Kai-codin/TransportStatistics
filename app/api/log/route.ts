@@ -548,9 +548,10 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
       if (hasTrack) {
         stitchedCoords.push(...t.track);
         lastLoc = t.track[t.track.length - 1] ?? null;
-      } else if (Array.isArray(loc) && loc.length === 2) {
-        if (lastLoc) stitchedCoords.push(lastLoc, loc);
-        lastLoc = loc;
+      } else if (Array.isArray(loc) && loc.length >= 2) {
+        const point: [number, number] = [loc[0], loc[1]];
+        if (lastLoc) stitchedCoords.push(lastLoc, point);
+        lastLoc = point;
       }
     }
     const stitchedGeometry = stitchedCoords.length > 1
@@ -702,9 +703,10 @@ async function handleJourneyRequest(
       if (hasTrack) {
         interleaved.push(...t.track);
         lastLoc = t.track[t.track.length - 1] ?? null;
-      } else if (Array.isArray(loc) && loc.length === 2) {
-        if (lastLoc) interleaved.push(lastLoc, loc);
-        lastLoc = loc;
+      } else if (Array.isArray(loc) && loc.length >= 2) {
+        const point: [number, number] = [loc[0], loc[1]];
+        if (lastLoc) interleaved.push(lastLoc, point);
+        lastLoc = point;
       }
     }
     if (interleaved.length > 1) {

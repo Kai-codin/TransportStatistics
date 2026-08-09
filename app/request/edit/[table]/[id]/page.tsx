@@ -118,7 +118,7 @@ export default function UserEditRequestPage() {
 
           return (
             <div key={field} className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-ts-text-2 uppercase tracking-wider">{field}</label>
+              <label className="text-xs font-bold text-ts-text-2 tracking-wider">{field}</label>
               
               {isBool ? (
                 <select
@@ -150,7 +150,7 @@ export default function UserEditRequestPage() {
         })}
 
         <div className="flex flex-col gap-1.5 pt-4 border-t border-ts-border">
-          <label className="text-xs font-bold text-ts-text-2 uppercase tracking-wider">Reason for this modification</label>
+          <label className="text-xs font-bold text-ts-text-2 tracking-wider">Reason for this modification</label>
           <textarea
             required
             rows={3}

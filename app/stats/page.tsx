@@ -19,7 +19,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-[20px] border border-ts-border bg-ts-surface p-5">
-      <div className="text-xs font-medium uppercase tracking-[0.12em] text-ts-text-3">
+      <div className="text-xs font-medium tracking-[0.12em] text-ts-text-3">
         {label}
       </div>
       <div className="mt-2 text-3xl font-bold text-ts-text-1">{value}</div>
@@ -117,7 +117,7 @@ function ContributionHeatmap({
       <div className="overflow-x-auto pb-4 scrollbar-hide">
         <div className="min-w-[768px] w-full flex gap-2 sm:gap-3">
           {/* Y-Axis Labels: Forced to 7 equal rows to perfectly match the grid */}
-          <div className="flex flex-col text-[9px] font-bold uppercase text-ts-text-3 w-4 shrink-0 text-right pr-1 pt-6">
+          <div className="flex flex-col text-[9px] font-bold text-ts-text-3 w-4 shrink-0 text-right pr-1 pt-6">
             {["M", "", "W", "", "F", "", "S"].map((label, i) => (
               <div key={i} className="flex-1 flex items-center justify-end">
                 {label}
@@ -353,7 +353,7 @@ export default function StatsPage() {
         //  <div className="mb-8 flex items-center justify-between">
         //    <div>
         //      <h2 className="text-sm font-semibold text-ts-text-1">Weekly Activity</h2>
-        //      <p className="text-[10px] font-medium text-ts-text-3 uppercase tracking-wider">{weeklyStats.weekRangeLabel}</p>
+        //      <p className="text-[10px] font-medium text-ts-text-3 tracking-wider">{weeklyStats.weekRangeLabel}</p>
         //    </div>
         //
         //    <div className="flex items-center gap-2 bg-ts-surface-2 p-1 rounded-xl border border-ts-border">
@@ -365,7 +365,7 @@ export default function StatsPage() {
         //      </button>
         //      <button
         //        onClick={() => setWeekOffset(0)}
-        //        className="px-3 text-[11px] font-bold uppercase tracking-widest text-ts-text-1 hover:text-ts-accent transition-colors"
+        //        className="px-3 text-[11px] font-bold tracking-widest text-ts-text-1 hover:text-ts-accent transition-colors"
         //      >
         //        This Week
         //      </button>
@@ -400,7 +400,7 @@ export default function StatsPage() {
         //            }}
         //          />
         //
-        //          <span className="absolute -bottom-7 text-[9px] font-bold text-ts-text-3 uppercase tracking-tighter">
+        //          <span className="absolute -bottom-7 text-[9px] font-bold text-ts-text-3 tracking-tighter">
         //            {day}
         //          </span>
         //        </div>

@@ -68,7 +68,7 @@ function SectionCard({
     <section className={`rounded-3xl border border-ts-border bg-ts-surface ${className}`}>
       <div className="flex items-center gap-2 border-b border-ts-border px-4 py-3 md:px-5">
         {icon ? <div className="text-ts-text-2">{icon}</div> : null}
-        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-ts-text-1">{title}</h2>
+        <h2 className="text-sm font-semibold tracking-[0.14em] text-ts-text-1">{title}</h2>
       </div>
       <div className="p-4 md:p-5">{children}</div>
     </section>
@@ -78,7 +78,7 @@ function SectionCard({
 function StatBadge({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-ts-border bg-ts-surface-2 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ts-text-3">{label}</div>
+      <div className="text-[10px] font-semibold tracking-[0.18em] text-ts-text-3">{label}</div>
       <div className="mt-1 text-sm font-bold text-ts-text-1">{value}</div>
     </div>
   );
@@ -107,7 +107,7 @@ function StepIndicator({ steps, current }: { steps: Step[]; current: Step }) {
         return (
           <div key={step} className="flex items-center gap-1 sm:gap-2">
             <div
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition sm:px-3 sm:text-xs ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold tracking-wider transition sm:px-3 sm:text-xs ${
                 isActive
                   ? 'bg-ts-accent text-ts-text-inv'
                   : isDone
@@ -260,7 +260,7 @@ function RoutePreview({ trip }: { trip: InternalTrip | null }) {
             {trip.transport_type || 'Bus'}
           </span>
         </div>
-        <div className="mt-3 text-xs uppercase tracking-wider text-ts-text-3">
+        <div className="mt-3 text-xs tracking-wider text-ts-text-3">
           {trip.scheduled_departure || '??:??'} → {trip.scheduled_arrival || '??:??'}
         </div>
         <div className="mt-1 text-base font-bold text-ts-text-1">
@@ -704,7 +704,7 @@ export default function TTImportPage() {
                         {field.required ? <span className="ml-0.5 text-ts-danger">*</span> : null}
                       </span>
                       {isArrayField ? (
-                        <span className="rounded-full border border-ts-accent/20 bg-ts-accent/5 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-ts-accent">
+                        <span className="rounded-full border border-ts-accent/20 bg-ts-accent/5 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-ts-accent">
                           array
                         </span>
                       ) : null}
@@ -788,7 +788,7 @@ export default function TTImportPage() {
           <SectionCard title="Confirm & Save" icon={<CheckCircle2 className="h-4 w-4" />}>
             <div className="space-y-4">
               <div className="rounded-2xl border border-ts-border bg-ts-surface-2 p-4">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ts-text-3">Transformed Output</h3>
+                <h3 className="mb-2 text-xs font-semibold tracking-wider text-ts-text-3">Transformed Output</h3>
                 <pre className="max-h-[400px] overflow-auto rounded-xl bg-ts-bg p-3 text-[10px] leading-relaxed text-ts-text-2">
                   {JSON.stringify(trip, null, 2)}
                 </pre>

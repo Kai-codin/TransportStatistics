@@ -53,7 +53,7 @@ function formatTime(value?: string) {
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-ts-border bg-ts-surface p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ts-text-3">{label}</div>
+      <div className="text-[10px] font-semibold tracking-[0.18em] text-ts-text-3">{label}</div>
       <div className="mt-1.5 text-xl font-bold text-ts-text-1 tabular-nums leading-tight">{value}</div>
     </div>
   );
@@ -166,7 +166,7 @@ export default function TripDatePage({ params }: TripDatePageProps) {
           {/* Title + actions — stack on mobile, row on md+ */}
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-ts-text-3">
+              <div className="text-xs font-medium tracking-[0.16em] text-ts-text-3">
                 Trips recorded on this date
               </div>
               <h1 className="mt-1.5 text-2xl font-bold text-ts-text-1 sm:text-3xl md:text-4xl">

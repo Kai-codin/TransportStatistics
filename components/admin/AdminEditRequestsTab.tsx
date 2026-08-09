@@ -99,7 +99,7 @@ export function AdminEditRequestsTab() {
               </div>
 
               <div className="bg-ts-surface-2 p-3 rounded-xl border border-ts-border text-sm text-ts-text-2">
-                <span className="block text-xs font-bold text-ts-text-3 uppercase tracking-wide mb-1">User Reason:</span>
+                <span className="block text-xs font-bold text-ts-text-3 tracking-wide mb-1">User Reason:</span>
                 "{req.userReason}"
               </div>
 

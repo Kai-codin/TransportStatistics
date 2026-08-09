@@ -159,11 +159,11 @@ export default function ProfilePage() {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <div className="text-xl md:text-2xl font-bold text-ts-text-1 leading-none">{counts?.trips ?? 0}</div>
-              <div className="text-[10px] md:text-xs text-slate-400 uppercase tracking-wider mt-0.5">Trips</div>
+              <div className="text-[10px] md:text-xs text-slate-400 tracking-wider mt-0.5">Trips</div>
             </div>
             <div className="text-right">
               <div className="text-xl md:text-2xl font-bold text-ts-text-1 leading-none">{counts?.days ?? 0}</div>
-              <div className="text-[10px] md:text-xs text-slate-400 uppercase tracking-wider mt-0.5">Days</div>
+              <div className="text-[10px] md:text-xs text-slate-400 tracking-wider mt-0.5">Days</div>
             </div>
           </div>
         </div>
@@ -230,14 +230,14 @@ export default function ProfilePage() {
                   <div className="inline-flex gap-2 ml-auto">
                     <Link
                       href={`/trip/${dateKey}`}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
                     >
                       <Info className="h-3 w-3" />
                       Details
                     </Link>
                     <Link
                       href={`/trip/${dateKey}/map`}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium tracking-[0.12em] text-ts-text-2 transition hover:border-ts-accent/50 hover:bg-ts-accent/10 hover:text-ts-accent"
                     >
                       <MapPinned className="h-3 w-3" />
                       Map

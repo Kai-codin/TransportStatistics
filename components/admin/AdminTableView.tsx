@@ -282,7 +282,7 @@ export function AdminTableView({ tableKey, externalFilter, onNavigate }: AdminTa
         />
         {!createMode && selected?.uid && tableKey === 'trainDetails' && (
           <div className="mt-6 rounded-2xl border border-ts-border-soft bg-ts-surface-2 p-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-ts-text-3">Allocations</p>
+            <p className="text-xs font-semibold tracking-widest text-ts-text-3">Allocations</p>
             <p className="mt-2 text-sm text-ts-text-1">UID: {selected.uid}</p>
             <button
               type="button"
@@ -295,7 +295,7 @@ export function AdminTableView({ tableKey, externalFilter, onNavigate }: AdminTa
         )}
         {!createMode && selected?.uid && tableKey === 'trainAllocations' && (
           <div className="mt-6 rounded-2xl border border-ts-border-soft bg-ts-surface-2 p-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-ts-text-3">Linked trains</p>
+            <p className="text-xs font-semibold tracking-widest text-ts-text-3">Linked trains</p>
             <p className="mt-2 text-sm text-ts-text-1">UID: {selected.uid}</p>
             <button
               type="button"

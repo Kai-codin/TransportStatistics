@@ -599,7 +599,7 @@ export default function Sidebar() {
 
           {isStaff && !isCollapsed && (
             <div className="mt-4">
-              <p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-ts-text-3 px-3 py-2">Staff</p>
+              <p className="text-[9.5px] font-bold tracking-[0.09em] text-ts-text-3 px-3 py-2">Staff</p>
               <Link href="/admin" className="flex items-center gap-2.5 px-2.5 py-2 rounded-[6px] text-[13.5px] text-ts-text-2 hover:bg-ts-surface-2 transition-all">
                 <Shield size={18} /> Admin
               </Link>
@@ -610,7 +610,7 @@ export default function Sidebar() {
         {/* Footer */}
         <div className="p-2 border-t border-ts-border-soft flex-shrink-0">
           <div className="mb-2 rounded-[8px] border border-ts-border-soft bg-ts-surface-2 p-1">
-            <div className={`px-2 pb-1 text-[9.5px] font-bold uppercase tracking-[0.09em] text-ts-text-3 ${isCollapsed ? "text-center" : ""}`}>
+            <div className={`px-2 pb-1 text-[9.5px] font-bold tracking-[0.09em] text-ts-text-3 ${isCollapsed ? "text-center" : ""}`}>
               {!isCollapsed ? "Theme" : ""}
             </div>
             <div className={`grid gap-1 ${isCollapsed ? "grid-cols-1" : "grid-cols-2"}`}>

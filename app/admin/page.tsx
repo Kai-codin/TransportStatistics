@@ -99,7 +99,7 @@ function AdminDashboardContent() {
         </div>
         <nav className="flex flex-col gap-1 px-3 py-3">
           {/* Main Collection Data Tables */}
-          <div className="px-3 mb-2 text-[10px] font-bold tracking-wider text-ts-text-3 uppercase">
+          <div className="px-3 mb-2 text-[10px] font-bold tracking-wider text-ts-text-3">
             Collections
           </div>
           {ADMIN_TABLE_KEYS.map((key) => {
@@ -121,7 +121,7 @@ function AdminDashboardContent() {
           })}
 
           {/* Workflow Sections */}
-          <div className="px-3 mt-4 mb-2 text-[10px] font-bold tracking-wider text-ts-text-3 uppercase">
+          <div className="px-3 mt-4 mb-2 text-[10px] font-bold tracking-wider text-ts-text-3">
             User Moderation
           </div>
           <button

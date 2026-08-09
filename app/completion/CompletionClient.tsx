@@ -107,7 +107,7 @@ function OperatorGrid() {
 
         <button
           onClick={() => setShowAll(!showAll)}
-          className={`px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap ${
+          className={`px-4 py-2.5 rounded-xl text-[10px] font-bold tracking-widest border transition-all whitespace-nowrap ${
             showAll
               ? "bg-[var(--color-ts-surface-3)] border-[var(--color-ts-accent-border)] text-[var(--color-ts-accent)]"
               : "bg-[var(--color-ts-surface)] border border-[var(--color-ts-border-soft)] text-[var(--color-ts-text-3)] hover:border-[var(--color-ts-border)] hover:text-[var(--color-ts-text-2)]"
@@ -116,7 +116,7 @@ function OperatorGrid() {
           {showAll ? "All operators" : "My operators"}
         </button>
 
-        <span className="text-[10px] font-bold text-[var(--color-ts-text-3)] uppercase tracking-widest whitespace-nowrap sm:ml-auto">
+        <span className="text-[10px] font-bold text-[var(--color-ts-text-3)] tracking-widest whitespace-nowrap sm:ml-auto">
           {isLoading ? "—" : `${filtered.length} operators`}
         </span>
       </div>
@@ -163,7 +163,7 @@ function OperatorDetail({ operatorSlug, operatorName, operatorCode }: { operator
   return (
     <div>
       <div className="mb-8">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[var(--color-ts-text-3)] mb-5">
+        <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] text-[var(--color-ts-text-3)] mb-5">
           <Link href="/completion" className="hover:text-[var(--color-ts-text-2)] transition-colors">
             Completion
           </Link>
@@ -188,7 +188,7 @@ function OperatorDetail({ operatorSlug, operatorName, operatorCode }: { operator
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${
+            className={`pb-4 text-[10px] font-black tracking-widest transition-all relative ${
               activeTab === id ? "text-[var(--color-ts-accent)]" : "text-[var(--color-ts-text-3)] hover:text-[var(--color-ts-text-2)]"
             }`}
           >

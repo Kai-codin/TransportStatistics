@@ -580,7 +580,7 @@ function inputCls() {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</span>
+      <span className="text-[11px] font-semibold tracking-widest text-ts-text-3">{label}</span>
       {children}
     </label>
   );
@@ -1439,7 +1439,7 @@ export default function LogPage() {
                     <p className="truncate text-sm font-bold text-ts-text-1">
                       {riddenRoute ? `${riddenRoute.origin_name} → ${riddenRoute.destination_name}` : isCustomTrip ? 'Click map to set destination' : 'Select stops'}
                     </p>
-                    <p className="text-[10px] uppercase tracking-wider text-ts-text-3">
+                    <p className="text-[10px] tracking-wider text-ts-text-3">
                       {riddenRoute ? `${riddenRoute.stops.length} stops` : isCustomTrip ? '' : 'Tap map to start'}
                     </p>
                   </div>
@@ -1480,7 +1480,7 @@ export default function LogPage() {
                     { label: 'Actual', val: formatDisplayTime(selectedStop.actual_departure || selectedStop.actual_arrival) },
                   ].map(({ label, val }) => (
                     <div key={label} className="rounded-2xl bg-ts-surface-2 px-3 py-2.5 border border-ts-border-soft">
-                      <div className="text-[10px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</div>
+                      <div className="text-[10px] font-semibold tracking-widest text-ts-text-3">{label}</div>
                       <div className="mt-1 font-mono text-sm font-bold text-ts-text-1">{val}</div>
                     </div>
                   ))}
@@ -1536,9 +1536,9 @@ export default function LogPage() {
                       }`}
                     >
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {stop.id < 0 && <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400">Custom</span>}
-                        {isStart && <span className="rounded-full bg-ts-accent/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-ts-accent">Start</span>}
-                        {isEnd && <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-sky-400">End</span>}
+                        {stop.id < 0 && <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold tracking-widest text-amber-400">Custom</span>}
+                        {isStart && <span className="rounded-full bg-ts-accent/20 px-2 py-0.5 text-[10px] font-bold tracking-widest text-ts-accent">Start</span>}
+                        {isEnd && <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold tracking-widest text-sky-400">End</span>}
                         {stop.stop.stop_code && <span className="text-[10px] text-ts-text-3">{stop.stop.stop_code}</span>}
                       </div>
                       {editingStopId === stop.id ? (
@@ -1659,7 +1659,7 @@ export default function LogPage() {
         </Card>
 
         <Card>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">Search vehicle</p>
+          <p className="mb-2 text-[11px] font-semibold tracking-widest text-ts-text-3">Search vehicle</p>
           <div ref={unitSearchRef} className="relative">
             <div className="relative">
               <input
@@ -1692,8 +1692,8 @@ export default function LogPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-sm font-bold text-ts-text-1">{[r.unit_number, r.unit_reg].filter(Boolean).join(' · ')}</span>
-                        {r.withdrawn && <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-300">Withdrawn</span>}
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${r.source === 'train' ? 'bg-sky-500/15 text-sky-300' : 'bg-ts-accent/15 text-ts-accent'}`}>{r.source}</span>
+                        {r.withdrawn && <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-red-300">Withdrawn</span>}
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${r.source === 'train' ? 'bg-sky-500/15 text-sky-300' : 'bg-ts-accent/15 text-ts-accent'}`}>{r.source}</span>
                       </div>
                       <div className="mt-0.5 truncate text-xs text-ts-text-3">{r.type.type_name}{r.type.type_name && r.operator.operator_name ? ' · ' : ''}{r.operator.operator_name}</div>
                     </div>
@@ -1706,7 +1706,7 @@ export default function LogPage() {
 
         {/* Unit carousel */}
         <Card>
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">Formation</p>
+          <p className="mb-3 text-[11px] font-semibold tracking-widest text-ts-text-3">Formation</p>
           <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
             {units.map((unit, index) => {
               const isActive = selectedUnitIndex === index;
@@ -1788,7 +1788,7 @@ export default function LogPage() {
                 <div className="flex gap-3">
                   <textarea value={selectedUnit.livery_left} onChange={(e) => updateUnitField('livery_left', e.target.value)} className="min-h-[90px] flex-1 rounded-2xl border border-ts-border bg-ts-surface-2 px-3 py-3 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20" />
                   <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-ts-text-3">Preview</div>
+                    <div className="mb-1 text-[10px] font-semibold tracking-widest text-ts-text-3">Preview</div>
                     <div className="aspect-[24/16] w-20 rounded-xl border border-ts-border-soft" style={{ background: selectedUnit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }} />
                   </div>
                 </div>
@@ -1911,7 +1911,7 @@ export default function LogPage() {
 
               {/* Search for unit */}
               <div className="mb-4">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">Search vehicle</p>
+                <p className="mb-2 text-[11px] font-semibold tracking-widest text-ts-text-3">Search vehicle</p>
                 <div ref={couplingSearchIndex === index ? couplingSearchRef : undefined} className="relative">
                   <div className="relative">
                     <input
@@ -1968,8 +1968,8 @@ export default function LogPage() {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="text-sm font-bold text-ts-text-1">{[r.unit_number, r.unit_reg].filter(Boolean).join(' · ')}</span>
-                              {r.withdrawn && <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-300">Withdrawn</span>}
-                              <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${r.source === 'train' ? 'bg-sky-500/15 text-sky-300' : 'bg-ts-accent/15 text-ts-accent'}`}>{r.source}</span>
+                              {r.withdrawn && <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-red-300">Withdrawn</span>}
+                              <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${r.source === 'train' ? 'bg-sky-500/15 text-sky-300' : 'bg-ts-accent/15 text-ts-accent'}`}>{r.source}</span>
                             </div>
                             <div className="mt-0.5 truncate text-xs text-ts-text-3">{r.type.type_name}{r.type.type_name && r.operator.operator_name ? ' · ' : ''}{r.operator.operator_name}</div>
                           </div>
@@ -2044,7 +2044,7 @@ export default function LogPage() {
                 </Field>
               </div>
 
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">
+              <p className="mb-2 text-[11px] font-semibold tracking-widest text-ts-text-3">
                 {isCouple ? 'Unit that coupled' : 'Unit that uncoupled'}
               </p>
 
@@ -2090,7 +2090,7 @@ export default function LogPage() {
                       className="min-h-[60px] flex-1 rounded-2xl border border-ts-border bg-ts-surface-2 px-3 py-2 text-sm text-ts-text-1 outline-none transition focus:border-ts-accent focus:ring-2 focus:ring-ts-accent/20"
                     />
                     <div>
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-ts-text-3">Preview</div>
+                      <div className="mb-1 text-[10px] font-semibold tracking-widest text-ts-text-3">Preview</div>
                       <div
                         className="aspect-[24/16] w-16 rounded-xl border border-ts-border-soft"
                         style={{ background: event.unit.livery_left || 'linear-gradient(135deg, rgba(52,208,100,0.18), rgba(20,30,23,1))' }}
@@ -2256,7 +2256,7 @@ export default function LogPage() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition active:scale-95 sm:flex-row sm:justify-center sm:gap-2 sm:text-sm sm:normal-case sm:tracking-normal ${
+                  className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold tracking-wider transition active:scale-95 sm:flex-row sm:justify-center sm:gap-2 sm:text-sm sm:normal-case sm:tracking-normal ${
                     active ? 'text-ts-accent' : 'text-ts-text-3 hover:text-ts-text-2'
                   }`}
                 >

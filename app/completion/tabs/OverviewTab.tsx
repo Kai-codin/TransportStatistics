@@ -38,7 +38,7 @@ export function OverviewTab({ operatorSlug, stats }: Pick<TabProps, "operatorSlu
             key={card.label}
             className="rounded-2xl border border-[var(--color-ts-border-soft)] bg-[var(--color-ts-surface)] p-5 shadow-sm"
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-ts-text-3)]">
+            <p className="text-[10px] font-bold tracking-[0.18em] text-[var(--color-ts-text-3)]">
               {card.label}
             </p>
             <p className="mt-3 text-3xl font-black leading-none text-[var(--color-ts-text-1)] tabular-nums">

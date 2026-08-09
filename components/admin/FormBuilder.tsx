@@ -88,7 +88,7 @@ export function FormBuilder({ fields, initialValues, onSubmit, onDelete, isSavin
           if (config.type === 'json') {
             return (
               <label key={key} className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</span>
+                <span className="text-[11px] font-semibold tracking-widest text-ts-text-3">{label}</span>
                 <JsonEditor value={value ?? ''} onChange={(v) => updateField(key, v)} readOnly={readOnly} />
               </label>
             );
@@ -97,7 +97,7 @@ export function FormBuilder({ fields, initialValues, onSubmit, onDelete, isSavin
           if (config.type === 'relation' && config.table) {
             return (
               <label key={key} className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</span>
+                <span className="text-[11px] font-semibold tracking-widest text-ts-text-3">{label}</span>
                 <RelationSelect
                   table={config.table}
                   value={value ?? ''}
@@ -111,7 +111,7 @@ export function FormBuilder({ fields, initialValues, onSubmit, onDelete, isSavin
           if (config.type === 'textarea') {
             return (
               <label key={key} className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</span>
+                <span className="text-[11px] font-semibold tracking-widest text-ts-text-3">{label}</span>
                 <textarea
                   value={value ?? ''}
                   onChange={(event) => updateField(key, event.target.value)}
@@ -140,7 +140,7 @@ export function FormBuilder({ fields, initialValues, onSubmit, onDelete, isSavin
 
           return (
             <label key={key} className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-ts-text-3">{label}</span>
+              <span className="text-[11px] font-semibold tracking-widest text-ts-text-3">{label}</span>
               <input
                 type={inputType}
                 value={value ?? ''}

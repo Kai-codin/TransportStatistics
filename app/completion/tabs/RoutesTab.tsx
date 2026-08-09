@@ -55,7 +55,7 @@ export function RoutesTab({ operatorCode }: Pick<TabProps, "operatorCode">) {
               key={label}
               className="bg-[var(--color-ts-surface)] border border-white/[0.06] rounded-xl sm:rounded-2xl px-3 sm:px-5 py-3 sm:py-4"
             >
-              <p className="text-[9px] sm:text-[10px] font-bold text-[var(--color-ts-text-3)] uppercase tracking-[0.15em] sm:tracking-[0.18em] mb-1 truncate">
+              <p className="text-[9px] sm:text-[10px] font-bold text-[var(--color-ts-text-3)] tracking-[0.15em] sm:tracking-[0.18em] mb-1 truncate">
                 {label}
               </p>
               <p className="text-xl sm:text-2xl font-black text-[var(--color-ts-text-1)] tabular-nums leading-none">
@@ -70,7 +70,7 @@ export function RoutesTab({ operatorCode }: Pick<TabProps, "operatorCode">) {
       {!isLoading && routes.length > 0 && (
         <div className="bg-[var(--color-ts-surface)] border border-white/[0.06] rounded-xl sm:rounded-2xl px-4 sm:px-5 py-3 sm:py-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[9px] sm:text-[10px] font-bold text-[var(--color-ts-text-3)] uppercase tracking-[0.15em] sm:tracking-[0.18em]">
+            <p className="text-[9px] sm:text-[10px] font-bold text-[var(--color-ts-text-3)] tracking-[0.15em] sm:tracking-[0.18em]">
               {showWithdrawn ? "All Routes" : "Active Routes"}
             </p>
             <p className="text-[11px] font-black text-[var(--color-ts-text-2)] tabular-nums">
@@ -91,7 +91,7 @@ export function RoutesTab({ operatorCode }: Pick<TabProps, "operatorCode">) {
       <div className="flex items-center justify-between gap-3">
         <button
           onClick={() => setShowWithdrawn(!showWithdrawn)}
-          className={`px-3 sm:px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all ${
+          className={`px-3 sm:px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest border transition-all ${
             showWithdrawn
               ? "bg-[var(--color-ts-surface-3)] border-[var(--color-ts-accent-border)] text-[var(--color-ts-accent)]"
               : "bg-[var(--color-ts-surface)] border-[var(--color-ts-border-soft)] text-[var(--color-ts-text-3)] hover:text-[var(--color-ts-text-2)]"
@@ -100,7 +100,7 @@ export function RoutesTab({ operatorCode }: Pick<TabProps, "operatorCode">) {
           {showWithdrawn ? "Hide withdrawn" : "Show withdrawn"}
         </button>
 
-        <span className="text-[10px] font-bold text-[var(--color-ts-text-3)] uppercase tracking-widest flex items-center gap-2">
+        <span className="text-[10px] font-bold text-[var(--color-ts-text-3)] tracking-widest flex items-center gap-2">
           <MapPinned size={12} />
           {displayedRoutes.length} routes
         </span>

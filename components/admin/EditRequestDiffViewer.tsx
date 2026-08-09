@@ -10,7 +10,7 @@ export function EditRequestDiffViewer({ from, to }: DiffViewerProps) {
 
   return (
     <div className="overflow-hidden border border-ts-border rounded-2xl bg-ts-surface-2 text-sm">
-      <div className="grid grid-cols-3 gap-4 px-4 py-2 bg-ts-border/30 text-xs font-bold uppercase text-ts-text-3 tracking-wider border-b border-ts-border">
+      <div className="grid grid-cols-3 gap-4 px-4 py-2 bg-ts-border/30 text-xs font-bold text-ts-text-3 tracking-wider border-b border-ts-border">
         <div>Field Key</div>
         <div>Original State</div>
         <div>Proposed State</div>

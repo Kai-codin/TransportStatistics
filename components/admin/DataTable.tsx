@@ -82,7 +82,7 @@ export function DataTable({ rows, columns, fields, isLoading, selectedId, onSele
   return (
     <div className="overflow-x-auto rounded-3xl border border-ts-border bg-ts-surface">
       <table className="w-full text-left text-sm">
-        <thead className="bg-ts-surface-2 text-xs uppercase tracking-widest text-ts-text-3">
+        <thead className="bg-ts-surface-2 text-xs tracking-widest text-ts-text-3">
           <tr>
             {columns.map((key) => (
               <th key={key} className="px-4 py-3 font-semibold">{key}</th>

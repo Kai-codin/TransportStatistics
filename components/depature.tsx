@@ -34,7 +34,7 @@ const PANEL_CSS = `
   /* Departure rows */
   .dep-list { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
   .dep-header { display: grid; grid-template-columns: minmax(44px, max-content) 1fr repeat(var(--ncols, 1), 48px); gap: 0 8px; padding: 4px 8px; margin-bottom: 2px;}
-  .dep-header span { font-size: 9px; color: ${C.text3}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; }
+  .dep-header span { font-size: 9px; color: ${C.text3}; text-transform:; font-weight: 600; letter-spacing: 0.04em; }
   .dep-header span.right { text-align: right; }
   .dep-row {
     cursor: pointer;
@@ -82,7 +82,7 @@ const PANEL_CSS = `
     border-color: ${C.accent};
     box-shadow: 0 0 0 2px ${C.accentB};
   }
-  .dep-time-control-label { font-size: 9px; color: ${C.text3}; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.04em; }
+  .dep-time-control-label { font-size: 9px; color: ${C.text3}; text-transform:; margin-bottom: 6px; letter-spacing: 0.04em; }
   .dep-datetime-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.62fr) auto; gap: 6px; align-items: center; }
   .dep-datetime-input {
     min-width: 0;

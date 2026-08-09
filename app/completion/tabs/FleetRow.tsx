@@ -37,7 +37,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
             className="shrink-0 w-12 aspect-[24/16] shadow-sm border border-ts-border"
             style={{ background: currentLivery?.css ?? "#2a2a2a" }}
           />
-          <span className="text-[11px] hidden sm:block font-bold text-ts-text-1/90 truncate tracking-tight uppercase">
+          <span className="text-[11px] hidden sm:block font-bold text-ts-text-1/90 truncate tracking-tight">
             {currentLivery?.name ?? "Unknown"}
           </span>
         </div>
@@ -49,10 +49,10 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
               style={{ background: previousLivery.css ?? "#2a2a2a" }} 
             />
             <div className="hidden sm:flex flex-col leading-none">
-              <span className="text-[7px] font-black uppercase tracking-widest text-ts-text-1/30">
+              <span className="text-[7px] font-black tracking-widest text-ts-text-1/30">
                 Prev:
               </span>
-              <span className="text-[9px] font-bold uppercase text-ts-text-1/50 truncate max-w-[140px]">
+              <span className="text-[9px] font-bold text-ts-text-1/50 truncate max-w-[140px]">
                 {previousLivery.name}
               </span>
             </div>
@@ -70,7 +70,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
           {/* Reg badge (only show if valid + not same as unit number) */}
           {vehicle.reg &&
             vehicle.reg !== vehicle.unit_number && (
-              <span className="shrink-0 inline-block bg-[#f5c518] text-black font-black text-[9px] sm:text-[10px] px-1.5 py-[2px] rounded-[4px] tracking-wider uppercase font-mono leading-none w-fit">
+              <span className="shrink-0 inline-block bg-[#f5c518] text-black font-black text-[9px] sm:text-[10px] px-1.5 py-[2px] rounded-[4px] tracking-wider font-mono leading-none w-fit">
                 {vehicle.reg}
               </span>
             )}
@@ -79,10 +79,10 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
           {vehicle.previous_reg &&
             vehicle.previous_reg !== vehicle.reg && (
               <div className="flex items-center gap-1">
-                <span className="text-[7px] font-black uppercase text-ts-text-1/20">
+                <span className="text-[7px] font-black text-ts-text-1/20">
                   was
                 </span>
-                <span className="text-[9px] font-bold font-mono text-ts-text-1/30 uppercase">
+                <span className="text-[9px] font-bold font-mono text-ts-text-1/30">
                   {vehicle.previous_reg}
                 </span>
               </div>
@@ -92,7 +92,7 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
 
       {/* ── SECTION 3: Type ── */}
       <div className="flex-1 min-w-0 flex sm:hidden lg:flex items-center px-2">
-        <p className="text-[10px] font-semibold sm:font-bold sm:text-[12px] text-ts-text-3 tracking-[0.2em] word-break uppercase">
+        <p className="text-[10px] font-semibold sm:font-bold sm:text-[12px] text-ts-text-3 tracking-[0.2em] word-break">
           {vehicle.vehicle_type}
         </p>
       </div>
@@ -116,13 +116,13 @@ export function FleetRow({ vehicle }: { vehicle: Vehicle }) {
             ? <CheckCircle2 size={14} strokeWidth={2.5} />
             : <CircleDashed size={14} strokeWidth={2} />
           }
-          <span className="hidden sm:inline ml-2 text-[10px] font-black uppercase tracking-widest">
+          <span className="hidden sm:inline ml-2 text-[10px] font-black tracking-widest">
             {vehicle.ridden ? "ridden" : "unridden"}
           </span>
         </div>
 
         {vehicle.withdrawn && (
-          <div className="px-2.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-[#3a1e1e]/40 text-[#f87171] border border-[#5a2d2d]/50">
+          <div className="px-2.5 py-2 rounded-xl text-[10px] font-black tracking-widest bg-[#3a1e1e]/40 text-[#f87171] border border-[#5a2d2d]/50">
             <span className="hidden sm:inline">withdrawn</span>
             <span className="sm:hidden text-[9px]">W/D</span>
           </div>

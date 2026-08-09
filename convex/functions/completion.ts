@@ -77,7 +77,7 @@ async function lookupOperatorByCode(ctx: QueryCtx, code: string) {
   if (bySlug) return bySlug;
   if (byCode) return byCode;
 
-  // Try case variations — codes are usually uppercase, slugs lowercase
+  // Try case variations — codes are usually, slugs lowercase
   const upper = code.toUpperCase();
   if (upper !== code) {
     const byCodeUpper = await ctx.db

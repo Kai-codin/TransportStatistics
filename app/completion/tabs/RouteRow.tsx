@@ -34,7 +34,7 @@ export function RouteRow({ route }: { route: RouteInfo }) {
         )}
 
         <div
-          className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest border ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest border ${
             route.ridden
               ? "bg-[#1e3a1e] text-[#4ade80] border-[#2d5a2d]/60"
               : "bg-white/[0.04] text-ts-text-1/30 border-white/[0.07]"
@@ -50,7 +50,7 @@ export function RouteRow({ route }: { route: RouteInfo }) {
         </div>
 
         {route.withdrawn && (
-          <div className="px-2 sm:px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest bg-[#3a1e1e] text-[#f87171] border border-[#5a2d2d]/60">
+          <div className="px-2 sm:px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest bg-[#3a1e1e] text-[#f87171] border border-[#5a2d2d]/60">
             <span className="hidden xs:inline">withdrawn</span>
             <span className="xs:hidden">W/D</span>
           </div>

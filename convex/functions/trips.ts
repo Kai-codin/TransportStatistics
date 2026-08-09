@@ -5,7 +5,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { ensureUserRecord } from "./users";
 import { areFriends } from "./friends";
-import { getAllUserTrips } from "./userTrips";
+import { getAllUserTrips, getUserTripsForDateRange } from "./userTrips";
 
 export const fixTripLogsPaginated = mutation({
   args: {
@@ -200,10 +200,6 @@ const tripLogUpdateArgs = {
   tripId: v.id("tripLogs"),
   ...tripLogArgs,
 };
-
-function normalizeServiceDate(value: number) {
-  return value > 1_000_000_000_000 ? value : value * 1000;
-}
 
 function getTripsAllLimit() {
   const raw = process.env.TRIPS_ALL_LIMIT;
@@ -889,11 +885,7 @@ export const getMyTripsByDate = query({
     const { start, end } = getDateBounds(args.date, tz);
     if (!start || !end) return [];
 
-    // Execute query using our dedicated two-field index
-    const trips = (await getAllUserTrips(ctx, args.user)).filter((trip) =>
-      normalizeServiceDate(trip.service_date) >= start &&
-      normalizeServiceDate(trip.service_date) < end
-    );
+    const trips = await getUserTripsForDateRange(ctx, args.user, start, end);
 
     if (args.includeRoutes) {
       return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));

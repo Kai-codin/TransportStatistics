@@ -113,22 +113,29 @@ export const checkVehicleRidden = query({
     if (!args.vehicleIdentifier) return { ridden: false, count: 0, trips: [] };
 
     const trips = await getAllUserTrips(ctx, args.user);
-    const identifier = args.vehicleIdentifier.toLowerCase().replace(/\s+/g, "");
+
+    // Build exact-match keys from the identifier. Format varies per source,
+    // e.g. "63176 - SN64 CGU" (fleet + reg) or just "SN64 CGU" / "63176".
+    const cleanToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const identifierKeys = new Set<string>();
+    for (const part of args.vehicleIdentifier.trim().split(/\s+/)) {
+      const clean = cleanToken(part);
+      if (clean) identifierKeys.add(clean);
+    }
+    const identifierCompact = cleanToken(args.vehicleIdentifier);
+    if (identifierCompact) identifierKeys.add(identifierCompact);
 
     const matchingTrips = trips.filter((trip) => {
-      const cleanUnitNumber = (trip.unit_number ?? "").toLowerCase().replace(/[\s-]/g, "");
-      const cleanUnitReg = (trip.unit_reg ?? "").toLowerCase().replace(/[\s-]/g, "");
-      if (cleanUnitNumber && (identifier.includes(cleanUnitNumber) || cleanUnitNumber.includes(identifier))) return true;
-      if (cleanUnitReg && (identifier.includes(cleanUnitReg) || cleanUnitReg.includes(identifier))) return true;
+      const matches = (value: unknown) => {
+        const clean = cleanToken(String(value ?? ""));
+        return !!clean && (identifierKeys.has(clean) || clean === identifierCompact);
+      };
+      if (matches(trip.unit_number) || matches(trip.unit_reg)) return true;
       const units = trip.units;
       if (Array.isArray(units)) {
-        return units.some((u: any) => {
-          const num = String(u?.unit_number ?? u?.number ?? "").toLowerCase().replace(/[\s-]/g, "");
-          const reg = (u?.unit_reg ?? "").toLowerCase().replace(/[\s-]/g, "");
-          if (num && (identifier.includes(num) || num.includes(identifier))) return true;
-          if (reg && (identifier.includes(reg) || reg.includes(identifier))) return true;
-          return false;
-        });
+        return units.some((u: any) =>
+          matches(u?.unit_number ?? u?.number ?? "") || matches(u?.unit_reg ?? "")
+        );
       }
       return false;
     });

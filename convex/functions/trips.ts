@@ -926,7 +926,7 @@ export const getMyTripsByDate = query({
       return trips.map(toTripSummary);
     }
 
-    const trips = await getUserTripsForDateRange(ctx, args.user, args.date);
+    const trips = await getUserTripsForDateRange(ctx, args.user, args.date, args.timeZone);
 
     if (args.includeRoutes) {
       return await batchAttachRouteDetails(ctx, trips);

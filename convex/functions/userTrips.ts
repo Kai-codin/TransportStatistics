@@ -9,6 +9,65 @@ function getDayNumber(ms: number): number {
   return Math.floor(ms / 86_400_000);
 }
 
+function getDateParts(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+  return {
+    year: parts.find((part) => part.type === "year")?.value ?? "0000",
+    month: parts.find((part) => part.type === "month")?.value ?? "00",
+    day: parts.find((part) => part.type === "day")?.value ?? "00",
+  };
+}
+
+function formatDateInTimezone(timestamp: number, timeZone: string): string {
+  const { year, month, day } = getDateParts(timestamp, timeZone);
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalDayStart(year: number, month: number, day: number, timeZone: string): number {
+  const targetDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const hourMs = 3_600_000;
+  const minuteMs = 60_000;
+
+  let ts = Date.UTC(year, month - 1, day);
+
+  // Find a timestamp that falls on the target date in the timezone
+  for (let i = 0; i < 48; i++) {
+    const parts = getDateParts(ts, timeZone);
+    const currentDate = `${parts.year}-${parts.month}-${parts.day}`;
+    if (currentDate === targetDate) break;
+    if (currentDate < targetDate) {
+      ts += hourMs;
+    } else {
+      ts -= hourMs;
+    }
+  }
+
+  // Walk backwards by hours to get closer to the exact start of the day
+  for (let i = 0; i < 24; i++) {
+    const prev = ts - hourMs;
+    const parts = getDateParts(prev, timeZone);
+    const currentDate = `${parts.year}-${parts.month}-${parts.day}`;
+    if (currentDate !== targetDate) break;
+    ts = prev;
+  }
+
+  // Fine-tune with minutes
+  for (let i = 0; i < 60; i++) {
+    const prev = ts - minuteMs;
+    const parts = getDateParts(prev, timeZone);
+    const currentDate = `${parts.year}-${parts.month}-${parts.day}`;
+    if (currentDate !== targetDate) break;
+    ts = prev;
+  }
+
+  return ts;
+}
+
 function sortTripsDesc(trips: Doc<"tripLogs">[]): Doc<"tripLogs">[] {
   return trips.sort((a, b) => {
     const aTime = typeof a.logged_at === "number"
@@ -49,16 +108,28 @@ export async function getUserTripsForDateRange(
   ctx: QueryCtx,
   userId: string,
   dateKey: string,
+  timeZone?: string,
 ): Promise<Doc<"tripLogs">[]> {
   const [year, month, day] = dateKey.split("-").map(Number);
   if (!year || !month || !day) return [];
 
-  const targetDay = getDayNumber(Date.UTC(year, month - 1, day, 0, 0, 0));
+  let dayStartMs: number;
+  let dayEndMs: number;
+  let dayStartSec: number;
+  let dayEndSec: number;
 
-  const dayStartMs = targetDay * 86_400_000;
-  const dayEndMs = (targetDay + 1) * 86_400_000;
-  const dayStartSec = targetDay * 86_400;
-  const dayEndSec = (targetDay + 1) * 86_400;
+  if (timeZone) {
+    dayStartMs = getLocalDayStart(year, month, day, timeZone);
+    dayEndMs = dayStartMs + 86_400_000;
+    dayStartSec = Math.floor(dayStartMs / 1_000);
+    dayEndSec = Math.floor(dayEndMs / 1_000);
+  } else {
+    const targetDay = getDayNumber(Date.UTC(year, month - 1, day, 0, 0, 0));
+    dayStartMs = targetDay * 86_400_000;
+    dayEndMs = (targetDay + 1) * 86_400_000;
+    dayStartSec = targetDay * 86_400;
+    dayEndSec = (targetDay + 1) * 86_400;
+  }
 
   const [ownedTripsMs, ownedTripsSec] = await Promise.all([
     ctx.db
@@ -91,8 +162,14 @@ export async function getUserTripsForDateRange(
   )).filter((trip): trip is NonNullable<typeof trip> => trip !== null);
 
   for (const trip of missingTrips) {
-    if (getDayNumber(normalizeServiceDate(trip.service_date)) === targetDay) {
-      byId.set(String(trip._id), trip);
+    if (timeZone) {
+      if (formatDateInTimezone(normalizeServiceDate(trip.service_date), timeZone) === dateKey) {
+        byId.set(String(trip._id), trip);
+      }
+    } else {
+      if (getDayNumber(normalizeServiceDate(trip.service_date)) === getDayNumber(Date.UTC(year, month - 1, day, 0, 0, 0))) {
+        byId.set(String(trip._id), trip);
+      }
     }
   }
 

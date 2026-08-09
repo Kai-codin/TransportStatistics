@@ -5,6 +5,10 @@ function normalizeServiceDate(value: number) {
   return value > 1_000_000_000_000 ? value : value * 1000;
 }
 
+function getDayNumber(ms: number): number {
+  return Math.floor(ms / 86_400_000);
+}
+
 function sortTripsDesc(trips: Doc<"tripLogs">[]): Doc<"tripLogs">[] {
   return trips.sort((a, b) => {
     const aTime = typeof a.logged_at === "number"
@@ -44,23 +48,29 @@ export async function getAllUserTrips(ctx: QueryCtx, userId: string): Promise<Do
 export async function getUserTripsForDateRange(
   ctx: QueryCtx,
   userId: string,
-  startMs: number,
-  endMs: number,
+  dateKey: string,
 ): Promise<Doc<"tripLogs">[]> {
-  const startSec = Math.floor(startMs / 1000);
-  const endSec = Math.ceil(endMs / 1000);
+  const [year, month, day] = dateKey.split("-").map(Number);
+  if (!year || !month || !day) return [];
+
+  const targetDay = getDayNumber(Date.UTC(year, month - 1, day, 0, 0, 0));
+
+  const dayStartMs = targetDay * 86_400_000;
+  const dayEndMs = (targetDay + 1) * 86_400_000;
+  const dayStartSec = targetDay * 86_400;
+  const dayEndSec = (targetDay + 1) * 86_400;
 
   const [ownedTripsMs, ownedTripsSec] = await Promise.all([
     ctx.db
       .query("tripLogs")
       .withIndex("by_user_service_date", (q) =>
-        q.eq("user", userId).gte("service_date", startMs).lt("service_date", endMs),
+        q.eq("user", userId).gte("service_date", dayStartMs).lt("service_date", dayEndMs),
       )
       .collect(),
     ctx.db
       .query("tripLogs")
       .withIndex("by_user_service_date", (q) =>
-        q.eq("user", userId).gte("service_date", startSec).lt("service_date", endSec),
+        q.eq("user", userId).gte("service_date", dayStartSec).lt("service_date", dayEndSec),
       )
       .collect(),
   ]);
@@ -74,8 +84,6 @@ export async function getUserTripsForDateRange(
     .withIndex("by_user", (q) => q.eq("user", userId))
     .collect();
 
-  console.log(`[getUserTripsForDateRange] user=${userId.slice(-8)} owned=${byId.size} parts=${participations.length}`);
-
   const missingTrips = (await Promise.all(
     participations
       .filter((p) => !byId.has(String(p.tripId)))
@@ -83,10 +91,10 @@ export async function getUserTripsForDateRange(
   )).filter((trip): trip is NonNullable<typeof trip> => trip !== null);
 
   for (const trip of missingTrips) {
-    if (normalizeServiceDate(trip.service_date) >= startMs &&
-        normalizeServiceDate(trip.service_date) < endMs) {
+    if (getDayNumber(normalizeServiceDate(trip.service_date)) === targetDay) {
       byId.set(String(trip._id), trip);
     }
   }
+
   return sortTripsDesc([...byId.values()]);
 }

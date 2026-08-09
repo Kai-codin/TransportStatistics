@@ -209,48 +209,6 @@ function getTripsAllLimit() {
   return Math.floor(parsed);
 }
 
-function getTimeZoneOffsetMs(date: Date, timeZone: string) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hour12: false,
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-    }).formatToParts(date);
-
-    const getNum = (type: string) => {
-      const part = parts.find((p) => p.type === type);
-      return part ? Number.parseInt(part.value, 10) : 0;
-    };
-
-    const localAsUtcMs = Date.UTC(
-      getNum("year"), getNum("month") - 1, getNum("day"),
-      getNum("hour"), getNum("minute"), getNum("second"),
-    );
-
-    return date.getTime() - localAsUtcMs;
-  } catch {
-    return 0;
-  }
-}
-
-function getDateBounds(dateKey: string, timeZone: string) {
-  const [year, month, day] = dateKey.split("-").map((value) => Number(value));
-  if (!year || !month || !day) {
-    return { start: 0, end: 0 };
-  }
-
-  const utcStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-  const utcEnd = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-  const startOffset = getTimeZoneOffsetMs(utcStart, timeZone);
-  const endOffset = getTimeZoneOffsetMs(utcEnd, timeZone);
-
-  return {
-    start: utcStart.getTime() + startOffset,
-    end: utcEnd.getTime() + endOffset,
-  };
-}
-
 type TripUnitLike = {
   unit_number?: string;
   unit_reg?: string;
@@ -300,13 +258,68 @@ function toTripSummary(trip: Doc<"tripLogs">) {
   };
 }
 
-function attachRouteDetailsSync(trip: Doc<"tripLogs">) {
-  return {
-    ...toTripSummary(trip),
-    full_route: trip.full_route,
-    ridden_route: trip.ridden_route,
-    full_locations: trip.full_locations,
-  };
+async function batchAttachRouteDetails(ctx: QueryCtx, trips: Doc<"tripLogs">[]) {
+  const routeMap = new Map<
+    string,
+    { full_route?: unknown; ridden_route?: unknown; full_locations?: unknown }
+  >();
+  const needLookup: Doc<"tripLogs">[] = [];
+
+  for (const trip of trips) {
+    if (
+      trip.full_route !== undefined ||
+      trip.ridden_route !== undefined ||
+      trip.full_locations !== undefined
+    ) {
+      routeMap.set(String(trip._id), {
+        full_route: trip.full_route,
+        ridden_route: trip.ridden_route,
+        full_locations: trip.full_locations,
+      });
+    } else {
+      needLookup.push(trip);
+    }
+  }
+
+  if (needLookup.length > 0) {
+    // Routes are externalized to tripRouteDetails, keyed by the trip owner.
+    // Batch one collect per distinct owner (participated trips may be owned
+    // by someone other than the requester).
+    const owners = [...new Set(needLookup.map((trip) => trip.user))];
+    const detailLists = await Promise.all(
+      owners.map((owner) =>
+        ctx.db
+          .query("tripRouteDetails")
+          .withIndex("by_user", (q) => q.eq("user", owner))
+          .collect()
+      )
+    );
+
+    for (const details of detailLists) {
+      for (const detail of details) {
+        routeMap.set(String(detail.tripId), {
+          full_route: detail.full_route,
+          ridden_route: detail.ridden_route,
+          full_locations: detail.full_locations,
+        });
+      }
+    }
+  }
+
+  return trips.map((trip) => {
+    const routes = routeMap.get(String(trip._id));
+    return {
+      ...toTripSummary(trip),
+      full_route: routes?.full_route ?? trip.full_route,
+      ridden_route: routes?.ridden_route ?? trip.ridden_route,
+      full_locations: routes?.full_locations ?? trip.full_locations,
+    };
+  });
+}
+
+async function attachRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
+  const [result] = await batchAttachRouteDetails(ctx, [trip]);
+  return result;
 }
 
 async function getRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
@@ -643,7 +656,7 @@ export const getTripById = query({
 
     if (!trip || trip.user !== args.userId) return null;
 
-    return attachRouteDetailsSync(trip);
+    return attachRouteDetails(ctx, trip);
   },
 });
 
@@ -654,7 +667,7 @@ export const getTripByIdNoAuth = query({
   handler: async (ctx, args) => {
     const trip = await ctx.db.get(args.tripId);
     if (!trip) return null;
-    return attachRouteDetailsSync(trip);
+    return attachRouteDetails(ctx, trip);
   },
 });
 
@@ -713,7 +726,7 @@ export const getMyTripById = query({
 
     if (!trip || trip.user !== identity.subject) return null;
 
-    return attachRouteDetailsSync(trip);
+    return attachRouteDetails(ctx, trip);
   },
 });
 
@@ -779,7 +792,7 @@ export const getMyTripsPaginated = query({
 
     return {
       page: args.includeRoutes
-        ? page.map(attachRouteDetailsSync)
+        ? await batchAttachRouteDetails(ctx, page)
         : page.map(toTripSummary),
       continueCursor,
       isDone: end >= allTrips.length,
@@ -831,7 +844,7 @@ export const getUserTripsPaginated = query({
 
     return {
       page: args.includeRoutes
-        ? page.map(attachRouteDetailsSync)
+        ? await batchAttachRouteDetails(ctx, page)
         : page.map(toTripSummary),
       continueCursor,
       isDone: end >= allTrips.length,
@@ -873,26 +886,21 @@ export const getMyTripsByDate = query({
     includeRoutes: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const tz = args.timeZone ?? "Europe/London";
-
     if (args.date === "all") {
       const limit = getTripsAllLimit();
       const trips = (await getAllUserTrips(ctx, args.user)).slice(0, limit);
 
       if (args.includeRoutes) {
-        return trips.map(attachRouteDetailsSync);
+        return await batchAttachRouteDetails(ctx, trips);
       }
 
       return trips.map(toTripSummary);
     }
 
-    const { start, end } = getDateBounds(args.date, tz);
-    if (!start || !end) return [];
-
-    const trips = await getUserTripsForDateRange(ctx, args.user, start, end);
+    const trips = await getUserTripsForDateRange(ctx, args.user, args.date);
 
     if (args.includeRoutes) {
-      return trips.map(attachRouteDetailsSync);
+      return await batchAttachRouteDetails(ctx, trips);
     }
 
     return trips.map(toTripSummary);

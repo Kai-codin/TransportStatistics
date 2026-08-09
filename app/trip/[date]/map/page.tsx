@@ -57,7 +57,7 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
   );
 
   useEffect(() => {
-    if (!mapContainer.current || !trips || trips.length === 0) return;
+    if (!mapContainer.current || !trips) return;
 
     // Use the Fluffynet style or your local proxy
     const map = new maplibregl.Map({

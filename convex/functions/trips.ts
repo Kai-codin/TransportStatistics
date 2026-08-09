@@ -300,6 +300,52 @@ function toTripSummary(trip: Doc<"tripLogs">) {
   };
 }
 
+async function batchAttachRouteDetails(ctx: QueryCtx, trips: Doc<"tripLogs">[]) {
+  if (trips.length === 0) return [];
+
+  const routeMap = new Map<string, { full_route?: unknown; ridden_route?: unknown; full_locations?: unknown }>();
+
+  const needLookup: Doc<"tripLogs">[] = [];
+  for (const trip of trips) {
+    if (trip.full_route !== undefined || trip.ridden_route !== undefined || trip.full_locations !== undefined) {
+      routeMap.set(String(trip._id), {
+        full_route: trip.full_route,
+        ridden_route: trip.ridden_route,
+        full_locations: trip.full_locations,
+      });
+    } else {
+      needLookup.push(trip);
+    }
+  }
+
+  if (needLookup.length > 0) {
+    const user = trips[0].user;
+    const allDetails = await ctx.db
+      .query("tripRouteDetails")
+      .withIndex("by_user", (q) => q.eq("user", user))
+      .collect();
+
+    for (const detail of allDetails) {
+      routeMap.set(String(detail.tripId), {
+        full_route: detail.full_route,
+        ridden_route: detail.ridden_route,
+        full_locations: detail.full_locations,
+      });
+    }
+  }
+
+  return trips.map((trip) => {
+    const summary = toTripSummary(trip);
+    const routes = routeMap.get(String(trip._id));
+    return {
+      ...summary,
+      full_route: routes?.full_route ?? trip.full_route,
+      ridden_route: routes?.ridden_route ?? trip.ridden_route,
+      full_locations: routes?.full_locations ?? trip.full_locations,
+    };
+  });
+}
+
 async function getRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
   if (trip.full_route !== undefined || trip.ridden_route !== undefined || trip.full_locations !== undefined) {
     return {
@@ -322,10 +368,8 @@ async function getRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
 }
 
 async function attachRouteDetails(ctx: QueryCtx, trip: Doc<"tripLogs">) {
-  return {
-    ...toTripSummary(trip),
-    ...(await getRouteDetails(ctx, trip)),
-  };
+  const [result] = await batchAttachRouteDetails(ctx, [trip]);
+  return result;
 }
 
 async function saveRouteDetails(
@@ -775,7 +819,7 @@ export const getMyTripsPaginated = query({
 
     return {
       page: args.includeRoutes
-        ? await Promise.all(page.map((trip) => attachRouteDetails(ctx, trip)))
+        ? await batchAttachRouteDetails(ctx, page)
         : page.map(toTripSummary),
       continueCursor,
       isDone: end >= allTrips.length,
@@ -827,7 +871,7 @@ export const getUserTripsPaginated = query({
 
     return {
       page: args.includeRoutes
-        ? await Promise.all(page.map((trip) => attachRouteDetails(ctx, trip)))
+        ? await batchAttachRouteDetails(ctx, page)
         : page.map(toTripSummary),
       continueCursor,
       isDone: end >= allTrips.length,
@@ -876,7 +920,7 @@ export const getMyTripsByDate = query({
       const trips = (await getAllUserTrips(ctx, args.user)).slice(0, limit);
 
       if (args.includeRoutes) {
-        return await Promise.all(trips.map((trip) => attachRouteDetails(ctx, trip)));
+        return await batchAttachRouteDetails(ctx, trips);
       }
 
       return trips.map(toTripSummary);

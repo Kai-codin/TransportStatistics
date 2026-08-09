@@ -74,6 +74,8 @@ export async function getUserTripsForDateRange(
     .withIndex("by_user", (q) => q.eq("user", userId))
     .collect();
 
+  console.log(`[getUserTripsForDateRange] user=${userId.slice(-8)} owned=${byId.size} parts=${participations.length}`);
+
   const missingTrips = (await Promise.all(
     participations
       .filter((p) => !byId.has(String(p.tripId)))
@@ -86,6 +88,5 @@ export async function getUserTripsForDateRange(
       byId.set(String(trip._id), trip);
     }
   }
-
   return sortTripsDesc([...byId.values()]);
 }

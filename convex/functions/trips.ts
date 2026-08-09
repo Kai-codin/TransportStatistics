@@ -282,27 +282,26 @@ async function batchAttachRouteDetails(ctx: QueryCtx, trips: Doc<"tripLogs">[]) 
   }
 
   if (needLookup.length > 0) {
-    // Routes are externalized to tripRouteDetails, keyed by the trip owner.
-    // Batch one collect per distinct owner (participated trips may be owned
-    // by someone other than the requester).
-    const owners = [...new Set(needLookup.map((trip) => trip.user))];
-    const detailLists = await Promise.all(
-      owners.map((owner) =>
+    // Routes are externalized to tripRouteDetails. Point-lookup each trip's
+    // details via the by_tripId index so we only read the documents we
+    // actually return — collecting per owner reads the owner's entire route
+    // history and blows the 16MB bytes-read limit.
+    const detailResults = await Promise.all(
+      needLookup.map((trip) =>
         ctx.db
           .query("tripRouteDetails")
-          .withIndex("by_user", (q) => q.eq("user", owner))
-          .collect()
+          .withIndex("by_tripId", (q) => q.eq("tripId", trip._id))
+          .first()
       )
     );
 
-    for (const details of detailLists) {
-      for (const detail of details) {
-        routeMap.set(String(detail.tripId), {
-          full_route: detail.full_route,
-          ridden_route: detail.ridden_route,
-          full_locations: detail.full_locations,
-        });
-      }
+    for (const detail of detailResults) {
+      if (!detail) continue;
+      routeMap.set(String(detail.tripId), {
+        full_route: detail.full_route,
+        ridden_route: detail.ridden_route,
+        full_locations: detail.full_locations,
+      });
     }
   }
 
@@ -878,12 +877,19 @@ export const getUserTripCount = query({
   },
 });
 
+// Chunking knobs for the "all trips with routes" path. Route geometry is
+// large, so a single execution can only read/return a bounded number of trips.
+const ROUTES_CHUNK_BATCH_SIZE = 25;
+const ROUTES_CHUNK_MAX_ITEMS = 200;
+const ROUTES_CHUNK_BYTES_READ_RESERVE = 4 * 1024 * 1024;
+
 export const getMyTripsByDate = query({
   args: {
     user: v.string(),
     date: v.string(),
     timeZone: v.optional(v.string()),
     includeRoutes: v.optional(v.boolean()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.date === "all") {
@@ -891,7 +897,30 @@ export const getMyTripsByDate = query({
       const trips = (await getAllUserTrips(ctx, args.user)).slice(0, limit);
 
       if (args.includeRoutes) {
-        return await batchAttachRouteDetails(ctx, trips);
+        // Route data is large — return it in chunks bounded by count and by
+        // the remaining bytes-read budget, so one execution never hits the
+        // 16MB limit. The client follows continueCursor until isDone.
+        const startRaw = args.cursor ? parseInt(args.cursor, 10) : 0;
+        const start = Number.isFinite(startRaw) && startRaw > 0 ? Math.floor(startRaw) : 0;
+
+        const page: Awaited<ReturnType<typeof batchAttachRouteDetails>> = [];
+        let end = start;
+
+        while (end < trips.length && page.length < ROUTES_CHUNK_MAX_ITEMS) {
+          const batchEnd = Math.min(
+            end + ROUTES_CHUNK_BATCH_SIZE,
+            trips.length,
+            start + ROUTES_CHUNK_MAX_ITEMS
+          );
+          page.push(...(await batchAttachRouteDetails(ctx, trips.slice(end, batchEnd))));
+          end = batchEnd;
+
+          const metrics = await ctx.meta.getTransactionMetrics();
+          if (metrics.bytesRead.remaining < ROUTES_CHUNK_BYTES_READ_RESERVE) break;
+        }
+
+        const isDone = end >= trips.length;
+        return { page, continueCursor: isDone ? "" : String(end), isDone };
       }
 
       return trips.map(toTripSummary);

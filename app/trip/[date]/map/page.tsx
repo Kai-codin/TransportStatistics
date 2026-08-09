@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, use } from 'react';
-import { useQuery } from "convex/react";
+import { useEffect, useRef, useState, use } from 'react';
+import { useConvex, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import maplibregl from 'maplibre-gl';
@@ -48,13 +48,59 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
   const { user } = useUser();
   const { theme } = useTheme();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  
+  const isAll = date === 'all';
+
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
 
-  const trips = useQuery(api.functions.trips.getMyTripsByDate, 
-    user?.id ? { user: user.id, date: date, timeZone, includeRoutes: true } : "skip"
+  const convex = useConvex();
+  const [chunkedTrips, setChunkedTrips] = useState<any[] | null>(null);
+  const [loadedCount, setLoadedCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const queriedTrips = useQuery(api.functions.trips.getMyTripsByDate,
+    !isAll && user?.id ? { user: user.id, date: date, timeZone, includeRoutes: true } : "skip"
   );
+
+  // The "all" view returns route data in chunks (it can exceed Convex's
+  // per-function bytes-read limit in one shot) — fetch chunks sequentially
+  // until the server reports isDone.
+  useEffect(() => {
+    if (!isAll || !user?.id) return;
+
+    let cancelled = false;
+    setChunkedTrips(null);
+    setLoadedCount(0);
+    setLoadError(null);
+
+    (async () => {
+      const acc: any[] = [];
+      let cursor: string | undefined = undefined;
+
+      for (;;) {
+        const res = await convex.query(api.functions.trips.getMyTripsByDate, {
+          user: user.id, date, timeZone, includeRoutes: true, cursor,
+        }) as { page: any[]; continueCursor: string; isDone: boolean };
+
+        acc.push(...res.page);
+        if (cancelled) return;
+        setLoadedCount(acc.length);
+
+        if (res.isDone) break;
+        cursor = res.continueCursor;
+      }
+
+      if (!cancelled) setChunkedTrips(acc);
+    })().catch((err) => {
+      if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
+    });
+
+    return () => { cancelled = true; };
+  }, [convex, date, isAll, user?.id, timeZone]);
+
+  const trips: any[] | undefined = isAll
+    ? (chunkedTrips ?? undefined)
+    : (queriedTrips as any[] | undefined);
 
   useEffect(() => {
     if (!mapContainer.current || !trips) return;
@@ -162,7 +208,14 @@ export default function TripDateMapPage({ params }: { params: Promise<{ date: st
   }, [theme, trips]);
 
   if (!user) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Please sign in...</div>;
-  if (trips === undefined) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Loading...</div>;
+  if (loadError) return <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">Failed to load trips: {loadError}</div>;
+  if (trips === undefined) {
+    return (
+      <div className="p-8 text-ts-text-1 bg-[#0d1410] h-screen">
+        {isAll && loadedCount > 0 ? `Loading… ${loadedCount} trips` : 'Loading...'}
+      </div>
+    );
+  }
 
   return (
     <div className="ts-app" style={{ display: 'flex', height: '100vh', background: '#0d1410' }}>

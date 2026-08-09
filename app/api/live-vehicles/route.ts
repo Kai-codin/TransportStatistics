@@ -273,12 +273,14 @@ export const GET = withApiKeyAuth(async (_auth, request: Request) => {
           liveryID: b.vehicle?.livery ?? 0,
           trip_id: b.trip_id ?? null,
           journey_id: b.journey_id ?? null,
+          vehicle_name: b.vehicle?.name ?? null,
           popup_data: {
             label1: `${b.service?.line_name ?? "Bus"} to ${b.destination ?? "Unknown"}`,
             link1,
             label2: b.vehicle?.name ?? "Unknown Bus",
             link2: `https://bustimes.org${b.vehicle?.url ?? ""}`,
             log_link,
+            vehicle_name: b.vehicle?.name ?? null,
           },
         };
       }),

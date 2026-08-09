@@ -141,6 +141,25 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
           if (unitColumn) unitColumn.innerHTML = buildUnitColumnHtml(unitList, item);
         }
       }
+
+      const vehicleName = item.popup_data?.vehicle_name;
+      if (vehicleName) {
+        try {
+          const riddenRes = await fetch(`/api/check-vehicle?vehicle=${encodeURIComponent(vehicleName)}`);
+          const riddenData = await riddenRes.json();
+          const popupEl = popup.getElement();
+          if (popupEl) {
+            const statusEl = popupEl.querySelector("[data-ridden-status]");
+            if (statusEl) {
+              if (riddenData.ridden) {
+                statusEl.innerHTML = `<span style="color:#22c55e;">✓ Ridden ${riddenData.count} time${riddenData.count !== 1 ? "s" : ""}</span>`;
+              } else {
+                statusEl.innerHTML = `<span style="color:#9ab89a;">Not ridden yet</span>`;
+              }
+            }
+          }
+        } catch { /* ignore */ }
+      }
     } catch (e) { console.error("Failed to load route data:", e); }
   };
 
@@ -196,6 +215,7 @@ export const LiveVehicles = ({ bounds }: { bounds: { minLat: number; maxLat: num
         <div class="v-popup-subtitle">${item.popup_data.label2}${item.popup_data.link2
           ? `<br/><a href="${item.popup_data.link2}" target="_blank" style="color:#60a5fa;font-size:.8rem;">View Vehicle</a>`
           : ""}</div>
+        <div data-ridden-status style="font-size:.8rem;margin-bottom:8px;"></div>
         <a href="${item.popup_data.log_link}" class="v-popup-btn">Log this ${type}</a>`;
 
     const popup = new maplibregl.Popup({ offset: 25, className: "vehicle-popup" }).setHTML(content);

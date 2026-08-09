@@ -104,6 +104,49 @@ export const getUserTripsByOperators = query({
   },
 });
 
+export const checkVehicleRidden = query({
+  args: {
+    user: v.string(),
+    vehicleIdentifier: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!args.vehicleIdentifier) return { ridden: false, count: 0, trips: [] };
+
+    const trips = await getAllUserTrips(ctx, args.user);
+    const identifier = args.vehicleIdentifier.toLowerCase().replace(/\s+/g, "");
+
+    const matchingTrips = trips.filter((trip) => {
+      if (trip.unit_number && trip.unit_number.toLowerCase().replace(/\s+/g, "") === identifier) return true;
+      if (trip.unit_reg && trip.unit_reg.toLowerCase().replace(/\s+/g, "") === identifier) return true;
+      const units = trip.units;
+      if (Array.isArray(units)) {
+        return units.some((u: any) => {
+          const num = u?.unit_number ?? u?.number ?? "";
+          const reg = u?.unit_reg ?? "";
+          if (num && String(num).toLowerCase().replace(/\s+/g, "") === identifier) return true;
+          if (reg && reg.toLowerCase().replace(/\s+/g, "") === identifier) return true;
+          return false;
+        });
+      }
+      return false;
+    });
+
+    return {
+      ridden: matchingTrips.length > 0,
+      count: matchingTrips.length,
+      trips: matchingTrips.slice(0, 5).map((t) => ({
+        _id: t._id,
+        service_number: t.service_number,
+        operator: t.operator,
+        logged_at: t.logged_at,
+        service_date: t.service_date,
+        origin_name: t.origin_name,
+        destination_name: t.destination_name,
+      })),
+    };
+  },
+});
+
 export const getDetailsByUnits = query({
   args: { 
     unitNumbers: v.array(v.string()) 

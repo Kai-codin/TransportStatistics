@@ -512,9 +512,11 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
 
     const full_route = stops.map((time: any, index: number) => {
       const isFirst = index === 0;
-      const track = !isFirst && geomTimes[index]?.track?.length > 0
-        ? geomTimes[index].track
-        : null;
+      const track = !isFirst && time.track?.length > 0
+        ? time.track
+        : (!isFirst && geomTimes[index]?.track?.length > 0
+          ? geomTimes[index].track
+          : null);
 
       const uniqueId = `bus-${uid}-${date}-${time.stop.atco_code ?? index}`;
 
@@ -538,12 +540,22 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
       };
     });
 
-    const stitchedGeometry = {
-      type: "LineString",
-      coordinates: geomTimes
-        .filter((t: any) => t.track && Array.isArray(t.track))
-        .flatMap((t: any) => t.track)
-    };
+    const stitchedCoords: [number, number][] = [];
+    let lastLoc: [number, number] | null = null;
+    for (const t of stops) {
+      const loc = t.stop?.location;
+      const hasTrack = Array.isArray(t.track) && t.track.length > 0;
+      if (hasTrack) {
+        stitchedCoords.push(...t.track);
+        lastLoc = t.track[t.track.length - 1] ?? null;
+      } else if (Array.isArray(loc) && loc.length === 2) {
+        if (lastLoc) stitchedCoords.push(lastLoc, loc);
+        lastLoc = loc;
+      }
+    }
+    const stitchedGeometry = stitchedCoords.length > 1
+      ? { type: "LineString", coordinates: stitchedCoords }
+      : null;
 
     const responsePayload = {
       service_number: geomData?.service?.line_name ?? trip?.service?.line_name ?? "Unknown",
@@ -560,7 +572,7 @@ async function handleBusRequest(uid: string, date: string, debug: boolean, busti
       actual_departure: getActualDeparture(firstStop),
       scheduled_arrival: getAimedArrival(lastStop),
       actual_arrival: getActualArrival(lastStop),
-      full_route_geometry: stitchedGeometry.coordinates.length > 0 ? stitchedGeometry : null,
+      full_route_geometry: stitchedGeometry,
       full_locations: full_route,
       full_route: full_route,
       unit: vehicleDetails ? {
@@ -682,11 +694,21 @@ async function handleJourneyRequest(
   }
 
   if (!fullRouteGeometry) {
-    const journeyTrackCoords = times
-      .filter((t: any) => t.track && Array.isArray(t.track))
-      .flatMap((t: any) => t.track);
-    if (journeyTrackCoords.length > 0) {
-      fullRouteGeometry = { type: "LineString", coordinates: journeyTrackCoords as [number, number][] };
+    const interleaved: [number, number][] = [];
+    let lastLoc: [number, number] | null = null;
+    for (const t of times) {
+      const loc = t.stop?.location;
+      const hasTrack = Array.isArray(t.track) && t.track.length > 0;
+      if (hasTrack) {
+        interleaved.push(...t.track);
+        lastLoc = t.track[t.track.length - 1] ?? null;
+      } else if (Array.isArray(loc) && loc.length === 2) {
+        if (lastLoc) interleaved.push(lastLoc, loc);
+        lastLoc = loc;
+      }
+    }
+    if (interleaved.length > 1) {
+      fullRouteGeometry = { type: "LineString", coordinates: interleaved };
     }
   }
 

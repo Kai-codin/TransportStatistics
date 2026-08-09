@@ -1346,13 +1346,6 @@ export default function LogPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => startAddStop(fullRoute.length > 0 ? fullRoute[fullRoute.length - 1].id : null)}
-                  className="shrink-0 rounded-full border border-ts-border px-3 py-1.5 text-xs font-semibold text-ts-text-2 transition hover:border-amber-400 hover:text-amber-400 active:scale-95"
-                >
-                  + Add stop
-                </button>
-                <button
-                  type="button"
                   onClick={resetToFullRoute}
                   className="shrink-0 rounded-full border border-ts-border px-3 py-1.5 text-xs font-semibold text-ts-text-2 transition hover:border-ts-accent hover:text-ts-accent active:scale-95"
                 >

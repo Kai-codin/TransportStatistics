@@ -116,15 +116,17 @@ export const checkVehicleRidden = query({
     const identifier = args.vehicleIdentifier.toLowerCase().replace(/\s+/g, "");
 
     const matchingTrips = trips.filter((trip) => {
-      if (trip.unit_number && trip.unit_number.toLowerCase().replace(/\s+/g, "") === identifier) return true;
-      if (trip.unit_reg && trip.unit_reg.toLowerCase().replace(/\s+/g, "") === identifier) return true;
+      const cleanUnitNumber = (trip.unit_number ?? "").toLowerCase().replace(/[\s-]/g, "");
+      const cleanUnitReg = (trip.unit_reg ?? "").toLowerCase().replace(/[\s-]/g, "");
+      if (cleanUnitNumber && (identifier.includes(cleanUnitNumber) || cleanUnitNumber.includes(identifier))) return true;
+      if (cleanUnitReg && (identifier.includes(cleanUnitReg) || cleanUnitReg.includes(identifier))) return true;
       const units = trip.units;
       if (Array.isArray(units)) {
         return units.some((u: any) => {
-          const num = u?.unit_number ?? u?.number ?? "";
-          const reg = u?.unit_reg ?? "";
-          if (num && String(num).toLowerCase().replace(/\s+/g, "") === identifier) return true;
-          if (reg && reg.toLowerCase().replace(/\s+/g, "") === identifier) return true;
+          const num = String(u?.unit_number ?? u?.number ?? "").toLowerCase().replace(/[\s-]/g, "");
+          const reg = (u?.unit_reg ?? "").toLowerCase().replace(/[\s-]/g, "");
+          if (num && (identifier.includes(num) || num.includes(identifier))) return true;
+          if (reg && (identifier.includes(reg) || reg.includes(identifier))) return true;
           return false;
         });
       }

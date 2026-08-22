@@ -3,6 +3,27 @@ import { query } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getAllUserTrips } from "./userTrips";
 
+// Helper functions for date formatting (from completion.ts)
+function getDateParts(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+
+  return {
+    year: parts.find((part) => part.type === "year")?.value ?? "0000",
+    month: parts.find((part) => part.type === "month")?.value ?? "00",
+    day: parts.find((part) => part.type === "day")?.value ?? "00",
+  };
+}
+
+function formatDate(timestamp: number, timeZone: string): string {
+  const { year, month, day } = getDateParts(timestamp, timeZone);
+  return `${year}-${month}-${day}`;
+}
+
 type VehicleSummary = {
   unit_number: string;
   unit_type: string;
@@ -236,5 +257,114 @@ export const getDetailsByUnits = query({
     }
 
     return vehicles;
+  },
+});
+
+export const getVehicleTrips = query({
+  args: {
+    user: v.string(),
+    vehicleIdentifier: v.string(),
+    timeZone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.vehicleIdentifier) return { trips: [], stats: null };
+
+    const timeZone = args.timeZone ?? "UTC";
+    const trips = await getAllUserTrips(ctx, args.user);
+
+    // Build exact-match keys from the identifier. Format varies per source,
+    // e.g. "63176 - SN64 CGU" (fleet + reg) or just "SN64 CGU" / "63176".
+    const cleanToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const identifierKeys = new Set<string>();
+    for (const part of args.vehicleIdentifier.trim().split(/\s+/)) {
+      const clean = cleanToken(part);
+      if (clean) identifierKeys.add(clean);
+    }
+    const identifierCompact = cleanToken(args.vehicleIdentifier);
+    if (identifierCompact) identifierKeys.add(identifierCompact);
+
+    const matchingTrips = trips.filter((trip) => {
+      const matches = (value: unknown) => {
+        const clean = cleanToken(String(value ?? ""));
+        return !!clean && (identifierKeys.has(clean) || clean === identifierCompact);
+      };
+      if (matches(trip.unit_number) || matches(trip.unit_reg)) return true;
+      const units = trip.units;
+      if (Array.isArray(units)) {
+        return units.some((u: any) =>
+          matches(u?.unit_number ?? u?.number ?? "") || matches(u?.unit_reg ?? "")
+        );
+      }
+      return false;
+    });
+
+    // Calculate statistics
+    let totalDistanceKm = 0;
+    let totalMinutes = 0;
+    const routeFrequency = new Map<string, number>();
+
+    for (const trip of matchingTrips) {
+      // Distance
+      if (typeof trip.distance_km === "number") {
+        totalDistanceKm += trip.distance_km;
+      }
+
+      // Time
+      const dep = trip.actual_departure ?? trip.scheduled_departure;
+      const arr = trip.actual_arrival ?? trip.scheduled_arrival;
+      if (dep && arr) {
+        const depDate = new Date(`${formatDate(trip.service_date, timeZone)}T${dep}`);
+        const arrDate = new Date(`${formatDate(trip.service_date, timeZone)}T${arr}`);
+        const diff = (arrDate.getTime() - depDate.getTime()) / 60000;
+        if (diff > 0 && diff < 1440) totalMinutes += diff;
+      }
+
+      // Route frequency
+      const origin = trip.origin_name ?? "Unknown";
+      const destination = trip.destination_name ?? "Unknown";
+      const routeKey = `${origin} → ${destination}`;
+      routeFrequency.set(routeKey, (routeFrequency.get(routeKey) ?? 0) + 1);
+    }
+
+    // Convert route frequency to sorted array
+    const frequentRoutes = Array.from(routeFrequency.entries())
+      .map(([route, count]) => ({ route, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10); // Top 10 routes
+
+    const stats = matchingTrips.length > 0 ? {
+      totalTrips: matchingTrips.length,
+      totalDistanceKm: Math.round(totalDistanceKm),
+      totalMinutes: Math.round(totalMinutes),
+      frequentRoutes,
+    } : null;
+
+    // Return trip summaries with route details
+    const tripSummaries = matchingTrips.map((trip) => ({
+      _id: trip._id,
+      service_number: trip.service_number,
+      operator: trip.operator,
+      operator_slug: trip.operator_slug,
+      service_date: trip.service_date,
+      transport_type: trip.transport_type,
+      origin_name: trip.origin_name,
+      destination_name: trip.destination_name,
+      scheduled_departure: trip.scheduled_departure,
+      actual_departure: trip.actual_departure,
+      scheduled_arrival: trip.scheduled_arrival,
+      actual_arrival: trip.actual_arrival,
+      units: trip.units,
+      unit_number: trip.unit_number,
+      unit_reg: trip.unit_reg,
+      unit_type: trip.unit_type,
+      livery_name: trip.livery_name,
+      livery_css: trip.livery_css,
+      first_time: trip.first_time,
+      first_units: trip.first_units,
+      coupling_events: trip.coupling_events,
+      distance_km: trip.distance_km,
+    }));
+
+    return { trips: tripSummaries, stats };
   },
 });
